@@ -28,6 +28,10 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
+// DEFINES FOR PYVEX
+#define VGP_mips32_linux
+#define _MIPSEL
+
 #ifndef __VEX_HOST_MIPS_DEFS_H
 #define __VEX_HOST_MIPS_DEFS_H
 
@@ -162,6 +166,9 @@ extern HReg hregMIPS_D15(void);
 /* a0, a1, a2, a3 */
 #define MIPS_N_ARGREGS 4
 #endif
+
+#define VGP_mips32_linux
+#define _
 
 /* --------- Condition codes, Intel encoding. --------- */
 typedef enum {

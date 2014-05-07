@@ -40,6 +40,7 @@
 #include "main_globals.h"
 #include "guest_generic_bb_to_IR.h"
 #include "guest_mips_defs.h"
+#include "host_mips_defs.h"
 
 /*------------------------------------------------------------*/
 /*---                      Globals                         ---*/

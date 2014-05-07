@@ -78,9 +78,9 @@
    concerned) but have meaning for supporting Valgrind.  A special
    instruction is flagged by a 16-byte preamble:
 
-      32-bit mode: 5400183E 5400683E 5400E83E 5400983E
-                   (rlwinm 0,0,3,0,31; rlwinm 0,0,13,0,31; 
-                    rlwinm 0,0,29,0,31; rlwinm 0,0,19,0,31)
+      32-bit mode: 54001800 54006800 5400E800 54009800
+                   (rlwinm 0,0,3,0,0; rlwinm 0,0,13,0,0; 
+                    rlwinm 0,0,29,0,0; rlwinm 0,0,19,0,0)
 
       64-bit mode: 78001800 78006800 7800E802 78009802
                    (rotldi 0,0,3; rotldi 0,0,13;
@@ -5233,7 +5233,6 @@ static Bool dis_int_ldst_mult ( UInt theInstr )
 
    Int     simm16 = extend_s_16to32(uimm16);
    IRType  ty     = mode64 ? Ity_I64 : Ity_I32;
-   IROp    mkAdd  = mode64 ? Iop_Add64 : Iop_Add32;
    IRTemp  EA     = newTemp(ty);
    UInt    r      = 0;
    UInt    ea_off = 0;
@@ -5249,7 +5248,7 @@ static Bool dis_int_ldst_mult ( UInt theInstr )
       }
       DIP("lmw r%u,%d(r%u)\n", rD_addr, simm16, rA_addr);
       for (r = rD_addr; r <= 31; r++) {
-         irx_addr = binop(mkAdd, mkexpr(EA), mode64 ? mkU64(ea_off) : mkU32(ea_off));
+         irx_addr = binop(Iop_Add32, mkexpr(EA), mkU32(ea_off));
          putIReg( r, mkWidenFrom32(ty, loadBE(Ity_I32, irx_addr ),
                                        False) );
          ea_off += 4;
@@ -5259,7 +5258,7 @@ static Bool dis_int_ldst_mult ( UInt theInstr )
    case 0x2F: // stmw (Store Multiple Word, PPC32 p527)
       DIP("stmw r%u,%d(r%u)\n", rS_addr, simm16, rA_addr);
       for (r = rS_addr; r <= 31; r++) {
-         irx_addr = binop(mkAdd, mkexpr(EA), mode64 ? mkU64(ea_off) : mkU32(ea_off));
+         irx_addr = binop(Iop_Add32, mkexpr(EA), mkU32(ea_off));
          storeBE( irx_addr, mkNarrowTo32(ty, getIReg(r)) );
          ea_off += 4;
       }
@@ -5659,6 +5658,7 @@ static Bool dis_branch ( UInt theInstr,
             vex_printf("dis_int_branch(ppc)(bcctr,BO)\n");
             return False;
          }
+
          DIP("bcctr%s 0x%x, 0x%x\n", flag_LK ? "l" : "", BO, BI);
          
          assign( cond_ok, branch_cond_ok( BO, BI ) );
@@ -5670,6 +5670,7 @@ static Bool dis_branch ( UInt theInstr,
          if (flag_LK)
             putGST( PPC_GST_LR, e_nia );
          
+        if(!((BO & 0x14) == 0x14))
          stmt( IRStmt_Exit(
                   binop(Iop_CmpEQ32, mkexpr(cond_ok), mkU32(0)),
                   Ijk_Boring,
@@ -5710,6 +5711,7 @@ static Bool dis_branch ( UInt theInstr,
          if (flag_LK)
             putGST( PPC_GST_LR,  e_nia );
 
+         if (!vanilla_return)
          stmt( IRStmt_Exit(
                   binop(Iop_CmpEQ32, mkexpr(do_branch), mkU32(0)),
                   Ijk_Boring,
@@ -18523,20 +18525,20 @@ DisResult disInstr_PPC_WRK (
       UChar* code = (UChar*)(guest_code + delta);
       /* Spot the 16-byte preamble: 
          32-bit mode:
-            5400183E  rlwinm 0,0,3,0,31
-            5400683E  rlwinm 0,0,13,0,31
-            5400E83E  rlwinm 0,0,29,0,31
-            5400983E  rlwinm 0,0,19,0,31
+            54001800  rlwinm 0,0,3,0,0
+            54006800  rlwinm 0,0,13,0,0
+            5400E800  rlwinm 0,0,29,0,0
+            54009800  rlwinm 0,0,19,0,0
          64-bit mode:
             78001800  rotldi 0,0,3
             78006800  rotldi 0,0,13
             7800E802  rotldi 0,0,61
             78009802  rotldi 0,0,51
       */
-      UInt word1 = mode64 ? 0x78001800 : 0x5400183E;
-      UInt word2 = mode64 ? 0x78006800 : 0x5400683E;
-      UInt word3 = mode64 ? 0x7800E802 : 0x5400E83E;
-      UInt word4 = mode64 ? 0x78009802 : 0x5400983E;
+      UInt word1 = mode64 ? 0x78001800 : 0x54001800;
+      UInt word2 = mode64 ? 0x78006800 : 0x54006800;
+      UInt word3 = mode64 ? 0x7800E802 : 0x5400E800;
+      UInt word4 = mode64 ? 0x78009802 : 0x54009800;
       if (getUIntBigendianly(code+ 0) == word1 &&
           getUIntBigendianly(code+ 4) == word2 &&
           getUIntBigendianly(code+ 8) == word3 &&

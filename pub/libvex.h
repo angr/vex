@@ -274,6 +274,9 @@ typedef
        * (bug#135264) */
       UInt ppc_dcbz_szB;
       UInt ppc_dcbzl_szB; /* 0 means unsupported (SIGILL) */
+
+      /* The endianness of the architecture */
+      IREndness endness;
    }
    VexArchInfo;
 
