@@ -30,7 +30,7 @@
 
 // DEFINES FOR PYVEX
 #define VGP_mips32_linux
-#define _MIPSEL
+#define _MIPSEB
 
 #ifndef __VEX_HOST_MIPS_DEFS_H
 #define __VEX_HOST_MIPS_DEFS_H
