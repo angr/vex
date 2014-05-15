@@ -801,6 +801,22 @@ static Bool is_Branch_or_Jump_and_Link(UChar * addr)
    return False;
 }
 
+static Bool is_Ret(UChar * addr)
+{
+    UInt cins = getUInt(addr);
+
+    UInt opcode = get_opcode(cins);
+    UInt rs = get_rs(cins);
+    UInt function = get_function(cins);
+
+    /* jr $ra */
+    if(opcode == 0x00 && function == 0x08 && rs == 31) {
+        return True;
+    }
+
+    return False;
+}
+
 static Bool branch_or_link_likely(UChar * addr)
 {
    UInt cins = getUInt(addr);
@@ -2174,7 +2190,7 @@ static Bool dis_instr_CVM ( UInt theInstr )
 
    switch(opc1){
       case 0x1C:  {
-         switch(opc2) { 
+         switch(opc2) {
             case 0x03: {  /* DMUL rd, rs, rt */
                DIP("dmul r%d, r%d, r%d", regRd, regRs, regRt);
                IRType t0 = newTemp(Ity_I128);
@@ -2184,7 +2200,7 @@ static Bool dis_instr_CVM ( UInt theInstr )
             }
 
             case 0x32:  /* 5. CINS rd, rs, p, lenm1 */
-               DIP("cins r%u, r%u, %d, %d\n", regRt, regRs, p, lenM1); 
+               DIP("cins r%u, r%u, %d, %d\n", regRt, regRs, p, lenM1);
                assign ( tmp  , binop(Iop_Shl64, mkexpr(tmpRs),
                                      mkU8(64-( lenM1+1 ))));
                assign ( tmpRt, binop(Iop_Shr64, mkexpr( tmp ),
@@ -2202,7 +2218,7 @@ static Bool dis_instr_CVM ( UInt theInstr )
                break;
 
             case 0x3A:  /* 3. EXTS rt, rs, p len */
-               DIP("exts r%u, r%u, %d, %d\n", regRt, regRs, p, lenM1); 
+               DIP("exts r%u, r%u, %d, %d\n", regRt, regRs, p, lenM1);
                size = lenM1 + 1;  /* lenm1+1 */
                UChar lsAmt = 64 - (p + size);  /* p+lenm1+1 */
                UChar rsAmt = 64 - size;  /* lenm1+1 */
@@ -2212,7 +2228,7 @@ static Bool dis_instr_CVM ( UInt theInstr )
                break;
 
             case 0x3B:  /* 4. EXTS32 rt, rs, p len */
-               DIP("exts32 r%u, r%u, %d, %d\n", regRt, regRs, p, lenM1); 
+               DIP("exts32 r%u, r%u, %d, %d\n", regRt, regRs, p, lenM1);
                assign ( tmp  , binop(Iop_Shl64, mkexpr(tmpRs),
                                      mkU8(32-(p+lenM1+1))));
                assign ( tmpRt, binop(Iop_Sar64, mkexpr(tmp),
@@ -2319,7 +2335,7 @@ static Bool dis_instr_CVM ( UInt theInstr )
          break;
       } /* opc1 = 0x1F ends here*/
       default:
-         return False; 
+         return False;
    } /* main opc1 switch ends here */
    return True;
 }
@@ -16703,6 +16719,7 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
    /* All MIPS insn have 4 bytes */
 
    if (delay_slot_branch) {
+      Bool is_branch;
       delay_slot_branch = False;
       stmt(bstmt);
       bstmt = NULL;
@@ -16710,8 +16727,13 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
          putPC(mkU64(guest_PC_curr_instr + 4));
       else
          putPC(mkU32(guest_PC_curr_instr + 4));
-      dres.jk_StopHere = is_Branch_or_Jump_and_Link(guest_code + delta - 4) ?
-                         Ijk_Call : Ijk_Boring;
+      is_branch = is_Branch_or_Jump_and_Link(guest_code + delta - 4);
+      if(is_branch) {
+          dres.jk_StopHere = Ijk_Call;
+      } else {
+          dres.jk_StopHere = is_Ret(guest_code + delta - 4)?
+                             Ijk_Ret : Ijk_Boring;
+      }
    }
 
    if (likely_delay_slot) {
@@ -16721,10 +16743,16 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
       lastn = NULL;
    }
    if (delay_slot_jump) {
+      Bool is_branch;
       putPC(lastn);
       lastn = NULL;
-      dres.jk_StopHere = is_Branch_or_Jump_and_Link(guest_code + delta - 4) ?
-                         Ijk_Call : Ijk_Boring;
+      is_branch = is_Branch_or_Jump_and_Link(guest_code + delta - 4);
+      if(is_branch) {
+          dres.jk_StopHere = Ijk_Call;
+      } else {
+          dres.jk_StopHere = is_Ret(guest_code + delta - 4)?
+                             Ijk_Ret : Ijk_Boring;
+      }
    }
 
  decode_success:
