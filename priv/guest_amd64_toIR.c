@@ -1267,7 +1267,13 @@ static UInt offsetIRegG ( Int sz, Prefix pfx, UChar mod_reg_rm )
 static 
 IRExpr* getIRegG ( Int sz, Prefix pfx, UChar mod_reg_rm )
 {
-   if (sz == 4) {
+   /* Hacking fix by Fish
+    * When reading 32-bit value from a register, avoiding the original
+    * manner of first reading a 64-bit value then converting it to 32-bit.
+    * Now we directly read a 32-bit value out of the register.
+    */
+   /* if (sz == 4) { */
+   if (sz == 4 && 0) {
       sz = 8;
       return unop(Iop_64to32,
                   IRExpr_Get( offsetIRegG( sz, pfx, mod_reg_rm ),
