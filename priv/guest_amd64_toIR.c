@@ -1288,9 +1288,10 @@ static
 void putIRegG ( Int sz, Prefix pfx, UChar mod_reg_rm, IRExpr* e )
 {
    vassert(typeOfIRExpr(irsb->tyenv,e) == szToITy(sz));
-   if (sz == 4) {
+   /* Hackish fix by Fish */
+   /* if (sz == 4) {
       e = unop(Iop_32Uto64,e);
-   }
+   } */
    stmt( IRStmt_Put( offsetIRegG( sz, pfx, mod_reg_rm ), e ) );
 }
 
