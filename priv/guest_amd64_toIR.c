@@ -1029,7 +1029,7 @@ static void putIRegRAX ( Int sz, IRExpr* e )
               stmt( IRStmt_Put( OFFB_RAX, e ));
               break;
       case 4: vassert(ty == Ity_I32);
-              stmt( IRStmt_Put( OFFB_RAX, unop(Iop_32Uto64,e) ));
+              stmt( IRStmt_Put( OFFB_RAX, e ));
               break;
       case 2: vassert(ty == Ity_I16);
               stmt( IRStmt_Put( OFFB_RAX, e ));
@@ -1075,7 +1075,7 @@ static void putIRegRDX ( Int sz, IRExpr* e )
    switch (sz) {
       case 8: stmt( IRStmt_Put( OFFB_RDX, e ));
               break;
-      case 4: stmt( IRStmt_Put( OFFB_RDX, unop(Iop_32Uto64,e) ));
+      case 4: stmt( IRStmt_Put( OFFB_RDX, e ));
               break;
       case 2: stmt( IRStmt_Put( OFFB_RDX, e ));
               break;
@@ -1113,16 +1113,18 @@ static const HChar* nameIReg64 ( UInt regno )
 static IRExpr* getIReg32 ( UInt regno )
 {
    vassert(!host_is_bigendian);
-   return unop(Iop_64to32,
-               IRExpr_Get( integerGuestReg64Offset(regno),
-                           Ity_I64 ));
+   /* return unop(Iop_64to32, */
+   /*             IRExpr_Get( integerGuestReg64Offset(regno), */
+   /*                         Ity_I64 )); */
+   return IRExpr_Get(integerGuestReg64Offset(regno), Ity_I32);
 }
 
 static void putIReg32 ( UInt regno, IRExpr* e )
 {
    vassert(typeOfIRExpr(irsb->tyenv,e) == Ity_I32);
-   stmt( IRStmt_Put( integerGuestReg64Offset(regno), 
-                     unop(Iop_32Uto64,e) ) );
+   /* stmt( IRStmt_Put( integerGuestReg64Offset(regno),  */
+   /*                   unop(Iop_32Uto64,e) ) ); */
+   stmt( IRStmt_Put( integerGuestReg64Offset(regno), e ) );
 }
 
 static const HChar* nameIReg32 ( UInt regno )
@@ -1144,8 +1146,9 @@ static IRExpr* getIReg16 ( UInt regno )
 static void putIReg16 ( UInt regno, IRExpr* e )
 {
    vassert(typeOfIRExpr(irsb->tyenv,e) == Ity_I16);
-   stmt( IRStmt_Put( integerGuestReg64Offset(regno), 
-                     unop(Iop_16Uto64,e) ) );
+   /* stmt( IRStmt_Put( integerGuestReg64Offset(regno),  */
+   /*                   unop(Iop_16Uto64,e) ) ); */
+   stmt( IRStmt_Put( integerGuestReg64Offset(regno), e ) );
 }
 
 static const HChar* nameIReg16 ( UInt regno )
@@ -1213,7 +1216,7 @@ static void putIRegRexB ( Int sz, Prefix pfx, UInt lo3bits, IRExpr* e )
    stmt( IRStmt_Put( 
             offsetIReg( sz, lo3bits | (getRexB(pfx) << 3), 
                             toBool(sz==1 && !haveREX(pfx)) ),
-            sz==4 ? unop(Iop_32Uto64,e) : e
+            e
    ));
 }
 
@@ -1306,7 +1309,7 @@ const HChar* nameIRegG ( Int sz, Prefix pfx, UChar mod_reg_rm )
 static
 IRExpr* getIRegV ( Int sz, Prefix pfx )
 {
-   if (sz == 4) {
+   if (sz == 4 && 0) {
       sz = 8;
       return unop(Iop_64to32,
                   IRExpr_Get( offsetIReg( sz, getVexNvvvv(pfx), False ),
@@ -1321,7 +1324,7 @@ static
 void putIRegV ( Int sz, Prefix pfx, IRExpr* e )
 {
    vassert(typeOfIRExpr(irsb->tyenv,e) == szToITy(sz));
-   if (sz == 4) {
+   if (sz == 4 && 0) {
       e = unop(Iop_32Uto64,e);
    }
    stmt( IRStmt_Put( offsetIReg( sz, getVexNvvvv(pfx), False ), e ) );
@@ -1353,7 +1356,7 @@ static UInt offsetIRegE ( Int sz, Prefix pfx, UChar mod_reg_rm )
 static 
 IRExpr* getIRegE ( Int sz, Prefix pfx, UChar mod_reg_rm )
 {
-   if (sz == 4) {
+   if (sz == 4 && 0) {
       sz = 8;
       return unop(Iop_64to32,
                   IRExpr_Get( offsetIRegE( sz, pfx, mod_reg_rm ),
@@ -1368,7 +1371,7 @@ static
 void putIRegE ( Int sz, Prefix pfx, UChar mod_reg_rm, IRExpr* e )
 {
    vassert(typeOfIRExpr(irsb->tyenv,e) == szToITy(sz));
-   if (sz == 4) {
+   if (sz == 4 && 0) {
       e = unop(Iop_32Uto64,e);
    }
    stmt( IRStmt_Put( offsetIRegE( sz, pfx, mod_reg_rm ), e ) );
