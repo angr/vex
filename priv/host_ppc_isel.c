@@ -704,12 +704,6 @@ void doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
    UInt nVECRETs = 0;
    UInt nBBPTRs  = 0;
 
-   /* Do we need to force use of an odd-even reg pair for 64-bit args?
-      JRS 31-07-2013: is this still relevant, now that we are not
-      generating code for 32-bit AIX ? */
-   Bool regalign_int64s
-      = (!mode64) && env->vbi->host_ppc32_regalign_int64_args;
-
    /* Marshal args for a call and do the call.
 
       This function only deals with a tiny set of possibilities, which
@@ -867,7 +861,7 @@ void doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
                                          iselWordExpr_R(env, arg) ));
                } else { // Ity_I64 in 32-bit mode
                   HReg rHi, rLo;
-                  if (regalign_int64s && (argreg%2) == 1) 
+                  if ((argreg%2) == 1)
                                  // ppc32 ELF abi spec for passing LONG_LONG
                      argreg++;   // XXX: odd argreg => even rN
                   vassert(argreg < PPC_N_REGPARMS-1);
@@ -943,7 +937,7 @@ void doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
                   tmpregs[argreg] = iselWordExpr_R(env, arg);
                } else { // Ity_I64 in 32-bit mode
                   HReg rHi, rLo;
-                  if (regalign_int64s && (argreg%2) == 1)
+                  if ((argreg%2) == 1)
                                 // ppc32 ELF abi spec for passing LONG_LONG
                      argreg++;  // XXX: odd argreg => even rN
                   vassert(argreg < PPC_N_REGPARMS-1);
@@ -4853,16 +4847,16 @@ static HReg iselVecExpr_wrk ( ISelEnv* env, IRExpr* e )
          return dst;
       }
 
-      case Iop_Clz8Sx16: fpop = Pav_ZEROCNTBYTE;   goto do_zerocnt;
-      case Iop_Clz16Sx8: fpop = Pav_ZEROCNTHALF;   goto do_zerocnt;
-      case Iop_Clz32Sx4: fpop = Pav_ZEROCNTWORD;   goto do_zerocnt;
-      case Iop_Clz64x2:  fpop = Pav_ZEROCNTDBL;    goto do_zerocnt;
-      case Iop_PwBitMtxXpose64x2: fpop = Pav_BITMTXXPOSE;  goto do_zerocnt;
+      case Iop_Clz8x16: op = Pav_ZEROCNTBYTE;   goto do_zerocnt;
+      case Iop_Clz16x8: op = Pav_ZEROCNTHALF;   goto do_zerocnt;
+      case Iop_Clz32x4: op = Pav_ZEROCNTWORD;   goto do_zerocnt;
+      case Iop_Clz64x2: op = Pav_ZEROCNTDBL;    goto do_zerocnt;
+      case Iop_PwBitMtxXpose64x2: op = Pav_BITMTXXPOSE;  goto do_zerocnt;
       do_zerocnt:
       {
         HReg arg = iselVecExpr(env, e->Iex.Unop.arg);
         HReg dst = newVRegV(env);
-        addInstr(env, PPCInstr_AvUnary(fpop, dst, arg));
+        addInstr(env, PPCInstr_AvUnary(op, dst, arg));
         return dst;
       }
 
@@ -4929,11 +4923,8 @@ static HReg iselVecExpr_wrk ( ISelEnv* env, IRExpr* e )
          }
       }
 
-      case Iop_Add32Fx4:   fpop = Pavfp_ADDF;   goto do_32Fx4;
-      case Iop_Sub32Fx4:   fpop = Pavfp_SUBF;   goto do_32Fx4;
       case Iop_Max32Fx4:   fpop = Pavfp_MAXF;   goto do_32Fx4;
       case Iop_Min32Fx4:   fpop = Pavfp_MINF;   goto do_32Fx4;
-      case Iop_Mul32Fx4:   fpop = Pavfp_MULF;   goto do_32Fx4;
       case Iop_CmpEQ32Fx4: fpop = Pavfp_CMPEQF; goto do_32Fx4;
       case Iop_CmpGT32Fx4: fpop = Pavfp_CMPGTF; goto do_32Fx4;
       case Iop_CmpGE32Fx4: fpop = Pavfp_CMPGEF; goto do_32Fx4;
@@ -5210,6 +5201,25 @@ static HReg iselVecExpr_wrk ( ISelEnv* env, IRExpr* e )
          HReg dst  = newVRegV(env);
          PPCRI* ps = iselWordExpr_RI(env, triop->arg3);
          addInstr(env, PPCInstr_AvBCDV128Trinary(op, dst, arg1, arg2, ps));
+         return dst;
+      }
+
+      case Iop_Add32Fx4: fpop = Pavfp_ADDF; goto do_32Fx4_with_rm;
+      case Iop_Sub32Fx4: fpop = Pavfp_SUBF; goto do_32Fx4_with_rm;
+      case Iop_Mul32Fx4: fpop = Pavfp_MULF; goto do_32Fx4_with_rm;
+      do_32Fx4_with_rm:
+      {
+         HReg argL = iselVecExpr(env, triop->arg2);
+         HReg argR = iselVecExpr(env, triop->arg3);
+         HReg dst  = newVRegV(env);
+         /* FIXME: this is bogus, in the sense that Altivec ignores
+            FPSCR.RM, at least for some FP operations.  So setting the
+            RM is pointless.  This is only really correct in the case
+            where the RM is known, at JIT time, to be Irrm_NEAREST,
+            since -- at least for Altivec FP add/sub/mul -- the
+            emitted insn is hardwired to round to nearest. */
+         set_FPU_rounding_mode(env, triop->arg1);
+         addInstr(env, PPCInstr_AvBin32Fx4(fpop, dst, argL, argR));
          return dst;
       }
 
@@ -5746,7 +5756,7 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
          case Ijk_SigBUS:
          case Ijk_SigTRAP:
          case Ijk_Sys_syscall:
-         case Ijk_TInval:
+         case Ijk_InvalICache:
          {
             HReg r = iselWordExpr_R(env, IRExpr_Const(stmt->Ist.Exit.dst));
             addInstr(env, PPCInstr_XAssisted(r, amCIA, cc,
@@ -5846,7 +5856,7 @@ static void iselNext ( ISelEnv* env,
       case Ijk_SigBUS:
       case Ijk_SigTRAP:
       case Ijk_Sys_syscall:
-      case Ijk_TInval:
+      case Ijk_InvalICache:
       {
          HReg      r     = iselWordExpr_R(env, next);
          PPCAMode* amCIA = PPCAMode_IR(offsIP, hregPPC_GPR31(env->mode64));
@@ -5909,6 +5919,9 @@ HInstrArray* iselSB_PPC ( IRSB* bb,
    } else {
       vassert((hwcaps_host & mask64) == 0);
    }
+
+   /* Check that the host's endianness is as expected. */
+   vassert(archinfo_host->endness == VexEndnessBE);
 
    /* Make up an initial environment to use. */
    env = LibVEX_Alloc(sizeof(ISelEnv));

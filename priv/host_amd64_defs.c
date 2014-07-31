@@ -2265,7 +2265,7 @@ static UChar* do_ffree_st ( UChar* p, Int n )
 
 Int emit_AMD64Instr ( /*MB_MOD*/Bool* is_profInc,
                       UChar* buf, Int nbuf, AMD64Instr* i, 
-                      Bool mode64,
+                      Bool mode64, VexEndness endness_host,
                       void* disp_cp_chain_me_to_slowEP,
                       void* disp_cp_chain_me_to_fastEP,
                       void* disp_cp_xindir,
@@ -2865,7 +2865,7 @@ Int emit_AMD64Instr ( /*MB_MOD*/Bool* is_profInc,
          case Ijk_EmWarn:      trcval = VEX_TRC_JMP_EMWARN;      break;
          case Ijk_MapFail:     trcval = VEX_TRC_JMP_MAPFAIL;     break;
          case Ijk_NoDecode:    trcval = VEX_TRC_JMP_NODECODE;    break;
-         case Ijk_TInval:      trcval = VEX_TRC_JMP_TINVAL;      break;
+         case Ijk_InvalICache: trcval = VEX_TRC_JMP_INVALICACHE; break;
          case Ijk_NoRedir:     trcval = VEX_TRC_JMP_NOREDIR;     break;
          case Ijk_SigTRAP:     trcval = VEX_TRC_JMP_SIGTRAP;     break;
          case Ijk_SigSEGV:     trcval = VEX_TRC_JMP_SIGSEGV;     break;
@@ -3069,7 +3069,6 @@ Int emit_AMD64Instr ( /*MB_MOD*/Bool* is_profInc,
          case Afp_SQRT:   *p++ = 0xD9; *p++ = 0xFA; break;
          case Afp_SIN:    *p++ = 0xD9; *p++ = 0xFE; break;
          case Afp_COS:    *p++ = 0xD9; *p++ = 0xFF; break;
-         case Afp_TAN:    *p++ = 0xD9; *p++ = 0xF2; break;
          case Afp_ROUND:  *p++ = 0xD9; *p++ = 0xFC; break;
          case Afp_2XM1:   *p++ = 0xD9; *p++ = 0xF0; break;
          case Afp_SCALE:  *p++ = 0xD9; *p++ = 0xFD; break;
@@ -3078,7 +3077,24 @@ Int emit_AMD64Instr ( /*MB_MOD*/Bool* is_profInc,
          case Afp_YL2XP1: *p++ = 0xD9; *p++ = 0xF9; break;
          case Afp_PREM:   *p++ = 0xD9; *p++ = 0xF8; break;
          case Afp_PREM1:  *p++ = 0xD9; *p++ = 0xF5; break;
-         default: goto bad;
+         case Afp_TAN:
+            /* fptan pushes 1.0 on the FP stack, except when the
+               argument is out of range.  Hence we have to do the
+               instruction, then inspect C2 to see if there is an out
+               of range condition.  If there is, we skip the fincstp
+               that is used by the in-range case to get rid of this
+               extra 1.0 value. */
+            *p++ = 0xD9; *p++ = 0xF2; // fptan
+            *p++ = 0x50;              // pushq %rax
+            *p++ = 0xDF; *p++ = 0xE0; // fnstsw %ax
+            *p++ = 0x66; *p++ = 0xA9; 
+            *p++ = 0x00; *p++ = 0x04; // testw $0x400,%ax
+            *p++ = 0x75; *p++ = 0x02; // jnz after_fincstp
+            *p++ = 0xD9; *p++ = 0xF7; // fincstp
+            *p++ = 0x58;              // after_fincstp: popq %rax
+            break;
+         default:
+            goto bad;
       }
       goto done;
 
@@ -3483,7 +3499,7 @@ Int emit_AMD64Instr ( /*MB_MOD*/Bool* is_profInc,
       p = doAMode_M(p, fake(4), i->Ain.EvCheck.amFailAddr);
       vassert(p - p0 == 8); /* also ensures that 0x03 offset above is ok */
       /* And crosscheck .. */
-      vassert(evCheckSzB_AMD64() == 8);
+      vassert(evCheckSzB_AMD64(endness_host) == 8);
       goto done;
    }
 
@@ -3526,7 +3542,7 @@ Int emit_AMD64Instr ( /*MB_MOD*/Bool* is_profInc,
 /* How big is an event check?  See case for Ain_EvCheck in
    emit_AMD64Instr just above.  That crosschecks what this returns, so
    we can tell if we're inconsistent. */
-Int evCheckSzB_AMD64 ( void )
+Int evCheckSzB_AMD64 ( VexEndness endness_host )
 {
    return 8;
 }
@@ -3534,10 +3550,13 @@ Int evCheckSzB_AMD64 ( void )
 
 /* NB: what goes on here has to be very closely coordinated with the
    emitInstr case for XDirect, above. */
-VexInvalRange chainXDirect_AMD64 ( void* place_to_chain,
+VexInvalRange chainXDirect_AMD64 ( VexEndness endness_host,
+                                   void* place_to_chain,
                                    void* disp_cp_chain_me_EXPECTED,
                                    void* place_to_jump_to )
 {
+   vassert(endness_host == VexEndnessLE);
+
    /* What we're expecting to see is:
         movabsq $disp_cp_chain_me_EXPECTED, %r11
         call *%r11
@@ -3620,10 +3639,13 @@ VexInvalRange chainXDirect_AMD64 ( void* place_to_chain,
 
 /* NB: what goes on here has to be very closely coordinated with the
    emitInstr case for XDirect, above. */
-VexInvalRange unchainXDirect_AMD64 ( void* place_to_unchain,
+VexInvalRange unchainXDirect_AMD64 ( VexEndness endness_host,
+                                     void* place_to_unchain,
                                      void* place_to_jump_to_EXPECTED,
                                      void* disp_cp_chain_me )
 {
+   vassert(endness_host == VexEndnessLE);
+
    /* What we're expecting to see is either:
         (general case)
           movabsq $place_to_jump_to_EXPECTED, %r11
@@ -3684,9 +3706,11 @@ VexInvalRange unchainXDirect_AMD64 ( void* place_to_unchain,
 
 /* Patch the counter address into a profile inc point, as previously
    created by the Ain_ProfInc case for emit_AMD64Instr. */
-VexInvalRange patchProfInc_AMD64 ( void*  place_to_patch,
+VexInvalRange patchProfInc_AMD64 ( VexEndness endness_host,
+                                   void*  place_to_patch,
                                    ULong* location_of_counter )
 {
+   vassert(endness_host == VexEndnessLE);
    vassert(sizeof(ULong*) == 8);
    UChar* p = (UChar*)place_to_patch;
    vassert(p[0] == 0x49);
