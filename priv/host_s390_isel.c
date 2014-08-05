@@ -3936,7 +3936,7 @@ no_memcpy_put:
       case Ijk_EmFail:
       case Ijk_EmWarn:
       case Ijk_NoDecode:
-      case Ijk_TInval:
+      case Ijk_InvalICache:
       case Ijk_Sys_syscall:
       case Ijk_ClientReq:
       case Ijk_NoRedir:
@@ -4051,7 +4051,7 @@ iselNext(ISelEnv *env, IRExpr *next, IRJumpKind jk, Int offsIP)
    case Ijk_EmFail:
    case Ijk_EmWarn:
    case Ijk_NoDecode:
-   case Ijk_TInval:
+   case Ijk_InvalICache:
    case Ijk_Sys_syscall:
    case Ijk_ClientReq:
    case Ijk_NoRedir:
@@ -4093,6 +4093,9 @@ iselSB_S390(IRSB *bb, VexArch arch_host, VexArchInfo *archinfo_host,
 
    /* Do some sanity checks */
    vassert((VEX_HWCAPS_S390X(hwcaps_host) & ~(VEX_HWCAPS_S390X_ALL)) == 0);
+
+   /* Check that the host's endianness is as expected. */
+   vassert(archinfo_host->endness == VexEndnessBE);
 
    /* Make up an initial environment to use. */
    env = LibVEX_Alloc(sizeof(ISelEnv));

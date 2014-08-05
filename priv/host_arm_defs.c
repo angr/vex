@@ -790,6 +790,7 @@ const HChar* showARMNeonBinOp ( ARMNeonBinOp op ) {
       case ARMneon_VTBL: return "vtbl";
       case ARMneon_VRECPS: return "vrecps";
       case ARMneon_VRSQRTS: return "vrecps";
+      case ARMneon_INVALID: return "??invalid??";
       /* ... */
       default: vpanic("showARMNeonBinOp");
    }
@@ -2970,7 +2971,7 @@ static UInt* do_load_or_store32 ( UInt* p,
 
 Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
                     UChar* buf, Int nbuf, ARMInstr* i, 
-                    Bool mode64,
+                    Bool mode64, VexEndness endness_host,
                     void* disp_cp_chain_me_to_slowEP,
                     void* disp_cp_chain_me_to_fastEP,
                     void* disp_cp_xindir,
@@ -3334,7 +3335,7 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
             //case Ijk_EmWarn:      trcval = VEX_TRC_JMP_EMWARN;      break;
             //case Ijk_MapFail:     trcval = VEX_TRC_JMP_MAPFAIL;     break;
             case Ijk_NoDecode:    trcval = VEX_TRC_JMP_NODECODE;    break;
-            case Ijk_TInval:      trcval = VEX_TRC_JMP_TINVAL;      break;
+            case Ijk_InvalICache: trcval = VEX_TRC_JMP_INVALICACHE; break;
             case Ijk_NoRedir:     trcval = VEX_TRC_JMP_NOREDIR;     break;
             //case Ijk_SigTRAP:     trcval = VEX_TRC_JMP_SIGTRAP;     break;
             //case Ijk_SigSEGV:     trcval = VEX_TRC_JMP_SIGSEGV;     break;
@@ -4643,7 +4644,7 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
          /* nofail: */
 
          /* Crosscheck */
-         vassert(evCheckSzB_ARM() == (UChar*)p - (UChar*)p0);
+         vassert(evCheckSzB_ARM(endness_host) == (UChar*)p - (UChar*)p0);
          goto done;
       }
 
@@ -4694,7 +4695,7 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
 /* How big is an event check?  See case for ARMin_EvCheck in
    emit_ARMInstr just above.  That crosschecks what this returns, so
    we can tell if we're inconsistent. */
-Int evCheckSzB_ARM ( void )
+Int evCheckSzB_ARM ( VexEndness endness_host )
 {
    return 24;
 }
@@ -4702,10 +4703,13 @@ Int evCheckSzB_ARM ( void )
 
 /* NB: what goes on here has to be very closely coordinated with the
    emitInstr case for XDirect, above. */
-VexInvalRange chainXDirect_ARM ( void* place_to_chain,
+VexInvalRange chainXDirect_ARM ( VexEndness endness_host,
+                                 void* place_to_chain,
                                  void* disp_cp_chain_me_EXPECTED,
                                  void* place_to_jump_to )
 {
+   vassert(endness_host == VexEndnessLE);
+
    /* What we're expecting to see is:
         movw r12, lo16(disp_cp_chain_me_to_EXPECTED)
         movt r12, hi16(disp_cp_chain_me_to_EXPECTED)
@@ -4782,10 +4786,13 @@ VexInvalRange chainXDirect_ARM ( void* place_to_chain,
 
 /* NB: what goes on here has to be very closely coordinated with the
    emitInstr case for XDirect, above. */
-VexInvalRange unchainXDirect_ARM ( void* place_to_unchain,
+VexInvalRange unchainXDirect_ARM ( VexEndness endness_host,
+                                   void* place_to_unchain,
                                    void* place_to_jump_to_EXPECTED,
                                    void* disp_cp_chain_me )
 {
+   vassert(endness_host == VexEndnessLE);
+
    /* What we're expecting to see is:
         (general case)
           movw r12, lo16(place_to_jump_to_EXPECTED)
@@ -4843,9 +4850,11 @@ VexInvalRange unchainXDirect_ARM ( void* place_to_unchain,
 
 /* Patch the counter address into a profile inc point, as previously
    created by the ARMin_ProfInc case for emit_ARMInstr. */
-VexInvalRange patchProfInc_ARM ( void*  place_to_patch,
+VexInvalRange patchProfInc_ARM ( VexEndness endness_host,
+                                 void*  place_to_patch,
                                  ULong* location_of_counter )
 {
+   vassert(endness_host == VexEndnessLE);
    vassert(sizeof(ULong*) == 4);
    UInt* p = (UInt*)place_to_patch;
    vassert(0 == (3 & (HWord)p));

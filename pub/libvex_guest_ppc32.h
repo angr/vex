@@ -210,8 +210,8 @@ typedef
       /* 1196 */ UInt guest_EMNOTE;
 
       /* For icbi: record start and length of area to invalidate */
-      /* 1200 */ UInt guest_TISTART;
-      /* 1204 */ UInt guest_TILEN;
+      /* 1200 */ UInt guest_CMSTART;
+      /* 1204 */ UInt guest_CMLEN;
 
       /* Used to record the unredirected guest address at the start of
          a translation whose start has been redirected.  By reading
@@ -242,7 +242,7 @@ typedef
       /* 1368 */ ULong guest_TEXASR;    // Transaction EXception And Summary Register
       /* 1376 */ ULong guest_TFIAR;     // Transaction Failure Instruction Address Register
 
-      /* Padding to make it have an 8-aligned size */
+      /* Padding to make it have an 16-aligned size */
       /* 1384 */ UInt  padding2;
 
    }

@@ -132,8 +132,8 @@ typedef struct {
 
    /* See comments at bottom of libvex.h */
    /*  384 */  ULong guest_NRADDR;
-   /*  392 */  ULong guest_TISTART;
-   /*  400 */  ULong guest_TILEN;
+   /*  392 */  ULong guest_CMSTART;
+   /*  400 */  ULong guest_CMLEN;
 
    /* Used when backing up to restart a syscall that has
       been interrupted by a signal. See also comment in
@@ -148,11 +148,11 @@ typedef struct {
    /*  424 */  ULong host_EvC_FAILADDR;
 
 /*------------------------------------------------------------*/
-/*--- Force alignment to 32 bytes                          ---*/
+/*--- Force alignment to 16 bytes                          ---*/
 /*------------------------------------------------------------*/
-   /*  432 */  UChar padding[16];
+   /*  432 */  UChar padding[0];
 
-   /*  448 */  /* This is the size of the guest state */
+   /*  432 */  /* This is the size of the guest state */
 } VexGuestS390XState;
 
 

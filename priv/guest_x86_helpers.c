@@ -2757,18 +2757,14 @@ void LibVEX_GuestX86_initialise ( /*OUT*/VexGuestX86State* vex_state )
    vex_state->guest_EMNOTE = EmNote_NONE;
 
    /* SSE2 has a 'clflush' cache-line-invalidator which uses these. */
-   vex_state->guest_TISTART = 0;
-   vex_state->guest_TILEN   = 0;
+   vex_state->guest_CMSTART = 0;
+   vex_state->guest_CMLEN   = 0;
 
    vex_state->guest_NRADDR   = 0;
    vex_state->guest_SC_CLASS = 0;
    vex_state->guest_IP_AT_SYSCALL = 0;
 
-   Int i;
-   for (i = 0; i < sizeof(vex_state->padding)
-                   / sizeof(vex_state->padding[0]); i++) {
-      vex_state->padding[i] = 0;
-   }
+   vex_state->padding1 = 0;
 }
 
 
@@ -2866,8 +2862,8 @@ VexGuestLayout
                  /* 17 */ ALWAYSDEFD(guest_GDT),
                  /* 18 */ ALWAYSDEFD(guest_EMNOTE),
                  /* 19 */ ALWAYSDEFD(guest_SSEROUND),
-                 /* 20 */ ALWAYSDEFD(guest_TISTART),
-                 /* 21 */ ALWAYSDEFD(guest_TILEN),
+                 /* 20 */ ALWAYSDEFD(guest_CMSTART),
+                 /* 21 */ ALWAYSDEFD(guest_CMLEN),
                  /* 22 */ ALWAYSDEFD(guest_SC_CLASS),
                  /* 23 */ ALWAYSDEFD(guest_IP_AT_SYSCALL)
                }
