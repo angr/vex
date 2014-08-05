@@ -799,7 +799,7 @@ static Bool is_Branch_or_Jump_and_Link(const UChar * addr)
    UInt function = get_function(cins);
 
    /* jal */
-   if (opcode == 0x02) {
+   if (opcode == 0x03) {
       return True;
    }
 
