@@ -156,6 +156,8 @@
 /* We need to know this to do sub-register accesses correctly. */
 static VexEndness host_endness;
 
+static VexEndness guest_endness;
+
 /* Pointer to the guest code area. */
 static UChar* guest_code;
 
@@ -503,8 +505,20 @@ static ULong extend_s_32to64 ( UInt x )
    return (ULong)((((Long)x) << 32) >> 32);
 }
 
-/* Do a big-endian load of a 32-bit word, regardless of the endianness
+/* Do an endian load of a 32-bit word, regardless of the endianness
    of the underlying host. */
+
+#define getUIntEndianly(p, e) (((e) == Iend_LE) ? (getUIntLittleendianly(p)) : (getUIntBigendianly(p)))
+
+static UInt getUIntLittleendianly ( UChar* p )
+{
+   UInt w = 0;
+   w = (w << 8) | p[3];
+   w = (w << 8) | p[2];
+   w = (w << 8) | p[1];
+   w = (w << 8) | p[0];
+   return w;
+}
 static UInt getUIntBigendianly ( UChar* p )
 {
    UInt w = 0;
@@ -526,11 +540,11 @@ static void assign ( IRTemp dst, IRExpr* e )
 }
 
 /* This generates a normal (non store-conditional) store. */
-static void storeBE ( IRExpr* addr, IRExpr* data )
+static void storeBE ( IRExpr* addr, IRExpr* data)
 {
    IRType tyA = typeOfIRExpr(irsb->tyenv, addr);
    vassert(tyA == Ity_I32 || tyA == Ity_I64);
-   stmt( IRStmt_Store(Iend_BE, addr, data) );
+   stmt( IRStmt_Store(guest_endness, addr, data) );
 }
 
 static IRExpr* unop ( IROp op, IRExpr* a )
@@ -588,7 +602,7 @@ static IRExpr* mkV128 ( UShort i )
 /* This generates a normal (non load-linked) load. */
 static IRExpr* loadBE ( IRType ty, IRExpr* addr )
 {
-   return IRExpr_Load(Iend_BE, ty, addr);
+   return IRExpr_Load(guest_endness, ty, addr);
 }
 
 static IRExpr* mkOR1 ( IRExpr* arg1, IRExpr* arg2 )
@@ -6145,7 +6159,7 @@ static Bool dis_memsync ( UInt theInstr )
 
          // and actually do the load
          res = newTemp(Ity_I32);
-         stmt( IRStmt_LLSC(Iend_BE, res, mkexpr(EA), NULL/*this is a load*/) );
+         stmt( IRStmt_LLSC(guest_endness, res, mkexpr(EA), NULL/*this is a load*/) );
 
          putIReg( rD_addr, mkWidenFrom32(ty, mkexpr(res), False) );
          break;
@@ -6171,7 +6185,7 @@ static Bool dis_memsync ( UInt theInstr )
 
          // Do the store, and get success/failure bit into resSC
          resSC = newTemp(Ity_I1);
-         stmt( IRStmt_LLSC(Iend_BE, resSC, mkexpr(EA), mkexpr(rS)) );
+         stmt( IRStmt_LLSC(guest_endness, resSC, mkexpr(EA), mkexpr(rS)) );
 
          // Set CR0[LT GT EQ S0] = 0b000 || XER[SO]  on failure
          // Set CR0[LT GT EQ S0] = 0b001 || XER[SO]  on success
@@ -6238,7 +6252,7 @@ static Bool dis_memsync ( UInt theInstr )
 
          // and actually do the load
          res = newTemp(Ity_I64);
-         stmt( IRStmt_LLSC(Iend_BE, res, mkexpr(EA), NULL/*this is a load*/) );
+         stmt( IRStmt_LLSC(guest_endness, res, mkexpr(EA), NULL/*this is a load*/) );
 
          putIReg( rD_addr, mkexpr(res) );
          break;
@@ -6264,7 +6278,7 @@ static Bool dis_memsync ( UInt theInstr )
 
          // Do the store, and get success/failure bit into resSC
          resSC = newTemp(Ity_I1);
-         stmt( IRStmt_LLSC(Iend_BE, resSC, mkexpr(EA), mkexpr(rS)) );
+         stmt( IRStmt_LLSC(guest_endness, resSC, mkexpr(EA), mkexpr(rS)) );
 
          // Set CR0[LT GT EQ S0] = 0b000 || XER[SO]  on failure
          // Set CR0[LT GT EQ S0] = 0b001 || XER[SO]  on success
@@ -6294,16 +6308,16 @@ static Bool dis_memsync ( UInt theInstr )
 
          // and actually do the load
          if (mode64) {
-            stmt( IRStmt_LLSC( Iend_BE, res_hi,
+            stmt( IRStmt_LLSC( guest_endness, res_hi,
                                mkexpr(EA), NULL/*this is a load*/) );
-            stmt( IRStmt_LLSC( Iend_BE, res_lo,
+            stmt( IRStmt_LLSC( guest_endness, res_lo,
                                binop(Iop_Add64, mkexpr(EA), mkU64(8) ),
                                NULL/*this is a load*/) );
          } else {
-            stmt( IRStmt_LLSC( Iend_BE, res_hi,
+            stmt( IRStmt_LLSC( guest_endness, res_hi,
                                binop( Iop_Add32, mkexpr(EA), mkU32(4) ),
                                NULL/*this is a load*/) );
-            stmt( IRStmt_LLSC( Iend_BE, res_lo,
+            stmt( IRStmt_LLSC( guest_endness, res_lo,
                                binop( Iop_Add32, mkexpr(EA), mkU32(12) ),
                                NULL/*this is a load*/) );
          }
@@ -6334,10 +6348,10 @@ static Bool dis_memsync ( UInt theInstr )
          resSC = newTemp(Ity_I1);
 
          if (mode64) {
-            stmt( IRStmt_LLSC( Iend_BE, resSC, mkexpr(EA), mkexpr(rS_hi) ) );
+            stmt( IRStmt_LLSC( guest_endness, resSC, mkexpr(EA), mkexpr(rS_hi) ) );
             storeBE(binop( Iop_Add64, mkexpr(EA), mkU64(8) ), mkexpr(rS_lo) );
          } else {
-            stmt( IRStmt_LLSC( Iend_BE, resSC, binop( Iop_Add32,
+            stmt( IRStmt_LLSC( guest_endness, resSC, binop( Iop_Add32,
                                                       mkexpr(EA),
                                                       mkU32(4) ),
                                                       mkexpr(rS_hi) ) );
@@ -18535,7 +18549,7 @@ DisResult disInstr_PPC_WRK (
    /* At least this is simple on PPC32: insns are all 4 bytes long, and
       4-aligned.  So just fish the whole thing out of memory right now
       and have done. */
-   theInstr = getUIntBigendianly( (UChar*)(&guest_code[delta]) );
+   theInstr = getUIntEndianly( (UChar*)(&guest_code[delta]), guest_endness );
 
    if (0) vex_printf("insn: 0x%x\n", theInstr);
 
@@ -18560,12 +18574,12 @@ DisResult disInstr_PPC_WRK (
       UInt word2 = mode64 ? 0x78006800 : 0x54006800;
       UInt word3 = mode64 ? 0x7800E802 : 0x5400E800;
       UInt word4 = mode64 ? 0x78009802 : 0x54009800;
-      if (getUIntBigendianly(code+ 0) == word1 &&
-          getUIntBigendianly(code+ 4) == word2 &&
-          getUIntBigendianly(code+ 8) == word3 &&
-          getUIntBigendianly(code+12) == word4) {
+      if (getUIntEndianly(code+ 0, guest_endness) == word1 &&
+          getUIntEndianly(code+ 4, guest_endness) == word2 &&
+          getUIntEndianly(code+ 8, guest_endness) == word3 &&
+          getUIntEndianly(code+12, guest_endness) == word4) {
          /* Got a "Special" instruction preamble.  Which one is it? */
-         if (getUIntBigendianly(code+16) == 0x7C210B78 /* or 1,1,1 */) {
+         if (getUIntEndianly(code+16, guest_endness) == 0x7C210B78 /* or 1,1,1 */) {
             /* %R3 = client_request ( %R4 ) */
             DIP("r3 = client_request ( %%r4 )\n");
             delta += 20;
@@ -18575,7 +18589,7 @@ DisResult disInstr_PPC_WRK (
             goto decode_success;
          }
          else
-         if (getUIntBigendianly(code+16) == 0x7C421378 /* or 2,2,2 */) {
+         if (getUIntEndianly(code+16, guest_endness) == 0x7C421378 /* or 2,2,2 */) {
             /* %R3 = guest_NRADDR */
             DIP("r3 = guest_NRADDR\n");
             delta += 20;
@@ -18584,7 +18598,7 @@ DisResult disInstr_PPC_WRK (
             goto decode_success;
          }
          else
-         if (getUIntBigendianly(code+16) == 0x7C631B78 /* or 3,3,3 */) {
+         if (getUIntEndianly(code+16, guest_endness) == 0x7C631B78 /* or 3,3,3 */) {
             /*  branch-and-link-to-noredir %R11 */
             DIP("branch-and-link-to-noredir r11\n");
             delta += 20;
@@ -18595,7 +18609,7 @@ DisResult disInstr_PPC_WRK (
             goto decode_success;
          }
          else
-         if (getUIntBigendianly(code+16) == 0x7C842378 /* or 4,4,4 */) {
+         if (getUIntEndianly(code+16, guest_endness) == 0x7C842378 /* or 4,4,4 */) {
             /* %R3 = guest_NRADDR_GPR2 */
             DIP("r3 = guest_NRADDR_GPR2\n");
             delta += 20;
@@ -18604,10 +18618,10 @@ DisResult disInstr_PPC_WRK (
             goto decode_success;
          }
          else
-         if (getUIntBigendianly(code+16) == 0x7CA52B78 /* or 5,5,5 */) {
+         if (getUIntEndianly(code+16, guest_endness) == 0x7CA52B78 /* or 5,5,5 */) {
             DIP("IR injection\n");
 
-            vex_inject_ir(irsb, Iend_BE);
+            vex_inject_ir(irsb, guest_endness);
 
             delta += 20;
             dres.len = 20;
@@ -18627,7 +18641,7 @@ DisResult disInstr_PPC_WRK (
          }
          /* We don't know what it is.  Set opc1/opc2 so decode_failure
             can print the insn following the Special-insn preamble. */
-         theInstr = getUIntBigendianly(code+16);
+         theInstr = getUIntEndianly(code+16, guest_endness);
          opc1     = ifieldOPC(theInstr);
          opc2     = ifieldOPClo10(theInstr);
          goto decode_failure;
@@ -19323,7 +19337,7 @@ DisResult disInstr_PPC_WRK (
       case 0x32E: case 0x34E: case 0x36E: // tabortdc., tabortwci., tabortdci.
       case 0x38E: case 0x3AE: case 0x3EE: // tabort., treclaim., trechkpt.
       if (dis_transactional_memory( theInstr,
-                                    getUIntBigendianly( (UChar*)(&guest_code[delta + 4])),
+                                    getUIntEndianly( (UChar*)(&guest_code[delta + 4]), guest_endness),
                                     abiinfo, &dres,
                                     resteerOkFn, callback_opaque))
             goto decode_success;
@@ -19423,7 +19437,7 @@ DisResult disInstr_PPC_WRK (
          goto decode_failure;
 
       case 0x114: case 0x0B6: // lqarx, stqcx.
-         if (dis_memsync( theInstr )) goto decode_success;
+         if (dis_memsync( theInstr)) goto decode_success;
          goto decode_failure;
 
       /* Processor Control Instructions */
@@ -19976,6 +19990,7 @@ DisResult disInstr_PPC ( IRSB*        irsb_IN,
    guest_code           = guest_code_IN;
    irsb                 = irsb_IN;
    host_endness         = host_endness_IN;
+   guest_endness        = archinfo->endness;
 
    guest_CIA_curr_instr = mkSzAddr(ty, guest_IP);
    guest_CIA_bbstart    = mkSzAddr(ty, guest_IP - delta);

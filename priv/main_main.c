@@ -358,7 +358,6 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
                        emit_PPCInstr;
          host_word_type    = Ity_I32;
          vassert(are_valid_hwcaps(VexArchPPC32, vta->archinfo_host.hwcaps));
-         vassert(vta->archinfo_host.endness == VexEndnessBE);
          break;
 
       case VexArchPPC64:
@@ -378,8 +377,6 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
                        emit_PPCInstr;
          host_word_type    = Ity_I64;
          vassert(are_valid_hwcaps(VexArchPPC64, vta->archinfo_host.hwcaps));
-         vassert(vta->archinfo_host.endness == VexEndnessBE
-                 /* later: || vta->archinfo_host.endness == VexEndnessLE */);
          break;
 
       case VexArchS390X:
@@ -550,7 +547,6 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          offB_HOST_EvC_COUNTER  = offsetof(VexGuestPPC32State,host_EvC_COUNTER);
          offB_HOST_EvC_FAILADDR = offsetof(VexGuestPPC32State,host_EvC_FAILADDR);
          vassert(are_valid_hwcaps(VexArchPPC32, vta->archinfo_guest.hwcaps));
-         vassert(vta->archinfo_guest.endness == VexEndnessBE);
          vassert(0 == sizeof(VexGuestPPC32State) % 16);
          vassert(sizeof( ((VexGuestPPC32State*)0)->guest_CMSTART ) == 4);
          vassert(sizeof( ((VexGuestPPC32State*)0)->guest_CMLEN   ) == 4);
@@ -571,8 +567,6 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          offB_HOST_EvC_COUNTER  = offsetof(VexGuestPPC64State,host_EvC_COUNTER);
          offB_HOST_EvC_FAILADDR = offsetof(VexGuestPPC64State,host_EvC_FAILADDR);
          vassert(are_valid_hwcaps(VexArchPPC64, vta->archinfo_guest.hwcaps));
-         vassert(vta->archinfo_guest.endness == VexEndnessBE
-                 /* later: || vta->archinfo_guest.endness == VexEndnessBE */);
          vassert(0 == sizeof(VexGuestPPC64State) % 16);
          vassert(sizeof( ((VexGuestPPC64State*)0)->guest_CMSTART    ) == 8);
          vassert(sizeof( ((VexGuestPPC64State*)0)->guest_CMLEN      ) == 8);
