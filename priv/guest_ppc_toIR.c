@@ -156,7 +156,7 @@
 /* We need to know this to do sub-register accesses correctly. */
 static VexEndness host_endness;
 
-static VexEndness guest_endness;
+static IREndness guest_endness;
 
 /* Pointer to the guest code area. */
 static UChar* guest_code;
@@ -1053,7 +1053,7 @@ static Int integerGuestRegOffset ( UInt archreg )
    // jrs: probably not necessary; only matters if we reference sub-parts
    // of the ppc registers, but that isn't the case
    // later: this might affect Altivec though?
-   vassert(host_endness == VexEndnessBE);
+   //vassert(host_endness == VexEndnessBE);
 
    switch (archreg) {
    case  0: return offsetofPPCGuestState(guest_GPR0);
@@ -19990,7 +19990,7 @@ DisResult disInstr_PPC ( IRSB*        irsb_IN,
    guest_code           = guest_code_IN;
    irsb                 = irsb_IN;
    host_endness         = host_endness_IN;
-   guest_endness        = archinfo->endness;
+   guest_endness        = archinfo->endness == VexEndnessLE ? Iend_LE : Iend_BE;
 
    guest_CIA_curr_instr = mkSzAddr(ty, guest_IP);
    guest_CIA_bbstart    = mkSzAddr(ty, guest_IP - delta);
