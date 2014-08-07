@@ -1178,13 +1178,16 @@ static Bool isZeroU32 ( IRExpr* e )
                   && e->Iex.Const.con->Ico.U32 == 0);
 }
 
-/* Is this literally IRExpr_Const(IRConst_U64(0)) ? */
+/* Is this literally IRExpr_Const(IRConst_U64(0)) ?
+   Currently unused; commented out to avoid compiler warning */
+#if 0
 static Bool isZeroU64 ( IRExpr* e )
 {
    return toBool( e->tag == Iex_Const 
                   && e->Iex.Const.con->tag == Ico_U64
                   && e->Iex.Const.con->Ico.U64 == 0);
 }
+#endif
 
 /* Is this literally IRExpr_Const(IRConst_V128(0)) ? */
 static Bool isZeroV128 ( IRExpr* e )
@@ -1251,7 +1254,9 @@ static IRExpr* mkZeroOfPrimopResultType ( IROp op )
       case Iop_And64:
       case Iop_Sub64:
       case Iop_Xor64: return IRExpr_Const(IRConst_U64(0));
-      case Iop_XorV128: return IRExpr_Const(IRConst_V128(0));
+      case Iop_XorV128:
+      case Iop_AndV128: return IRExpr_Const(IRConst_V128(0));
+      case Iop_AndV256: return IRExpr_Const(IRConst_V256(0));
       default: vpanic("mkZeroOfPrimopResultType: bad primop");
    }
 }
@@ -2150,26 +2155,9 @@ static IRExpr* fold_Expr ( IRExpr** env, IRExpr* e )
                   break;
                }
                break;
-
-            case Iop_And64:
-            case Iop_And32:
-               /* And32/And64(x,1---1b) ==> x */
-               if (isOnesU(e->Iex.Binop.arg2)) {
-                  e2 = e->Iex.Binop.arg1;
-                  break;
-               }
-               /* And32/And64(x,0) ==> 0 */
-               if (isZeroU(e->Iex.Binop.arg2)) {
-                  e2 = e->Iex.Binop.arg2;
-                  break;
-               }
-               /* And32/And64(0,x) ==> 0 */
-               if (isZeroU(e->Iex.Binop.arg1)) {
-                  e2 = e->Iex.Binop.arg1;
-                  break;
-               }
-               /* And32/And64(t,t) ==> t, for some IRTemp t */
-               if (sameIRExprs(env, e->Iex.Binop.arg1, e->Iex.Binop.arg2)) {
+            case Iop_Sub8x16:
+               /* Sub8x16(x,0) ==> x */
+               if (isZeroV128(e->Iex.Binop.arg2)) {
                   e2 = e->Iex.Binop.arg1;
                   break;
                }
@@ -2177,6 +2165,35 @@ static IRExpr* fold_Expr ( IRExpr** env, IRExpr* e )
 
             case Iop_And8:
             case Iop_And16:
+            case Iop_And32:
+            case Iop_And64:
+               /* And8/And16/And32/And64(x,1---1b) ==> x */
+               if (isOnesU(e->Iex.Binop.arg2)) {
+                  e2 = e->Iex.Binop.arg1;
+                  break;
+               }
+               /* And8/And16/And32/And64(1---1b,x) ==> x */
+               if (isOnesU(e->Iex.Binop.arg1)) {
+                  e2 = e->Iex.Binop.arg2;
+                  break;
+               }
+               /* And8/And16/And32/And64(x,0) ==> 0 */
+               if (isZeroU(e->Iex.Binop.arg2)) {
+                  e2 = e->Iex.Binop.arg2;
+                  break;
+               }
+               /* And8/And16/And32/And64(0,x) ==> 0 */
+               if (isZeroU(e->Iex.Binop.arg1)) {
+                  e2 = e->Iex.Binop.arg1;
+                  break;
+               }
+               /* And8/And16/And32/And64(t,t) ==> t, for some IRTemp t */
+               if (sameIRExprs(env, e->Iex.Binop.arg1, e->Iex.Binop.arg2)) {
+                  e2 = e->Iex.Binop.arg1;
+                  break;
+               }
+               break;
+
             case Iop_AndV128:
             case Iop_AndV256:
                /* And8/And16/AndV128/AndV256(t,t) 
@@ -2185,11 +2202,16 @@ static IRExpr* fold_Expr ( IRExpr** env, IRExpr* e )
                   e2 = e->Iex.Binop.arg1;
                   break;
                }
-               if (/* could handle other And cases here too, but so
-                      far not */
-                   e->Iex.Binop.op == Iop_And64
-                   && (isZeroU64(e->Iex.Binop.arg1)
-                       || isZeroU64(e->Iex.Binop.arg2))) {
+               /* Deal with either arg zero.  Could handle other And
+                  cases here too. */
+               if (e->Iex.Binop.op == Iop_AndV256
+                   && (isZeroV256(e->Iex.Binop.arg1)
+                       || isZeroV256(e->Iex.Binop.arg2))) {
+                  e2 =  mkZeroOfPrimopResultType(e->Iex.Binop.op);
+                  break;
+               } else if (e->Iex.Binop.op == Iop_AndV128
+                          && (isZeroV128(e->Iex.Binop.arg1)
+                              || isZeroV128(e->Iex.Binop.arg2))) {
                   e2 =  mkZeroOfPrimopResultType(e->Iex.Binop.op);
                   break;
                }

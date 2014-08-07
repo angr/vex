@@ -69,6 +69,12 @@
        unconditional calls and returns (bl, blr).  They should also be
        emitted for conditional calls and returns, but we don't have a 
        way to express that right now.  Ah well.
+
+   - Uses of Iop_{Add,Sub,Mul}32Fx4: the backend (host_ppc_isel.c)
+       ignores the rounding mode, and generates code that assumes
+       round-to-nearest.  This means V will compute incorrect results
+       for uses of these IROps when the rounding mode (first) arg is
+       not mkU32(Irrm_NEAREST).
 */
 
 /* "Special" instructions.
@@ -148,7 +154,9 @@
    given insn. */
 
 /* We need to know this to do sub-register accesses correctly. */
-static Bool host_is_bigendian;
+static VexEndness host_endness;
+
+static IREndness guest_endness;
 
 /* Pointer to the guest code area. */
 static UChar* guest_code;
@@ -228,8 +236,8 @@ static void* fnptr_to_fnentry( VexAbiInfo* vbi, void* f )
 #define OFFB_VRSAVE      offsetofPPCGuestState(guest_VRSAVE)
 #define OFFB_VSCR        offsetofPPCGuestState(guest_VSCR)
 #define OFFB_EMNOTE      offsetofPPCGuestState(guest_EMNOTE)
-#define OFFB_TISTART     offsetofPPCGuestState(guest_TISTART)
-#define OFFB_TILEN       offsetofPPCGuestState(guest_TILEN)
+#define OFFB_CMSTART     offsetofPPCGuestState(guest_CMSTART)
+#define OFFB_CMLEN       offsetofPPCGuestState(guest_CMLEN)
 #define OFFB_NRADDR      offsetofPPCGuestState(guest_NRADDR)
 #define OFFB_NRADDR_GPR2 offsetofPPCGuestState(guest_NRADDR_GPR2)
 #define OFFB_TFHAR       offsetofPPCGuestState(guest_TFHAR)
@@ -377,8 +385,8 @@ typedef enum {
     PPC_GST_VRSAVE, // Vector Save/Restore Register
     PPC_GST_VSCR,   // Vector Status and Control Register
     PPC_GST_EMWARN, // Emulation warnings
-    PPC_GST_TISTART,// For icbi: start of area to invalidate
-    PPC_GST_TILEN,  // For icbi: length of area to invalidate
+    PPC_GST_CMSTART,// For icbi: start of area to invalidate
+    PPC_GST_CMLEN,  // For icbi: length of area to invalidate
     PPC_GST_IP_AT_SYSCALL, // the CIA of the most recently executed SC insn
     PPC_GST_SPRG3_RO, // SPRG3
     PPC_GST_TFHAR,  // Transactional Failure Handler Address Register
@@ -497,8 +505,20 @@ static ULong extend_s_32to64 ( UInt x )
    return (ULong)((((Long)x) << 32) >> 32);
 }
 
-/* Do a big-endian load of a 32-bit word, regardless of the endianness
+/* Do an endian load of a 32-bit word, regardless of the endianness
    of the underlying host. */
+
+#define getUIntEndianly(p, e) (((e) == Iend_LE) ? (getUIntLittleendianly(p)) : (getUIntBigendianly(p)))
+
+static UInt getUIntLittleendianly ( UChar* p )
+{
+   UInt w = 0;
+   w = (w << 8) | p[3];
+   w = (w << 8) | p[2];
+   w = (w << 8) | p[1];
+   w = (w << 8) | p[0];
+   return w;
+}
 static UInt getUIntBigendianly ( UChar* p )
 {
    UInt w = 0;
@@ -520,11 +540,11 @@ static void assign ( IRTemp dst, IRExpr* e )
 }
 
 /* This generates a normal (non store-conditional) store. */
-static void storeBE ( IRExpr* addr, IRExpr* data )
+static void storeBE ( IRExpr* addr, IRExpr* data)
 {
    IRType tyA = typeOfIRExpr(irsb->tyenv, addr);
    vassert(tyA == Ity_I32 || tyA == Ity_I64);
-   stmt( IRStmt_Store(Iend_BE, addr, data) );
+   stmt( IRStmt_Store(guest_endness, addr, data) );
 }
 
 static IRExpr* unop ( IROp op, IRExpr* a )
@@ -582,7 +602,7 @@ static IRExpr* mkV128 ( UShort i )
 /* This generates a normal (non load-linked) load. */
 static IRExpr* loadBE ( IRType ty, IRExpr* addr )
 {
-   return IRExpr_Load(Iend_BE, ty, addr);
+   return IRExpr_Load(guest_endness, ty, addr);
 }
 
 static IRExpr* mkOR1 ( IRExpr* arg1, IRExpr* arg2 )
@@ -1033,7 +1053,7 @@ static Int integerGuestRegOffset ( UInt archreg )
    // jrs: probably not necessary; only matters if we reference sub-parts
    // of the ppc registers, but that isn't the case
    // later: this might affect Altivec though?
-   vassert(host_is_bigendian);
+   //vassert(host_endness == VexEndnessBE);
 
    switch (archreg) {
    case  0: return offsetofPPCGuestState(guest_GPR0);
@@ -2781,14 +2801,14 @@ static void putGST ( PPC_GST reg, IRExpr* src )
       stmt( IRStmt_Put( OFFB_EMNOTE,src) );
       break;
       
-   case PPC_GST_TISTART: 
+   case PPC_GST_CMSTART: 
       vassert( ty_src == ty );
-      stmt( IRStmt_Put( OFFB_TISTART, src) );
+      stmt( IRStmt_Put( OFFB_CMSTART, src) );
       break;
       
-   case PPC_GST_TILEN: 
+   case PPC_GST_CMLEN: 
       vassert( ty_src == ty );
-      stmt( IRStmt_Put( OFFB_TILEN, src) );
+      stmt( IRStmt_Put( OFFB_CMLEN, src) );
       break;
       
    case PPC_GST_TEXASR:
@@ -6062,9 +6082,7 @@ static Bool dis_syslink ( UInt theInstr,
    /* It's important that all ArchRegs carry their up-to-date value
       at this point.  So we declare an end-of-block here, which
       forces any TempRegs caching ArchRegs to be flushed. */
-   putGST( PPC_GST_CIA, abiinfo->guest_ppc_sc_continues_at_LR
-                        ? getGST( PPC_GST_LR )
-                        : mkSzImm( ty, nextInsnAddr() ));
+   putGST( PPC_GST_CIA, mkSzImm( ty, nextInsnAddr() ));
 
    dres->whatNext    = Dis_StopHere;
    dres->jk_StopHere = Ijk_Sys_syscall;
@@ -6141,7 +6159,7 @@ static Bool dis_memsync ( UInt theInstr )
 
          // and actually do the load
          res = newTemp(Ity_I32);
-         stmt( IRStmt_LLSC(Iend_BE, res, mkexpr(EA), NULL/*this is a load*/) );
+         stmt( IRStmt_LLSC(guest_endness, res, mkexpr(EA), NULL/*this is a load*/) );
 
          putIReg( rD_addr, mkWidenFrom32(ty, mkexpr(res), False) );
          break;
@@ -6167,7 +6185,7 @@ static Bool dis_memsync ( UInt theInstr )
 
          // Do the store, and get success/failure bit into resSC
          resSC = newTemp(Ity_I1);
-         stmt( IRStmt_LLSC(Iend_BE, resSC, mkexpr(EA), mkexpr(rS)) );
+         stmt( IRStmt_LLSC(guest_endness, resSC, mkexpr(EA), mkexpr(rS)) );
 
          // Set CR0[LT GT EQ S0] = 0b000 || XER[SO]  on failure
          // Set CR0[LT GT EQ S0] = 0b001 || XER[SO]  on success
@@ -6234,7 +6252,7 @@ static Bool dis_memsync ( UInt theInstr )
 
          // and actually do the load
          res = newTemp(Ity_I64);
-         stmt( IRStmt_LLSC(Iend_BE, res, mkexpr(EA), NULL/*this is a load*/) );
+         stmt( IRStmt_LLSC(guest_endness, res, mkexpr(EA), NULL/*this is a load*/) );
 
          putIReg( rD_addr, mkexpr(res) );
          break;
@@ -6260,7 +6278,7 @@ static Bool dis_memsync ( UInt theInstr )
 
          // Do the store, and get success/failure bit into resSC
          resSC = newTemp(Ity_I1);
-         stmt( IRStmt_LLSC(Iend_BE, resSC, mkexpr(EA), mkexpr(rS)) );
+         stmt( IRStmt_LLSC(guest_endness, resSC, mkexpr(EA), mkexpr(rS)) );
 
          // Set CR0[LT GT EQ S0] = 0b000 || XER[SO]  on failure
          // Set CR0[LT GT EQ S0] = 0b001 || XER[SO]  on success
@@ -6290,16 +6308,16 @@ static Bool dis_memsync ( UInt theInstr )
 
          // and actually do the load
          if (mode64) {
-            stmt( IRStmt_LLSC( Iend_BE, res_hi,
+            stmt( IRStmt_LLSC( guest_endness, res_hi,
                                mkexpr(EA), NULL/*this is a load*/) );
-            stmt( IRStmt_LLSC( Iend_BE, res_lo,
+            stmt( IRStmt_LLSC( guest_endness, res_lo,
                                binop(Iop_Add64, mkexpr(EA), mkU64(8) ),
                                NULL/*this is a load*/) );
          } else {
-            stmt( IRStmt_LLSC( Iend_BE, res_hi,
+            stmt( IRStmt_LLSC( guest_endness, res_hi,
                                binop( Iop_Add32, mkexpr(EA), mkU32(4) ),
                                NULL/*this is a load*/) );
-            stmt( IRStmt_LLSC( Iend_BE, res_lo,
+            stmt( IRStmt_LLSC( guest_endness, res_lo,
                                binop( Iop_Add32, mkexpr(EA), mkU32(12) ),
                                NULL/*this is a load*/) );
          }
@@ -6330,10 +6348,10 @@ static Bool dis_memsync ( UInt theInstr )
          resSC = newTemp(Ity_I1);
 
          if (mode64) {
-            stmt( IRStmt_LLSC( Iend_BE, resSC, mkexpr(EA), mkexpr(rS_hi) ) );
+            stmt( IRStmt_LLSC( guest_endness, resSC, mkexpr(EA), mkexpr(rS_hi) ) );
             storeBE(binop( Iop_Add64, mkexpr(EA), mkU64(8) ), mkexpr(rS_lo) );
          } else {
-            stmt( IRStmt_LLSC( Iend_BE, resSC, binop( Iop_Add32,
+            stmt( IRStmt_LLSC( guest_endness, resSC, binop( Iop_Add32,
                                                       mkexpr(EA),
                                                       mkU32(4) ),
                                                       mkexpr(rS_hi) ) );
@@ -7259,14 +7277,14 @@ static Bool dis_cache_manage ( UInt         theInstr,
       assign( addr, binop( mkSzOp(ty, Iop_And8),
                            mkexpr(EA),
                            mkSzImm(ty, ~(((ULong)lineszB)-1) )) );
-      putGST( PPC_GST_TISTART, mkexpr(addr) );
-      putGST( PPC_GST_TILEN, mkSzImm(ty, lineszB) );
+      putGST( PPC_GST_CMSTART, mkexpr(addr) );
+      putGST( PPC_GST_CMLEN, mkSzImm(ty, lineszB) );
 
       /* be paranoid ... */
       stmt( IRStmt_MBE(Imbe_Fence) );
 
       putGST( PPC_GST_CIA, mkSzImm(ty, nextInsnAddr()));
-      dres->jk_StopHere = Ijk_TInval;
+      dres->jk_StopHere = Ijk_InvalICache;
       dres->whatNext    = Dis_StopHere;
       break;
    }
@@ -12983,17 +13001,23 @@ dis_vxv_sp_arith ( UInt theInstr, UInt opc2 )
    switch (opc2) {
       case 0x100: // xvaddsp (VSX Vector Add Single-Precision)
          DIP("xvaddsp v%d,v%d,v%d\n", (UInt)XT, (UInt)XA, (UInt)XB);
-         putVSReg( XT, binop(Iop_Add32Fx4, getVSReg( XA ), getVSReg( XB )) );
+         // WARNING: BOGUS! The backend ignores rm on Iop_Add32Fx4
+         putVSReg( XT, triop(Iop_Add32Fx4, rm,
+                             getVSReg( XA ), getVSReg( XB )) );
          break;
 
       case 0x140: // xvmulsp (VSX Vector Multiply Single-Precision)
          DIP("xvmulsp v%d,v%d,v%d\n", (UInt)XT, (UInt)XA, (UInt)XB);
-         putVSReg( XT, binop(Iop_Mul32Fx4, getVSReg( XA ), getVSReg( XB )) );
+         // WARNING: BOGUS! The backend ignores rm on Iop_Mul32Fx4
+         putVSReg( XT, triop(Iop_Mul32Fx4, rm,
+                             getVSReg( XA ), getVSReg( XB )) );
          break;
 
       case 0x120: // xvsubsp (VSX Vector Subtract Single-Precision)
          DIP("xvsubsp v%d,v%d,v%d\n", (UInt)XT, (UInt)XA, (UInt)XB);
-         putVSReg( XT, binop(Iop_Sub32Fx4, getVSReg( XA ), getVSReg( XB )) );
+         // WARNING: BOGUS! The backend ignores rm on Iop_Sub32Fx4
+         putVSReg( XT, triop(Iop_Sub32Fx4, rm,
+                             getVSReg( XA ), getVSReg( XB )) );
          break;
 
       case 0x160: // xvdivsp (VSX Vector Divide Single-Precision)
@@ -13293,17 +13317,17 @@ dis_av_count_bitTranspose ( UInt theInstr, UInt opc2 )
    switch (opc2) {
       case 0x702:    // vclzb
          DIP("vclzb v%d,v%d\n", vRT_addr, vRB_addr);
-         putVReg( vRT_addr, unop(Iop_Clz8Sx16, mkexpr( vB ) ) );
+         putVReg( vRT_addr, unop(Iop_Clz8x16, mkexpr( vB ) ) );
          break;
 
       case 0x742:    // vclzh
          DIP("vclzh v%d,v%d\n", vRT_addr, vRB_addr);
-         putVReg( vRT_addr, unop(Iop_Clz16Sx8, mkexpr( vB ) ) );
+         putVReg( vRT_addr, unop(Iop_Clz16x8, mkexpr( vB ) ) );
          break;
 
       case 0x782:    // vclzw
          DIP("vclzw v%d,v%d\n", vRT_addr, vRB_addr);
-         putVReg( vRT_addr, unop(Iop_Clz32Sx4, mkexpr( vB ) ) );
+         putVReg( vRT_addr, unop(Iop_Clz32x4, mkexpr( vB ) ) );
          break;
 
       case 0x7C2:    // vclzd
@@ -17777,23 +17801,29 @@ static Bool dis_av_fp_arith ( UInt theInstr )
       return False;
    }
 
+   IRTemp rm = newTemp(Ity_I32);
+   assign(rm, get_IR_roundingmode());
+
    opc2 = IFIELD( theInstr, 0, 6 );
    switch (opc2) {
    case 0x2E: // vmaddfp (Multiply Add FP, AV p177)
       DIP("vmaddfp v%d,v%d,v%d,v%d\n",
           vD_addr, vA_addr, vC_addr, vB_addr);
       putVReg( vD_addr,
-               binop(Iop_Add32Fx4, mkexpr(vB),
-                     binop(Iop_Mul32Fx4, mkexpr(vA), mkexpr(vC))) );
+               triop(Iop_Add32Fx4, mkU32(Irrm_NEAREST),
+                     mkexpr(vB),
+                     triop(Iop_Mul32Fx4, mkU32(Irrm_NEAREST),
+                           mkexpr(vA), mkexpr(vC))) );
       return True;
 
    case 0x2F: { // vnmsubfp (Negative Multiply-Subtract FP, AV p215)
       DIP("vnmsubfp v%d,v%d,v%d,v%d\n",
           vD_addr, vA_addr, vC_addr, vB_addr);
       putVReg( vD_addr,
-               binop(Iop_Sub32Fx4,
+               triop(Iop_Sub32Fx4, mkU32(Irrm_NEAREST),
                      mkexpr(vB),
-                     binop(Iop_Mul32Fx4, mkexpr(vA), mkexpr(vC))) );
+                     triop(Iop_Mul32Fx4, mkU32(Irrm_NEAREST),
+                           mkexpr(vA), mkexpr(vC))) );
       return True;
    }
 
@@ -17805,12 +17835,14 @@ static Bool dis_av_fp_arith ( UInt theInstr )
    switch (opc2) {
    case 0x00A: // vaddfp (Add FP, AV p137)
       DIP("vaddfp v%d,v%d,v%d\n", vD_addr, vA_addr, vB_addr);
-      putVReg( vD_addr, binop(Iop_Add32Fx4, mkexpr(vA), mkexpr(vB)) );
+      putVReg( vD_addr, triop(Iop_Add32Fx4,
+                              mkU32(Irrm_NEAREST), mkexpr(vA), mkexpr(vB)) );
       return True;
 
   case 0x04A: // vsubfp (Subtract FP, AV p261)
       DIP("vsubfp v%d,v%d,v%d\n", vD_addr, vA_addr, vB_addr);
-      putVReg( vD_addr, binop(Iop_Sub32Fx4, mkexpr(vA), mkexpr(vB)) );
+      putVReg( vD_addr, triop(Iop_Sub32Fx4,
+                              mkU32(Irrm_NEAREST), mkexpr(vA), mkexpr(vB)) );
       return True;
 
    case 0x40A: // vmaxfp (Maximum FP, AV p178)
@@ -17927,8 +17959,9 @@ static Bool dis_av_fp_cmp ( UInt theInstr )
                        binop(Iop_CmpLE32Fx4, mkexpr(vA), mkexpr(vB))) );
       assign( lt, unop(Iop_NotV128,
                        binop(Iop_CmpGE32Fx4, mkexpr(vA),
-                             binop(Iop_Sub32Fx4, mkexpr(zeros),
-                                                 mkexpr(vB)))) );
+                             triop(Iop_Sub32Fx4, mkU32(Irrm_NEAREST),
+                                   mkexpr(zeros),
+                                   mkexpr(vB)))) );
 
       // finally, just shift gt,lt to correct position
       assign( vD, binop(Iop_ShlN32x4,
@@ -17989,7 +18022,7 @@ static Bool dis_av_fp_convert ( UInt theInstr )
    switch (opc2) {
    case 0x30A: // vcfux (Convert from Unsigned Fixed-Point W, AV p156)
       DIP("vcfux v%d,v%d,%d\n", vD_addr, vB_addr, UIMM_5);
-      putVReg( vD_addr, binop(Iop_Mul32Fx4,
+      putVReg( vD_addr, triop(Iop_Mul32Fx4, mkU32(Irrm_NEAREST),
                               unop(Iop_I32UtoFx4, mkexpr(vB)),
                               mkexpr(vInvScale)) );
       return True;
@@ -17997,7 +18030,7 @@ static Bool dis_av_fp_convert ( UInt theInstr )
    case 0x34A: // vcfsx (Convert from Signed Fixed-Point W, AV p155)
       DIP("vcfsx v%d,v%d,%d\n", vD_addr, vB_addr, UIMM_5);
 
-      putVReg( vD_addr, binop(Iop_Mul32Fx4,
+      putVReg( vD_addr, triop(Iop_Mul32Fx4, mkU32(Irrm_NEAREST),
                               unop(Iop_I32StoFx4, mkexpr(vB)),
                               mkexpr(vInvScale)) );
       return True;
@@ -18006,14 +18039,16 @@ static Bool dis_av_fp_convert ( UInt theInstr )
       DIP("vctuxs v%d,v%d,%d\n", vD_addr, vB_addr, UIMM_5);
       putVReg( vD_addr,
                unop(Iop_QFtoI32Ux4_RZ, 
-                    binop(Iop_Mul32Fx4, mkexpr(vB), mkexpr(vScale))) );
+                    triop(Iop_Mul32Fx4, mkU32(Irrm_NEAREST),
+                          mkexpr(vB), mkexpr(vScale))) );
       return True;
 
    case 0x3CA: // vctsxs (Convert to Signed Fixed-Point W Saturate, AV p171)
       DIP("vctsxs v%d,v%d,%d\n", vD_addr, vB_addr, UIMM_5);
       putVReg( vD_addr, 
                unop(Iop_QFtoI32Sx4_RZ, 
-                     binop(Iop_Mul32Fx4, mkexpr(vB), mkexpr(vScale))) );
+                     triop(Iop_Mul32Fx4, mkU32(Irrm_NEAREST),
+                           mkexpr(vB), mkexpr(vScale))) );
       return True;
 
    default:
@@ -18514,7 +18549,7 @@ DisResult disInstr_PPC_WRK (
    /* At least this is simple on PPC32: insns are all 4 bytes long, and
       4-aligned.  So just fish the whole thing out of memory right now
       and have done. */
-   theInstr = getUIntBigendianly( (UChar*)(&guest_code[delta]) );
+   theInstr = getUIntEndianly( (UChar*)(&guest_code[delta]), guest_endness );
 
    if (0) vex_printf("insn: 0x%x\n", theInstr);
 
@@ -18539,12 +18574,12 @@ DisResult disInstr_PPC_WRK (
       UInt word2 = mode64 ? 0x78006800 : 0x54006800;
       UInt word3 = mode64 ? 0x7800E802 : 0x5400E800;
       UInt word4 = mode64 ? 0x78009802 : 0x54009800;
-      if (getUIntBigendianly(code+ 0) == word1 &&
-          getUIntBigendianly(code+ 4) == word2 &&
-          getUIntBigendianly(code+ 8) == word3 &&
-          getUIntBigendianly(code+12) == word4) {
+      if (getUIntEndianly(code+ 0, guest_endness) == word1 &&
+          getUIntEndianly(code+ 4, guest_endness) == word2 &&
+          getUIntEndianly(code+ 8, guest_endness) == word3 &&
+          getUIntEndianly(code+12, guest_endness) == word4) {
          /* Got a "Special" instruction preamble.  Which one is it? */
-         if (getUIntBigendianly(code+16) == 0x7C210B78 /* or 1,1,1 */) {
+         if (getUIntEndianly(code+16, guest_endness) == 0x7C210B78 /* or 1,1,1 */) {
             /* %R3 = client_request ( %R4 ) */
             DIP("r3 = client_request ( %%r4 )\n");
             delta += 20;
@@ -18554,7 +18589,7 @@ DisResult disInstr_PPC_WRK (
             goto decode_success;
          }
          else
-         if (getUIntBigendianly(code+16) == 0x7C421378 /* or 2,2,2 */) {
+         if (getUIntEndianly(code+16, guest_endness) == 0x7C421378 /* or 2,2,2 */) {
             /* %R3 = guest_NRADDR */
             DIP("r3 = guest_NRADDR\n");
             delta += 20;
@@ -18563,7 +18598,7 @@ DisResult disInstr_PPC_WRK (
             goto decode_success;
          }
          else
-         if (getUIntBigendianly(code+16) == 0x7C631B78 /* or 3,3,3 */) {
+         if (getUIntEndianly(code+16, guest_endness) == 0x7C631B78 /* or 3,3,3 */) {
             /*  branch-and-link-to-noredir %R11 */
             DIP("branch-and-link-to-noredir r11\n");
             delta += 20;
@@ -18574,7 +18609,7 @@ DisResult disInstr_PPC_WRK (
             goto decode_success;
          }
          else
-         if (getUIntBigendianly(code+16) == 0x7C842378 /* or 4,4,4 */) {
+         if (getUIntEndianly(code+16, guest_endness) == 0x7C842378 /* or 4,4,4 */) {
             /* %R3 = guest_NRADDR_GPR2 */
             DIP("r3 = guest_NRADDR_GPR2\n");
             delta += 20;
@@ -18583,10 +18618,10 @@ DisResult disInstr_PPC_WRK (
             goto decode_success;
          }
          else
-         if (getUIntBigendianly(code+16) == 0x7CA52B78 /* or 5,5,5 */) {
+         if (getUIntEndianly(code+16, guest_endness) == 0x7CA52B78 /* or 5,5,5 */) {
             DIP("IR injection\n");
 
-            vex_inject_ir(irsb, Iend_BE);
+            vex_inject_ir(irsb, guest_endness);
 
             delta += 20;
             dres.len = 20;
@@ -18596,17 +18631,17 @@ DisResult disInstr_PPC_WRK (
             // be redone. For ease of handling, we simply invalidate all the
             // time.
 
-            stmt(IRStmt_Put(OFFB_TISTART, mkSzImm(ty, guest_CIA_curr_instr)));
-            stmt(IRStmt_Put(OFFB_TILEN,   mkSzImm(ty, 20)));
+            stmt(IRStmt_Put(OFFB_CMSTART, mkSzImm(ty, guest_CIA_curr_instr)));
+            stmt(IRStmt_Put(OFFB_CMLEN,   mkSzImm(ty, 20)));
    
             putGST( PPC_GST_CIA, mkSzImm( ty, guest_CIA_bbstart + delta ));
             dres.whatNext    = Dis_StopHere;
-            dres.jk_StopHere = Ijk_TInval;
+            dres.jk_StopHere = Ijk_InvalICache;
             goto decode_success;
          }
          /* We don't know what it is.  Set opc1/opc2 so decode_failure
             can print the insn following the Special-insn preamble. */
-         theInstr = getUIntBigendianly(code+16);
+         theInstr = getUIntEndianly(code+16, guest_endness);
          opc1     = ifieldOPC(theInstr);
          opc2     = ifieldOPClo10(theInstr);
          goto decode_failure;
@@ -19302,7 +19337,7 @@ DisResult disInstr_PPC_WRK (
       case 0x32E: case 0x34E: case 0x36E: // tabortdc., tabortwci., tabortdci.
       case 0x38E: case 0x3AE: case 0x3EE: // tabort., treclaim., trechkpt.
       if (dis_transactional_memory( theInstr,
-                                    getUIntBigendianly( (UChar*)(&guest_code[delta + 4])),
+                                    getUIntEndianly( (UChar*)(&guest_code[delta + 4]), guest_endness),
                                     abiinfo, &dres,
                                     resteerOkFn, callback_opaque))
             goto decode_success;
@@ -19402,7 +19437,7 @@ DisResult disInstr_PPC_WRK (
          goto decode_failure;
 
       case 0x114: case 0x0B6: // lqarx, stqcx.
-         if (dis_memsync( theInstr )) goto decode_success;
+         if (dis_memsync( theInstr)) goto decode_success;
          goto decode_failure;
 
       /* Processor Control Instructions */
@@ -19922,7 +19957,7 @@ DisResult disInstr_PPC ( IRSB*        irsb_IN,
                          VexArch      guest_arch,
                          VexArchInfo* archinfo,
                          VexAbiInfo*  abiinfo,
-                         Bool         host_bigendian_IN,
+                         VexEndness   host_endness_IN,
                          Bool         sigill_diag_IN )
 {
    IRType     ty;
@@ -19954,7 +19989,8 @@ DisResult disInstr_PPC ( IRSB*        irsb_IN,
    /* Set globals (see top of this file) */
    guest_code           = guest_code_IN;
    irsb                 = irsb_IN;
-   host_is_bigendian    = host_bigendian_IN;
+   host_endness         = host_endness_IN;
+   guest_endness        = archinfo->endness == VexEndnessLE ? Iend_LE : Iend_BE;
 
    guest_CIA_curr_instr = mkSzAddr(ty, guest_IP);
    guest_CIA_bbstart    = mkSzAddr(ty, guest_IP - delta);

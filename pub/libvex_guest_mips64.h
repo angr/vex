@@ -137,15 +137,15 @@ typedef
         UInt guest_EMNOTE;       /* 568 */
 
       /* For clflush: record start and length of area to invalidate */
-        ULong guest_TISTART;     /* 576 */
-        ULong guest_TILEN;       /* 584 */
+        ULong guest_CMSTART;     /* 576 */
+        ULong guest_CMLEN;       /* 584 */
 
         ULong guest_NRADDR;      /* 592 */
 
         ULong host_EvC_FAILADDR; /* 600 */
         UInt host_EvC_COUNTER;   /* 608 */
         UInt guest_COND;         /* 612 */
-        UInt padding[6];
+        UInt padding[2];
 } VexGuestMIPS64State;
 
 /*---------------------------------------------------------------*/

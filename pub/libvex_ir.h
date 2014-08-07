@@ -242,6 +242,10 @@ extern void ppIRType ( IRType );
 /* Get the size (in bytes) of an IRType */ 
 extern Int sizeofIRType ( IRType );
 
+/* Translate 1/2/4/8 into Ity_I{8,16,32,64} respectively.  Asserts on
+   any other input. */
+extern IRType integerIRTypeOfSize ( Int szB );
+
 
 /* ------------------ Endianness ------------------ */
 
@@ -896,8 +900,8 @@ typedef
       /* COUNT ones / leading zeroes / leading sign bits (not including topmost
          bit) */
       Iop_Cnt8x8,
-      Iop_Clz8Sx8, Iop_Clz16Sx4, Iop_Clz32Sx2,
-      Iop_Cls8Sx8, Iop_Cls16Sx4, Iop_Cls32Sx2,
+      Iop_Clz8x8, Iop_Clz16x4, Iop_Clz32x2,
+      Iop_Cls8x8, Iop_Cls16x4, Iop_Cls32x2,
       Iop_Clz64x2,
 
       /* VECTOR x VECTOR SHIFT / ROTATE */
@@ -980,15 +984,16 @@ typedef
       /* Note: the arm back-end handles only constant third argumnet. */
       Iop_Extract64,
 
-      /* REVERSE the order of elements in each Half-words, Words,
-         Double-words */
+      /* REVERSE the order of chunks in vector lanes.  Chunks must be
+         smaller than the vector lanes (obviously) and so may be 8-,
+         16- and 32-bit in size. */
       /* Examples:
-            Reverse16_8x8([a,b,c,d,e,f,g,h]) = [b,a,d,c,f,e,h,g]
-            Reverse32_8x8([a,b,c,d,e,f,g,h]) = [d,c,b,a,h,g,f,e]
-            Reverse64_8x8([a,b,c,d,e,f,g,h]) = [h,g,f,e,d,c,b,a] */
-      Iop_Reverse16_8x8,
-      Iop_Reverse32_8x8, Iop_Reverse32_16x4,
-      Iop_Reverse64_8x8, Iop_Reverse64_16x4, Iop_Reverse64_32x2,
+            Reverse8sIn16_x4([a,b,c,d,e,f,g,h]) = [b,a,d,c,f,e,h,g]
+            Reverse8sIn32_x2([a,b,c,d,e,f,g,h]) = [d,c,b,a,h,g,f,e]
+            Reverse8sIn64_x1([a,b,c,d,e,f,g,h]) = [h,g,f,e,d,c,b,a] */
+      Iop_Reverse8sIn16_x4,
+      Iop_Reverse8sIn32_x2, Iop_Reverse16sIn32_x2,
+      Iop_Reverse8sIn64_x1, Iop_Reverse16sIn64_x1, Iop_Reverse32sIn64_x1,
 
       /* PERMUTING -- copy src bytes to dst,
          as indexed by control vector bytes:
@@ -1406,20 +1411,31 @@ typedef
       /* (widening signed/unsigned of even lanes, with lowest lane=zero) */
       Iop_MullEven8Ux16, Iop_MullEven16Ux8, Iop_MullEven32Ux4,
       Iop_MullEven8Sx16, Iop_MullEven16Sx8, Iop_MullEven32Sx4,
-      /* FIXME: document these */
+
+      /* Widening multiplies, all of the form (I64, I64) -> V128 */
       Iop_Mull8Ux8, Iop_Mull8Sx8,
       Iop_Mull16Ux4, Iop_Mull16Sx4,
       Iop_Mull32Ux2, Iop_Mull32Sx2,
+
+      /* Signed doubling saturating widening multiplies, (I64, I64) -> V128 */
+      Iop_QDMull16Sx4, Iop_QDMull32Sx2,
+
       /* Vector Saturating Doubling Multiply Returning High Half and
-         Vector Saturating Rounding Doubling Multiply Returning High Half */
-      /* These IROp's multiply corresponding elements in two vectors, double
+         Vector Saturating Rounding Doubling Multiply Returning High Half.
+         These IROps multiply corresponding elements in two vectors, double
          the results, and place the most significant half of the final results
-         in the destination vector. The results are truncated or rounded. If
-         any of the results overflow, they are saturated. */
-      Iop_QDMulHi16Sx8, Iop_QDMulHi32Sx4,
-      Iop_QRDMulHi16Sx8, Iop_QRDMulHi32Sx4,
-      /* Doubling saturating multiplication (long) (I64, I64) -> V128 */
-      Iop_QDMulLong16Sx4, Iop_QDMulLong32Sx2,
+         in the destination vector.  The results are truncated or rounded.  If
+         any of the results overflow, they are saturated.  To be more precise,
+         for each lane, the computed result is: 
+           QDMulHi:  
+             hi-half( sign-extend(laneL) *q sign-extend(laneR) *q 2 )
+           QRDMulHi:
+             hi-half( sign-extend(laneL) *q sign-extend(laneR) *q 2
+                      +q (1 << (lane-width-in-bits - 1)) )
+      */
+      Iop_QDMulHi16Sx8,  Iop_QDMulHi32Sx4,  /* (V128, V128) -> V128 */
+      Iop_QRDMulHi16Sx8, Iop_QRDMulHi32Sx4, /* (V128, V128) -> V128 */
+
       /* Polynomial multiplication treats its arguments as
          coefficients of polynomials over {0, 1}. */
       Iop_PolynomialMul8x16, /* (V128, V128) -> V128 */
@@ -1479,7 +1495,7 @@ typedef
       Iop_PwBitMtxXpose64x2,
 
       /* ABSOLUTE VALUE */
-      Iop_Abs8x16, Iop_Abs16x8, Iop_Abs32x4,
+      Iop_Abs8x16, Iop_Abs16x8, Iop_Abs32x4, Iop_Abs64x2,
 
       /* AVERAGING: note: (arg1 + arg2 + 1) >>u 1 */
       Iop_Avg8Ux16, Iop_Avg16Ux8, Iop_Avg32Ux4,
@@ -1499,8 +1515,8 @@ typedef
       /* COUNT ones / leading zeroes / leading sign bits (not including topmost
          bit) */
       Iop_Cnt8x16,
-      Iop_Clz8Sx16, Iop_Clz16Sx8, Iop_Clz32Sx4,
-      Iop_Cls8Sx16, Iop_Cls16Sx8, Iop_Cls32Sx4,
+      Iop_Clz8x16, Iop_Clz16x8, Iop_Clz32x4,
+      Iop_Cls8x16, Iop_Cls16x8, Iop_Cls32x4,
 
       /* VECTOR x SCALAR SHIFT (shift amt :: Ity_I8) */
       Iop_ShlN8x16, Iop_ShlN16x8, Iop_ShlN32x4, Iop_ShlN64x2,
@@ -1567,7 +1583,9 @@ typedef
       Iop_InterleaveOddLanes32x4, Iop_InterleaveEvenLanes32x4,
 
       /* CONCATENATION -- build a new value by concatenating either
-         the even or odd lanes of both operands. */
+         the even or odd lanes of both operands.  Note that
+         Cat{Odd,Even}Lanes64x2 are identical to Interleave{HI,LO}64x2
+         and so are omitted. */
       Iop_CatOddLanes8x16, Iop_CatOddLanes16x8, Iop_CatOddLanes32x4,
       Iop_CatEvenLanes8x16, Iop_CatEvenLanes16x8, Iop_CatEvenLanes32x4,
 
@@ -1586,14 +1604,14 @@ typedef
       /* Note: the ARM back end handles only constant arg3 in this operation. */
       Iop_ExtractV128,
 
-      /* REVERSE the order of elements in each Half-words, Words,
-         Double-words */
-      /* Examples:
-            Reverse32_16x8([a,b,c,d,e,f,g,h]) = [b,a,d,c,f,e,h,g]
-            Reverse64_16x8([a,b,c,d,e,f,g,h]) = [d,c,b,a,h,g,f,e] */
-      Iop_Reverse16_8x16,
-      Iop_Reverse32_8x16, Iop_Reverse32_16x8,
-      Iop_Reverse64_8x16, Iop_Reverse64_16x8, Iop_Reverse64_32x4,
+      /* REVERSE the order of chunks in vector lanes.  Chunks must be
+         smaller than the vector lanes (obviously) and so may be 8-,
+         16- and 32-bit in size.  See definitions of 64-bit SIMD
+         versions above for examples. */
+      Iop_Reverse8sIn16_x8,
+      Iop_Reverse8sIn32_x4, Iop_Reverse16sIn32_x4,
+      Iop_Reverse8sIn64_x2, Iop_Reverse16sIn64_x2, Iop_Reverse32sIn64_x2,
+      Iop_Reverse1sIn8_x16, /* Reverse bits in each byte lane. */
 
       /* PERMUTING -- copy src bytes to dst,
          as indexed by control vector bytes:
@@ -2071,12 +2089,17 @@ extern Bool eqIRAtom ( IRExpr*, IRExpr* );
 /* This describes hints which can be passed to the dispatcher at guest
    control-flow transfer points.
 
-   Re Ijk_TInval: the guest state _must_ have two pseudo-registers,
-   guest_TISTART and guest_TILEN, which specify the start and length
-   of the region to be invalidated.  These are both the size of a
-   guest word.  It is the responsibility of the relevant toIR.c to
-   ensure that these are filled in with suitable values before issuing
-   a jump of kind Ijk_TInval.
+   Re Ijk_InvalICache and Ijk_FlushDCache: the guest state _must_ have
+   two pseudo-registers, guest_CMSTART and guest_CMLEN, which specify
+   the start and length of the region to be invalidated.  CM stands
+   for "Cache Management".  These are both the size of a guest word.
+   It is the responsibility of the relevant toIR.c to ensure that
+   these are filled in with suitable values before issuing a jump of
+   kind Ijk_InvalICache or Ijk_FlushDCache.
+
+   Ijk_InvalICache requests invalidation of translations taken from
+   the requested range.  Ijk_FlushDCache requests flushing of the D
+   cache for the specified range.
 
    Re Ijk_EmWarn and Ijk_EmFail: the guest state must have a
    pseudo-register guest_EMNOTE, which is 32-bits regardless of the
@@ -2105,8 +2128,10 @@ typedef
       Ijk_EmFail,         /* emulation critical (FATAL) error; give up */
       Ijk_NoDecode,       /* current instruction cannot be decoded */
       Ijk_MapFail,        /* Vex-provided address translation failed */
-      Ijk_TInval,         /* Invalidate translations before continuing. */
+      Ijk_InvalICache,    /* Inval icache for range [CMSTART, +CMLEN) */
+      Ijk_FlushDCache,    /* Flush dcache for range [CMSTART, +CMLEN) */
       Ijk_NoRedir,        /* Jump to un-redirected guest addr */
+      Ijk_SigILL,         /* current instruction synths SIGILL */
       Ijk_SigTRAP,        /* current instruction synths SIGTRAP */
       Ijk_SigSEGV,        /* current instruction synths SIGSEGV */
       Ijk_SigBUS,         /* current instruction synths SIGBUS */
@@ -2861,11 +2886,11 @@ extern Bool isPlausibleIRType ( IRType ty );
 /*---------------------------------------------------------------*/
 /*--- IR injection                                            ---*/
 /*---------------------------------------------------------------*/
+
 void vex_inject_ir(IRSB *, IREndness);
 
 
 #endif /* ndef __LIBVEX_IR_H */
-
 
 /*---------------------------------------------------------------*/
 /*---                                             libvex_ir.h ---*/
