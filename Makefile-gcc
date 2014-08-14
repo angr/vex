@@ -12,7 +12,8 @@ PUB_HEADERS = 	pub/libvex_basictypes.h 		\
 		pub/libvex_guest_s390x.h		\
 		pub/libvex_s390x_common.h		\
 		pub/libvex_guest_mips32.h		\
-		pub/libvex_guest_offsets.h
+		pub/libvex_guest_offsets.h		\
+		pub/e4c_lite.h
 
 PRIV_HEADERS = 	priv/host_x86_defs.h			\
 		priv/host_amd64_defs.h			\
@@ -82,7 +83,8 @@ LIB_OBJS = 	priv/ir_defs.o                          \
 		priv/guest_arm64_toIR.o			\
 		priv/guest_ppc_toIR.o                   \
 		priv/guest_s390_toIR.o			\
-		priv/guest_mips_toIR.o
+		priv/guest_mips_toIR.o			\
+		priv/e4c_lite.o
 
 PUB_INCLUDES = -Ipub
 
@@ -418,3 +420,7 @@ priv/guest_mips_helpers.o: $(ALL_HEADERS) priv/guest_mips_helpers.c
 priv/guest_mips_toIR.o: $(ALL_HEADERS) priv/guest_mips_toIR.c
 	$(CC) $(CCFLAGS) $(ALL_INCLUDES) -o priv/guest_mips_toIR.o \
 					 -c priv/guest_mips_toIR.c
+
+priv/e4c_lite.o: $(ALL_HEADERS) priv/e4c_lite.c
+	$(CC) $(CCFLAGS) $(ALL_INCLUDES) -o priv/e4c_lite.o \
+					 -c priv/e4c_lite.c

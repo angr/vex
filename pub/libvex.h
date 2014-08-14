@@ -41,6 +41,11 @@
 #include "libvex_ir.h"
 
 
+#include "e4c_lite.h"
+E4C_DECLARE_EXCEPTION(VEXError);
+
+
+
 /*---------------------------------------------------------------*/
 /*--- This file defines the top-level interface to LibVEX.    ---*/
 /*---------------------------------------------------------------*/
