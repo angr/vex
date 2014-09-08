@@ -1,5 +1,5 @@
 all:
-	EXTRA_CFLAGS=-fPIC make -f Makefile-gcc
+	EXTRA_CFLAGS="-fPIC -w" make -f Makefile-gcc
 
 clean:
 	make -f Makefile-gcc clean
