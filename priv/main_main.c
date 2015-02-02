@@ -609,7 +609,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          offB_HOST_EvC_COUNTER  = offsetof(VexGuestARMState,host_EvC_COUNTER);
          offB_HOST_EvC_FAILADDR = offsetof(VexGuestARMState,host_EvC_FAILADDR);
          vassert(are_valid_hwcaps(VexArchARM, vta->archinfo_guest.hwcaps));
-         vassert(vta->archinfo_guest.endness == VexEndnessLE);
+         // vassert(vta->archinfo_guest.endness == VexEndnessLE);
          vassert(0 == sizeof(VexGuestARMState) % 16);
          vassert(sizeof( ((VexGuestARMState*)0)->guest_CMSTART) == 4);
          vassert(sizeof( ((VexGuestARMState*)0)->guest_CMLEN  ) == 4);
