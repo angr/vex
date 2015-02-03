@@ -43,12 +43,7 @@ int e4c_hook(int is_catch){
 
 	int uncaught;
 
-	if(is_catch) {
-        /* Gracefully decrease the frame counter */
-        int old_frame = e4c.frames;
-        e4c.frames--;
-        return !(e4c.frame[old_frame].uncaught = 0);
-    }
+	if(is_catch) return !(e4c.frame[e4c.frames].uncaught = 0);
 
 	uncaught = e4c.frame[e4c.frames].uncaught;
 
