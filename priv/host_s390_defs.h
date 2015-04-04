@@ -40,6 +40,8 @@
 
 /* --------- Registers --------- */
 const HChar *s390_hreg_as_string(HReg);
+HReg s390_hreg_gpr(UInt regno);
+HReg s390_hreg_fpr(UInt regno);
 
 /* Dedicated registers */
 HReg s390_hreg_guest_state_pointer(void);
@@ -726,42 +728,42 @@ const HChar *s390_insn_as_string(const s390_insn *);
 /* --- Interface exposed to VEX                       --- */
 /*--------------------------------------------------------*/
 
-void ppS390AMode(s390_amode *);
-void ppS390Instr(s390_insn *, Bool mode64);
+void ppS390AMode(const s390_amode *);
+void ppS390Instr(const s390_insn *, Bool mode64);
 void ppHRegS390(HReg);
 
 /* Some functions that insulate the register allocator from details
    of the underlying instruction set. */
-void  getRegUsage_S390Instr( HRegUsage *, s390_insn *, Bool );
+void  getRegUsage_S390Instr( HRegUsage *, const s390_insn *, Bool );
 void  mapRegs_S390Instr    ( HRegRemap *, s390_insn *, Bool );
-Bool  isMove_S390Instr     ( s390_insn *, HReg *, HReg * );
-Int   emit_S390Instr       ( Bool *, UChar *, Int, s390_insn *, Bool,
-                             VexEndness, void *, void *, void *, void *);
-void  getAllocableRegs_S390( Int *, HReg **, Bool );
+Bool  isMove_S390Instr     ( const s390_insn *, HReg *, HReg * );
+Int   emit_S390Instr       ( Bool *, UChar *, Int, const s390_insn *, Bool,
+                             VexEndness, const void *, const void *,
+                             const void *, const void *);
+const RRegUniverse *getRRegUniverse_S390( void );
 void  genSpill_S390        ( HInstr **, HInstr **, HReg , Int , Bool );
 void  genReload_S390       ( HInstr **, HInstr **, HReg , Int , Bool );
-s390_insn *directReload_S390 ( s390_insn *, HReg, Short );
-HInstrArray *iselSB_S390   ( IRSB *, VexArch, VexArchInfo *, VexAbiInfo *,
-                             Int, Int, Bool, Bool, Addr64);
+HInstrArray *iselSB_S390   ( const IRSB *, VexArch, const VexArchInfo *,
+                             const VexAbiInfo *, Int, Int, Bool, Bool, Addr);
 
 /* Return the number of bytes of code needed for an event check */
-Int evCheckSzB_S390(VexEndness endness_host);
+Int evCheckSzB_S390(void);
 
 /* Perform a chaining and unchaining of an XDirect jump. */
 VexInvalRange chainXDirect_S390(VexEndness endness_host,
                                 void *place_to_chain,
-                                void *disp_cp_chain_me_EXPECTED,
-                                void *place_to_jump_to);
+                                const void *disp_cp_chain_me_EXPECTED,
+                                const void *place_to_jump_to);
 
 VexInvalRange unchainXDirect_S390(VexEndness endness_host,
                                   void *place_to_unchain,
-                                  void *place_to_jump_to_EXPECTED,
-                                  void *disp_cp_chain_me);
+                                  const void *place_to_jump_to_EXPECTED,
+                                  const void *disp_cp_chain_me);
 
 /* Patch the counter location into an existing ProfInc point. */
 VexInvalRange patchProfInc_S390(VexEndness endness_host,
                                 void  *code_to_patch,
-                                ULong *location_of_counter);
+                                const ULong *location_of_counter);
 
 /* KLUDGE: See detailled comment in host_s390_defs.c. */
 extern UInt s390_host_hwcaps;

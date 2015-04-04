@@ -42,13 +42,92 @@
 /* Register number for guest state pointer in host code. */
 #define GuestSP 23
 
-#define MkHRegGPR(_n, _mode64) \
-   mkHReg(_n, _mode64 ? HRcInt64 : HRcInt32, False)
-
-#define MkHRegFPR(_n, _mode64) \
-   mkHReg(_n, _mode64 ? HRcFlt64 : HRcFlt32, False)
 
 /*---------------- Registers ----------------*/
+
+const RRegUniverse* getRRegUniverse_MIPS ( Bool mode64 )
+{
+   /* The real-register universe is a big constant, so we just want to
+      initialise it once.  rRegUniverse_MIPS_initted values: 0=not initted,
+      1=initted for 32-bit-mode, 2=initted for 64-bit-mode */
+   static RRegUniverse rRegUniverse_MIPS;
+   static UInt         rRegUniverse_MIPS_initted = 0;
+
+   /* Handy shorthand, nothing more */
+   RRegUniverse* ru = &rRegUniverse_MIPS;
+
+   /* This isn't thread-safe.  Sigh. */
+   UInt howNeeded = mode64 ? 2 : 1;
+   if (LIKELY(rRegUniverse_MIPS_initted == howNeeded))
+      return ru;
+
+   RRegUniverse__init(ru);
+
+   /* Add the registers.  The initial segment of this array must be
+      those available for allocation by reg-alloc, and those that
+      follow are not available for allocation. */
+   ru->regs[ru->size++] = hregMIPS_GPR16(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR17(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR18(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR19(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR20(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR21(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR22(mode64);
+
+   ru->regs[ru->size++] = hregMIPS_GPR12(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR13(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR14(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR15(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR24(mode64);
+   /* s7  (=guest_state) */
+   ru->regs[ru->size++] = hregMIPS_F16(mode64);
+   ru->regs[ru->size++] = hregMIPS_F18(mode64);
+   ru->regs[ru->size++] = hregMIPS_F20(mode64);
+   ru->regs[ru->size++] = hregMIPS_F22(mode64);
+   ru->regs[ru->size++] = hregMIPS_F24(mode64);
+   ru->regs[ru->size++] = hregMIPS_F26(mode64);
+   ru->regs[ru->size++] = hregMIPS_F28(mode64);
+   ru->regs[ru->size++] = hregMIPS_F30(mode64);
+   if (!mode64) {
+      /* Fake double floating point */
+      ru->regs[ru->size++] = hregMIPS_D0(mode64);
+      ru->regs[ru->size++] = hregMIPS_D1(mode64);
+      ru->regs[ru->size++] = hregMIPS_D2(mode64);
+      ru->regs[ru->size++] = hregMIPS_D3(mode64);
+      ru->regs[ru->size++] = hregMIPS_D4(mode64);
+      ru->regs[ru->size++] = hregMIPS_D5(mode64);
+      ru->regs[ru->size++] = hregMIPS_D6(mode64);
+      ru->regs[ru->size++] = hregMIPS_D7(mode64);
+   }
+
+   ru->allocable = ru->size;
+   /* And other regs, not available to the allocator. */
+
+   ru->regs[ru->size++] = hregMIPS_HI(mode64);
+   ru->regs[ru->size++] = hregMIPS_LO(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR0(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR1(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR2(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR3(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR4(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR5(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR6(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR7(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR8(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR9(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR10(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR11(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR23(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR25(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR29(mode64);
+   ru->regs[ru->size++] = hregMIPS_GPR31(mode64);
+
+   rRegUniverse_MIPS_initted = howNeeded;
+
+   RRegUniverse__check_is_sane(ru);
+   return ru;
+}
+
 
 void ppHRegMIPS(HReg reg, Bool mode64)
 {
@@ -86,22 +165,22 @@ void ppHRegMIPS(HReg reg, Bool mode64)
    /* But specific for real regs. */
    switch (hregClass(reg)) {
       case HRcInt32:
-         r = hregNumber(reg);
+         r = hregEncoding(reg);
          vassert(r >= 0 && r < 32);
          vex_printf("%s", ireg32_names[r]);
          return;
       case HRcInt64:
-         r = hregNumber (reg);
+         r = hregEncoding (reg);
          vassert (r >= 0 && r < 32);
          vex_printf ("%s", ireg32_names[r]);
          return;
       case HRcFlt32:
-         r = hregNumber(reg);
+         r = hregEncoding(reg);
          vassert(r >= 0 && r < 32);
          vex_printf("%s", freg32_names[r]);
          return;
       case HRcFlt64:
-         r = hregNumber(reg);
+         r = hregEncoding(reg);
          vassert(r >= 0 && r < 32);
          vex_printf("%s", freg64_names[r]);
          return;
@@ -113,503 +192,6 @@ void ppHRegMIPS(HReg reg, Bool mode64)
    return;
 }
 
-HReg hregMIPS_GPR0(Bool mode64)
-{
-   return MkHRegGPR(0, mode64);
-}
-
-HReg hregMIPS_GPR1(Bool mode64)
-{
-   return MkHRegGPR(1, mode64);
-}
-
-HReg hregMIPS_GPR2(Bool mode64)
-{
-   return MkHRegGPR(2, mode64);
-}
-
-HReg hregMIPS_GPR3(Bool mode64)
-{
-   return MkHRegGPR(3, mode64);
-}
-
-HReg hregMIPS_GPR4(Bool mode64)
-{
-   return MkHRegGPR(4, mode64);
-}
-
-HReg hregMIPS_GPR5(Bool mode64)
-{
-   return MkHRegGPR(5, mode64);
-}
-
-HReg hregMIPS_GPR6(Bool mode64)
-{
-   return MkHRegGPR(6, mode64);
-}
-
-HReg hregMIPS_GPR7(Bool mode64)
-{
-   return MkHRegGPR(7, mode64);
-}
-
-HReg hregMIPS_GPR8(Bool mode64)
-{
-   return MkHRegGPR(8, mode64);
-}
-
-HReg hregMIPS_GPR9(Bool mode64)
-{
-   return MkHRegGPR(9, mode64);
-}
-
-HReg hregMIPS_GPR10(Bool mode64)
-{
-   return MkHRegGPR(10, mode64);
-}
-
-HReg hregMIPS_GPR11(Bool mode64)
-{
-   return MkHRegGPR(11, mode64);
-}
-
-HReg hregMIPS_GPR12(Bool mode64)
-{
-   return MkHRegGPR(12, mode64);
-}
-
-HReg hregMIPS_GPR13(Bool mode64)
-{
-   return MkHRegGPR(13, mode64);
-}
-
-HReg hregMIPS_GPR14(Bool mode64)
-{
-   return MkHRegGPR(14, mode64);
-}
-
-HReg hregMIPS_GPR15(Bool mode64)
-{
-   return MkHRegGPR(15, mode64);
-}
-
-HReg hregMIPS_GPR16(Bool mode64)
-{
-   return MkHRegGPR(16, mode64);
-}
-
-HReg hregMIPS_GPR17(Bool mode64)
-{
-   return MkHRegGPR(17, mode64);
-}
-
-HReg hregMIPS_GPR18(Bool mode64)
-{
-   return MkHRegGPR(18, mode64);
-}
-
-HReg hregMIPS_GPR19(Bool mode64)
-{
-   return MkHRegGPR(19, mode64);
-}
-
-HReg hregMIPS_GPR20(Bool mode64)
-{
-   return MkHRegGPR(20, mode64);
-}
-
-HReg hregMIPS_GPR21(Bool mode64)
-{
-   return MkHRegGPR(21, mode64);
-}
-
-HReg hregMIPS_GPR22(Bool mode64)
-{
-   return MkHRegGPR(22, mode64);
-}
-
-HReg hregMIPS_GPR23(Bool mode64)
-{
-   return MkHRegGPR(23, mode64);
-}
-
-HReg hregMIPS_GPR24(Bool mode64)
-{
-   return MkHRegGPR(24, mode64);
-}
-
-HReg hregMIPS_GPR25(Bool mode64)
-{
-   return MkHRegGPR(25, mode64);
-}
-
-HReg hregMIPS_GPR26(Bool mode64)
-{
-   return MkHRegGPR(26, mode64);
-}
-
-HReg hregMIPS_GPR27(Bool mode64)
-{
-   return MkHRegGPR(27, mode64);
-}
-
-HReg hregMIPS_GPR28(Bool mode64)
-{
-   return MkHRegGPR(28, mode64);
-}
-
-HReg hregMIPS_GPR29(Bool mode64)
-{
-   return MkHRegGPR(29, mode64);
-}
-
-HReg hregMIPS_GPR30(Bool mode64)
-{
-   return MkHRegGPR(30, mode64);
-}
-
-HReg hregMIPS_GPR31(Bool mode64)
-{
-   return MkHRegGPR(31, mode64);
-}
-
-HReg hregMIPS_F0(Bool mode64)
-{
-   return MkHRegFPR(0, mode64);
-}
-
-HReg hregMIPS_F1(Bool mode64)
-{
-   return MkHRegFPR(1, mode64);
-}
-
-HReg hregMIPS_F2(Bool mode64)
-{
-   return MkHRegFPR(2, mode64);
-}
-
-HReg hregMIPS_F3(Bool mode64)
-{
-   return MkHRegFPR(3, mode64);
-}
-
-HReg hregMIPS_F4(Bool mode64)
-{
-   return MkHRegFPR(4, mode64);
-}
-
-HReg hregMIPS_F5(Bool mode64)
-{
-   return MkHRegFPR(5, mode64);
-}
-
-HReg hregMIPS_F6(Bool mode64)
-{
-   return MkHRegFPR(6, mode64);
-}
-
-HReg hregMIPS_F7(Bool mode64)
-{
-   return MkHRegFPR(7, mode64);
-}
-
-HReg hregMIPS_F8(Bool mode64)
-{
-   return MkHRegFPR(8, mode64);
-}
-
-HReg hregMIPS_F9(Bool mode64)
-{
-   return MkHRegFPR(9, mode64);
-}
-
-HReg hregMIPS_F10(Bool mode64)
-{
-   return MkHRegFPR(10, mode64);
-}
-
-HReg hregMIPS_F11(Bool mode64)
-{
-   return MkHRegFPR(11, mode64);
-}
-
-HReg hregMIPS_F12(Bool mode64)
-{
-   return MkHRegFPR(12, mode64);
-}
-
-HReg hregMIPS_F13(Bool mode64)
-{
-   return MkHRegFPR(13, mode64);
-}
-
-HReg hregMIPS_F14(Bool mode64)
-{
-   return MkHRegFPR(14, mode64);
-}
-
-HReg hregMIPS_F15(Bool mode64)
-{
-   return MkHRegFPR(15, mode64);
-}
-
-HReg hregMIPS_F16(Bool mode64)
-{
-   return MkHRegFPR(16, mode64);
-}
-
-HReg hregMIPS_F17(Bool mode64)
-{
-   return MkHRegFPR(17, mode64);
-}
-
-HReg hregMIPS_F18(Bool mode64)
-{
-   return MkHRegFPR(18, mode64);
-}
-
-HReg hregMIPS_F19(Bool mode64)
-{
-   return MkHRegFPR(19, mode64);
-}
-
-HReg hregMIPS_F20(Bool mode64)
-{
-   return MkHRegFPR(20, mode64);
-}
-
-HReg hregMIPS_F21(Bool mode64)
-{
-   return MkHRegFPR(21, mode64);
-}
-
-HReg hregMIPS_F22(Bool mode64)
-{
-   return MkHRegFPR(22, mode64);
-}
-
-HReg hregMIPS_F23(Bool mode64)
-{
-   return MkHRegFPR(23, mode64);
-}
-
-HReg hregMIPS_F24(Bool mode64)
-{
-   return MkHRegFPR(24, mode64);
-}
-
-HReg hregMIPS_F25(Bool mode64)
-{
-   return MkHRegFPR(25, mode64);
-}
-
-HReg hregMIPS_F26(Bool mode64)
-{
-   return MkHRegFPR(26, mode64);
-}
-
-HReg hregMIPS_F27(Bool mode64)
-{
-   return MkHRegFPR(27, mode64);
-}
-
-HReg hregMIPS_F28(Bool mode64)
-{
-   return MkHRegFPR(28, mode64);
-}
-
-HReg hregMIPS_F29(Bool mode64)
-{
-   return MkHRegFPR(29, mode64);
-}
-
-HReg hregMIPS_F30(Bool mode64)
-{
-   return MkHRegFPR(30, mode64);
-}
-
-HReg hregMIPS_F31(Bool mode64)
-{
-   return MkHRegFPR(31, mode64);
-}
-
-HReg hregMIPS_PC(Bool mode64)
-{
-   return mkHReg(32, mode64 ? HRcFlt64 : HRcFlt32, False);
-}
-
-HReg hregMIPS_HI(Bool mode64)
-{
-   return mkHReg(33, mode64 ? HRcFlt64 : HRcFlt32, False);
-}
-
-HReg hregMIPS_LO(Bool mode64)
-{
-   return mkHReg(34, mode64 ? HRcFlt64 : HRcFlt32, False);
-}
-
-HReg hregMIPS_D0(void)
-{
-   return mkHReg(0, HRcFlt64, False);
-}
-
-HReg hregMIPS_D1(void)
-{
-   return mkHReg(2, HRcFlt64, False);
-}
-
-HReg hregMIPS_D2(void)
-{
-   return mkHReg(4, HRcFlt64, False);
-}
-
-HReg hregMIPS_D3(void)
-{
-   return mkHReg(6, HRcFlt64, False);
-}
-
-HReg hregMIPS_D4(void)
-{
-   return mkHReg(8, HRcFlt64, False);
-}
-
-HReg hregMIPS_D5(void)
-{
-   return mkHReg(10, HRcFlt64, False);
-}
-
-HReg hregMIPS_D6(void)
-{
-   return mkHReg(12, HRcFlt64, False);
-}
-
-HReg hregMIPS_D7(void)
-{
-   return mkHReg(14, HRcFlt64, False);
-}
-
-HReg hregMIPS_D8(void)
-{
-   return mkHReg(16, HRcFlt64, False);
-}
-
-HReg hregMIPS_D9(void)
-{
-   return mkHReg(18, HRcFlt64, False);
-}
-
-HReg hregMIPS_D10(void)
-{
-   return mkHReg(20, HRcFlt64, False);
-}
-
-HReg hregMIPS_D11(void)
-{
-   return mkHReg(22, HRcFlt64, False);
-}
-
-HReg hregMIPS_D12(void)
-{
-   return mkHReg(24, HRcFlt64, False);
-}
-
-HReg hregMIPS_D13(void)
-{
-   return mkHReg(26, HRcFlt64, False);
-}
-
-HReg hregMIPS_D14(void)
-{
-   return mkHReg(28, HRcFlt64, False);
-}
-
-HReg hregMIPS_D15(void)
-{
-   return mkHReg(30, HRcFlt64, False);
-}
-
-HReg hregMIPS_FIR(void)
-{
-   return mkHReg(35, HRcInt32, False);
-}
-
-HReg hregMIPS_FCCR(void)
-{
-   return mkHReg(36, HRcInt32, False);
-}
-
-HReg hregMIPS_FEXR(void)
-{
-   return mkHReg(37, HRcInt32, False);
-}
-
-HReg hregMIPS_FENR(void)
-{
-   return mkHReg(38, HRcInt32, False);
-}
-
-HReg hregMIPS_FCSR(void)
-{
-   return mkHReg(39, HRcInt32, False);
-}
-
-HReg hregMIPS_COND(void)
-{
-   return mkHReg(47, HRcInt32, False);
-}
-
-void getAllocableRegs_MIPS(Int * nregs, HReg ** arr, Bool mode64)
-{
-  /* The list of allocable registers is shorten to fit MIPS32 mode on Loongson.
-     More precisely, we workaround Loongson MIPS32 issues by avoiding usage of
-     odd single precision FP registers. */
-   if (mode64)
-      *nregs = 20;
-   else
-      *nregs = 28;
-   UInt i = 0;
-   *arr = LibVEX_Alloc(*nregs * sizeof(HReg));
-
-   /* ZERO = constant 0
-      AT = assembler temporary
-      callee saves ones are listed first, since we prefer them
-      if they're available */
-   (*arr)[i++] = hregMIPS_GPR16(mode64);
-   (*arr)[i++] = hregMIPS_GPR17(mode64);
-   (*arr)[i++] = hregMIPS_GPR18(mode64);
-   (*arr)[i++] = hregMIPS_GPR19(mode64);
-   (*arr)[i++] = hregMIPS_GPR20(mode64);
-   (*arr)[i++] = hregMIPS_GPR21(mode64);
-   (*arr)[i++] = hregMIPS_GPR22(mode64);
-
-   (*arr)[i++] = hregMIPS_GPR12(mode64);
-   (*arr)[i++] = hregMIPS_GPR13(mode64);
-   (*arr)[i++] = hregMIPS_GPR14(mode64);
-   (*arr)[i++] = hregMIPS_GPR15(mode64);
-   (*arr)[i++] = hregMIPS_GPR24(mode64);
-   /* s7  (=guest_state) */
-   (*arr)[i++] = hregMIPS_F16(mode64);
-   (*arr)[i++] = hregMIPS_F18(mode64);
-   (*arr)[i++] = hregMIPS_F20(mode64);
-   (*arr)[i++] = hregMIPS_F22(mode64);
-   (*arr)[i++] = hregMIPS_F24(mode64);
-   (*arr)[i++] = hregMIPS_F26(mode64);
-   (*arr)[i++] = hregMIPS_F28(mode64);
-   (*arr)[i++] = hregMIPS_F30(mode64);
-   if (!mode64) {
-      /* Fake double floating point */
-      (*arr)[i++] = hregMIPS_D0();
-      (*arr)[i++] = hregMIPS_D1();
-      (*arr)[i++] = hregMIPS_D2();
-      (*arr)[i++] = hregMIPS_D3();
-      (*arr)[i++] = hregMIPS_D4();
-      (*arr)[i++] = hregMIPS_D5();
-      (*arr)[i++] = hregMIPS_D6();
-      (*arr)[i++] = hregMIPS_D7();
-   }
-   vassert(i == *nregs);
-
-}
 
 /*----------------- Condition Codes ----------------------*/
 
@@ -871,7 +453,7 @@ const HChar* showMIPSMoveCondOp ( MIPSMoveCondOp op )
 
 MIPSAMode *MIPSAMode_IR(Int idx, HReg base)
 {
-   MIPSAMode *am = LibVEX_Alloc(sizeof(MIPSAMode));
+   MIPSAMode *am = LibVEX_Alloc_inline(sizeof(MIPSAMode));
    am->tag = Mam_IR;
    am->Mam.IR.base = base;
    am->Mam.IR.index = idx;
@@ -881,7 +463,7 @@ MIPSAMode *MIPSAMode_IR(Int idx, HReg base)
 
 MIPSAMode *MIPSAMode_RR(HReg idx, HReg base)
 {
-   MIPSAMode *am = LibVEX_Alloc(sizeof(MIPSAMode));
+   MIPSAMode *am = LibVEX_Alloc_inline(sizeof(MIPSAMode));
    am->tag = Mam_RR;
    am->Mam.RR.base = base;
    am->Mam.RR.index = idx;
@@ -914,13 +496,11 @@ MIPSAMode *nextMIPSAModeFloat(MIPSAMode * am)
          ret = MIPSAMode_IR(am->Mam.IR.index + 4, am->Mam.IR.base);
          break;
       case Mam_RR:
-         ret = MIPSAMode_RR(mkHReg(hregNumber(am->Mam.RR.index) + 1,
-                                   hregClass(am->Mam.RR.index),
-                                   hregIsVirtual(am->Mam.RR.index)),
-                                   am->Mam.RR.base);
-         break;
+         /* We can't do anything with the RR case, so if it appears
+            we simply have to give up. */
+         /* fallthrough */
       default:
-         vpanic("dopyMIPSAMode");
+         vpanic("nextMIPSAModeFloat");
          break;
    }
    return ret;
@@ -934,13 +514,11 @@ MIPSAMode *nextMIPSAModeInt(MIPSAMode * am)
          ret = MIPSAMode_IR(am->Mam.IR.index + 4, am->Mam.IR.base);
          break;
       case Mam_RR:
-         ret = MIPSAMode_RR(mkHReg(hregNumber(am->Mam.RR.index) + 1,
-                                   hregClass(am->Mam.RR.index),
-                                   hregIsVirtual(am->Mam.RR.index)),
-                                   am->Mam.RR.base);
-         break;
+         /* We can't do anything with the RR case, so if it appears
+            we simply have to give up. */
+         /* fallthrough */
       default:
-         vpanic("dopyMIPSAMode");
+         vpanic("nextMIPSAModeInt");
          break;
    }
    return ret;
@@ -1004,7 +582,7 @@ static void mapRegs_MIPSAMode(HRegRemap * m, MIPSAMode * am)
 
 MIPSRH *MIPSRH_Imm(Bool syned, UShort imm16)
 {
-   MIPSRH *op = LibVEX_Alloc(sizeof(MIPSRH));
+   MIPSRH *op = LibVEX_Alloc_inline(sizeof(MIPSRH));
    op->tag = Mrh_Imm;
    op->Mrh.Imm.syned = syned;
    op->Mrh.Imm.imm16 = imm16;
@@ -1018,7 +596,7 @@ MIPSRH *MIPSRH_Imm(Bool syned, UShort imm16)
 
 MIPSRH *MIPSRH_Reg(HReg reg)
 {
-   MIPSRH *op = LibVEX_Alloc(sizeof(MIPSRH));
+   MIPSRH *op = LibVEX_Alloc_inline(sizeof(MIPSRH));
    op->tag = Mrh_Reg;
    op->Mrh.Reg.reg = reg;
    return op;
@@ -1180,7 +758,7 @@ const HChar *showMIPSMaccOp(MIPSMaccOp op, Bool variable)
 
 MIPSInstr *MIPSInstr_LI(HReg dst, ULong imm)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_LI;
    i->Min.LI.dst = dst;
    i->Min.LI.imm = imm;
@@ -1189,7 +767,7 @@ MIPSInstr *MIPSInstr_LI(HReg dst, ULong imm)
 
 MIPSInstr *MIPSInstr_Alu(MIPSAluOp op, HReg dst, HReg srcL, MIPSRH * srcR)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_Alu;
    i->Min.Alu.op = op;
    i->Min.Alu.dst = dst;
@@ -1201,7 +779,7 @@ MIPSInstr *MIPSInstr_Alu(MIPSAluOp op, HReg dst, HReg srcL, MIPSRH * srcR)
 MIPSInstr *MIPSInstr_Shft(MIPSShftOp op, Bool sz32, HReg dst, HReg srcL,
                           MIPSRH * srcR)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_Shft;
    i->Min.Shft.op = op;
    i->Min.Shft.sz32 = sz32;
@@ -1213,7 +791,7 @@ MIPSInstr *MIPSInstr_Shft(MIPSShftOp op, Bool sz32, HReg dst, HReg srcL,
 
 MIPSInstr *MIPSInstr_Unary(MIPSUnaryOp op, HReg dst, HReg src)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_Unary;
    i->Min.Unary.op = op;
    i->Min.Unary.dst = dst;
@@ -1224,7 +802,7 @@ MIPSInstr *MIPSInstr_Unary(MIPSUnaryOp op, HReg dst, HReg src)
 MIPSInstr *MIPSInstr_Cmp(Bool syned, Bool sz32, HReg dst, HReg srcL, HReg srcR,
                          MIPSCondCode cond)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_Cmp;
    i->Min.Cmp.syned = syned;
    i->Min.Cmp.sz32 = sz32;
@@ -1239,7 +817,7 @@ MIPSInstr *MIPSInstr_Cmp(Bool syned, Bool sz32, HReg dst, HReg srcL, HReg srcR,
 MIPSInstr *MIPSInstr_Mul(Bool syned, Bool wid, Bool sz32, HReg dst, HReg srcL,
                          HReg srcR)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_Mul;
    i->Min.Mul.syned = syned;
    i->Min.Mul.widening = wid; /* widen=True else False */
@@ -1253,7 +831,7 @@ MIPSInstr *MIPSInstr_Mul(Bool syned, Bool wid, Bool sz32, HReg dst, HReg srcL,
 /* msub */
 MIPSInstr *MIPSInstr_Msub(Bool syned, HReg srcL, HReg srcR)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_Macc;
 
    i->Min.Macc.op = Macc_SUB;
@@ -1266,7 +844,7 @@ MIPSInstr *MIPSInstr_Msub(Bool syned, HReg srcL, HReg srcR)
 /* madd */
 MIPSInstr *MIPSInstr_Madd(Bool syned, HReg srcL, HReg srcR)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_Macc;
 
    i->Min.Macc.op = Macc_ADD;
@@ -1279,7 +857,7 @@ MIPSInstr *MIPSInstr_Madd(Bool syned, HReg srcL, HReg srcR)
 /* div */
 MIPSInstr *MIPSInstr_Div(Bool syned, Bool sz32, HReg srcL, HReg srcR)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_Div;
    i->Min.Div.syned = syned;
    i->Min.Div.sz32 = sz32; /* True = 32 bits */
@@ -1292,7 +870,7 @@ MIPSInstr *MIPSInstr_Call ( MIPSCondCode cond, Addr64 target, UInt argiregs,
                             HReg src, RetLoc rloc )
 {
    UInt mask;
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_Call;
    i->Min.Call.cond = cond;
    i->Min.Call.target = target;
@@ -1311,7 +889,7 @@ MIPSInstr *MIPSInstr_CallAlways ( MIPSCondCode cond, Addr64 target,
                                   UInt argiregs, RetLoc rloc )
 {
    UInt mask;
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_Call;
    i->Min.Call.cond = cond;
    i->Min.Call.target = target;
@@ -1327,7 +905,7 @@ MIPSInstr *MIPSInstr_CallAlways ( MIPSCondCode cond, Addr64 target,
 
 MIPSInstr *MIPSInstr_XDirect ( Addr64 dstGA, MIPSAMode* amPC,
                                MIPSCondCode cond, Bool toFastEP ) {
-   MIPSInstr* i               = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr* i               = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag                     = Min_XDirect;
    i->Min.XDirect.dstGA       = dstGA;
    i->Min.XDirect.amPC        = amPC;
@@ -1338,7 +916,7 @@ MIPSInstr *MIPSInstr_XDirect ( Addr64 dstGA, MIPSAMode* amPC,
 
 MIPSInstr *MIPSInstr_XIndir ( HReg dstGA, MIPSAMode* amPC,
                               MIPSCondCode cond ) {
-   MIPSInstr* i            = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr* i            = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag                  = Min_XIndir;
    i->Min.XIndir.dstGA     = dstGA;
    i->Min.XIndir.amPC      = amPC;
@@ -1348,7 +926,7 @@ MIPSInstr *MIPSInstr_XIndir ( HReg dstGA, MIPSAMode* amPC,
 
 MIPSInstr *MIPSInstr_XAssisted ( HReg dstGA, MIPSAMode* amPC,
                                  MIPSCondCode cond, IRJumpKind jk ) {
-   MIPSInstr* i               = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr* i               = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag                     = Min_XAssisted;
    i->Min.XAssisted.dstGA     = dstGA;
    i->Min.XAssisted.amPC      = amPC;
@@ -1359,7 +937,7 @@ MIPSInstr *MIPSInstr_XAssisted ( HReg dstGA, MIPSAMode* amPC,
 
 MIPSInstr *MIPSInstr_Load(UChar sz, HReg dst, MIPSAMode * src, Bool mode64)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_Load;
    i->Min.Load.sz = sz;
    i->Min.Load.src = src;
@@ -1373,7 +951,7 @@ MIPSInstr *MIPSInstr_Load(UChar sz, HReg dst, MIPSAMode * src, Bool mode64)
 
 MIPSInstr *MIPSInstr_Store(UChar sz, MIPSAMode * dst, HReg src, Bool mode64)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_Store;
    i->Min.Store.sz = sz;
    i->Min.Store.src = src;
@@ -1387,7 +965,7 @@ MIPSInstr *MIPSInstr_Store(UChar sz, MIPSAMode * dst, HReg src, Bool mode64)
 
 MIPSInstr *MIPSInstr_LoadL(UChar sz, HReg dst, MIPSAMode * src, Bool mode64)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_LoadL;
    i->Min.LoadL.sz  = sz;
    i->Min.LoadL.src = src;
@@ -1402,7 +980,7 @@ MIPSInstr *MIPSInstr_LoadL(UChar sz, HReg dst, MIPSAMode * src, Bool mode64)
 MIPSInstr *MIPSInstr_Cas(UChar sz, HReg old, HReg addr,
                          HReg expd, HReg data, Bool mode64)
 {
-   MIPSInstr *i    = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i    = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag          = Min_Cas;
    i->Min.Cas.sz   = sz;
    i->Min.Cas.old  = old;
@@ -1418,7 +996,7 @@ MIPSInstr *MIPSInstr_Cas(UChar sz, HReg old, HReg addr,
 
 MIPSInstr *MIPSInstr_StoreC(UChar sz, MIPSAMode * dst, HReg src, Bool mode64)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_StoreC;
    i->Min.StoreC.sz  = sz;
    i->Min.StoreC.src = src;
@@ -1432,7 +1010,7 @@ MIPSInstr *MIPSInstr_StoreC(UChar sz, MIPSAMode * dst, HReg src, Bool mode64)
 
 MIPSInstr *MIPSInstr_Mthi(HReg src)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_Mthi;
    i->Min.MtHL.src = src;
    return i;
@@ -1440,7 +1018,7 @@ MIPSInstr *MIPSInstr_Mthi(HReg src)
 
 MIPSInstr *MIPSInstr_Mtlo(HReg src)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_Mtlo;
    i->Min.MtHL.src = src;
    return i;
@@ -1448,7 +1026,7 @@ MIPSInstr *MIPSInstr_Mtlo(HReg src)
 
 MIPSInstr *MIPSInstr_Mfhi(HReg dst)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_Mfhi;
    i->Min.MfHL.dst = dst;
    return i;
@@ -1456,7 +1034,7 @@ MIPSInstr *MIPSInstr_Mfhi(HReg dst)
 
 MIPSInstr *MIPSInstr_Mflo(HReg dst)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_Mflo;
    i->Min.MfHL.dst = dst;
    return i;
@@ -1465,7 +1043,7 @@ MIPSInstr *MIPSInstr_Mflo(HReg dst)
 /* Read/Write Link Register */
 MIPSInstr *MIPSInstr_RdWrLR(Bool wrLR, HReg gpr)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_RdWrLR;
    i->Min.RdWrLR.wrLR = wrLR;
    i->Min.RdWrLR.gpr = gpr;
@@ -1474,7 +1052,7 @@ MIPSInstr *MIPSInstr_RdWrLR(Bool wrLR, HReg gpr)
 
 MIPSInstr *MIPSInstr_FpLdSt(Bool isLoad, UChar sz, HReg reg, MIPSAMode * addr)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_FpLdSt;
    i->Min.FpLdSt.isLoad = isLoad;
    i->Min.FpLdSt.sz = sz;
@@ -1486,7 +1064,7 @@ MIPSInstr *MIPSInstr_FpLdSt(Bool isLoad, UChar sz, HReg reg, MIPSAMode * addr)
 
 MIPSInstr *MIPSInstr_FpUnary(MIPSFpOp op, HReg dst, HReg src)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_FpUnary;
    i->Min.FpUnary.op = op;
    i->Min.FpUnary.dst = dst;
@@ -1496,7 +1074,7 @@ MIPSInstr *MIPSInstr_FpUnary(MIPSFpOp op, HReg dst, HReg src)
 
 MIPSInstr *MIPSInstr_FpBinary(MIPSFpOp op, HReg dst, HReg srcL, HReg srcR)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_FpBinary;
    i->Min.FpBinary.op = op;
    i->Min.FpBinary.dst = dst;
@@ -1508,7 +1086,7 @@ MIPSInstr *MIPSInstr_FpBinary(MIPSFpOp op, HReg dst, HReg srcL, HReg srcR)
 MIPSInstr *MIPSInstr_FpTernary ( MIPSFpOp op, HReg dst, HReg src1, HReg src2,
                                  HReg src3 )
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_FpTernary;
    i->Min.FpTernary.op = op;
    i->Min.FpTernary.dst = dst;
@@ -1520,7 +1098,7 @@ MIPSInstr *MIPSInstr_FpTernary ( MIPSFpOp op, HReg dst, HReg src1, HReg src2,
 
 MIPSInstr *MIPSInstr_FpConvert(MIPSFpOp op, HReg dst, HReg src)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_FpConvert;
    i->Min.FpConvert.op = op;
    i->Min.FpConvert.dst = dst;
@@ -1531,7 +1109,7 @@ MIPSInstr *MIPSInstr_FpConvert(MIPSFpOp op, HReg dst, HReg src)
 
 MIPSInstr *MIPSInstr_FpCompare(MIPSFpOp op, HReg dst, HReg srcL, HReg srcR)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_FpCompare;
    i->Min.FpCompare.op = op;
    i->Min.FpCompare.dst = dst;
@@ -1542,7 +1120,7 @@ MIPSInstr *MIPSInstr_FpCompare(MIPSFpOp op, HReg dst, HReg srcL, HReg srcR)
 
 MIPSInstr *MIPSInstr_MtFCSR(HReg src)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_MtFCSR;
    i->Min.MtFCSR.src = src;
    return i;
@@ -1550,7 +1128,7 @@ MIPSInstr *MIPSInstr_MtFCSR(HReg src)
 
 MIPSInstr *MIPSInstr_MfFCSR(HReg dst)
 {
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag = Min_MfFCSR;
    i->Min.MfFCSR.dst = dst;
    return i;
@@ -1558,7 +1136,7 @@ MIPSInstr *MIPSInstr_MfFCSR(HReg dst)
 
 MIPSInstr *MIPSInstr_FpGpMove ( MIPSFpGpMoveOp op, HReg dst, HReg src )
 {
-   MIPSInstr *i        = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i        = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag              = Min_FpGpMove;
    i->Min.FpGpMove.op  = op;
    i->Min.FpGpMove.dst = dst;
@@ -1569,7 +1147,7 @@ MIPSInstr *MIPSInstr_FpGpMove ( MIPSFpGpMoveOp op, HReg dst, HReg src )
 MIPSInstr *MIPSInstr_MoveCond ( MIPSMoveCondOp op, HReg dst, HReg src,
                                 HReg cond )
 {
-   MIPSInstr *i        = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr *i        = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag              = Min_MoveCond;
    i->Min.MoveCond.op  = op;
    i->Min.MoveCond.dst = dst;
@@ -1580,7 +1158,7 @@ MIPSInstr *MIPSInstr_MoveCond ( MIPSMoveCondOp op, HReg dst, HReg src,
 
 MIPSInstr *MIPSInstr_EvCheck ( MIPSAMode* amCounter,
                             MIPSAMode* amFailAddr ) {
-   MIPSInstr* i                 = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr* i                 = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag                       = Min_EvCheck;
    i->Min.EvCheck.amCounter     = amCounter;
    i->Min.EvCheck.amFailAddr    = amFailAddr;
@@ -1588,7 +1166,7 @@ MIPSInstr *MIPSInstr_EvCheck ( MIPSAMode* amCounter,
 }
 
 MIPSInstr* MIPSInstr_ProfInc ( void ) {
-   MIPSInstr* i = LibVEX_Alloc(sizeof(MIPSInstr));
+   MIPSInstr* i = LibVEX_Alloc_inline(sizeof(MIPSInstr));
    i->tag       = Min_ProfInc;
    return i;
 }
@@ -1601,7 +1179,7 @@ static void ppLoadImm(HReg dst, ULong imm, Bool mode64)
    vex_printf(",0x%016llx", imm);
 }
 
-void ppMIPSInstr(MIPSInstr * i, Bool mode64)
+void ppMIPSInstr(const MIPSInstr * i, Bool mode64)
 {
    switch (i->tag) {
       case Min_LI:
@@ -1991,7 +1569,7 @@ void ppMIPSInstr(MIPSInstr * i, Bool mode64)
 
 /* --------- Helpers for register allocation. --------- */
 
-void getRegUsage_MIPSInstr(HRegUsage * u, MIPSInstr * i, Bool mode64)
+void getRegUsage_MIPSInstr(HRegUsage * u, const MIPSInstr * i, Bool mode64)
 {
    initHRegUsage(u);
    switch (i->tag) {
@@ -2370,7 +1948,7 @@ void mapRegs_MIPSInstr(HRegRemap * m, MIPSInstr * i, Bool mode64)
    source and destination to *src and *dst.  If in doubt say No.  Used
    by the register allocator to do move coalescing.
 */
-Bool isMove_MIPSInstr(MIPSInstr * i, HReg * src, HReg * dst)
+Bool isMove_MIPSInstr(const MIPSInstr * i, HReg * src, HReg * dst)
 {
    /* Moves between integer regs */
    if (i->tag == Min_Alu) {
@@ -2379,8 +1957,7 @@ Bool isMove_MIPSInstr(MIPSInstr * i, HReg * src, HReg * dst)
          return False;
       if (i->Min.Alu.srcR->tag != Mrh_Reg)
          return False;
-      if (hregNumber(i->Min.Alu.srcR->Mrh.Reg.reg)
-          != hregNumber(i->Min.Alu.srcL))
+      if (!sameHReg(i->Min.Alu.srcR->Mrh.Reg.reg, i->Min.Alu.srcL))
          return False;
       *src = i->Min.Alu.srcL;
       *dst = i->Min.Alu.dst;
@@ -2457,30 +2034,30 @@ void genReload_MIPS( /*OUT*/ HInstr ** i1, /*OUT*/ HInstr ** i2, HReg rreg,
 
 /* --------- The mips assembler --------- */
 
-static UInt iregNo(HReg r, Bool mode64)
+inline static UInt iregNo(HReg r, Bool mode64)
 {
    UInt n;
    vassert(hregClass(r) == (mode64 ? HRcInt64 : HRcInt32));
    vassert(!hregIsVirtual(r));
-   n = hregNumber(r);
+   n = hregEncoding(r);
    vassert(n <= 32);
    return n;
 }
 
-static UChar fregNo(HReg r, Bool mode64)
+inline static UInt fregNo(HReg r, Bool mode64)
 {
    UInt n;
    vassert(!hregIsVirtual(r));
-   n = hregNumber(r);
+   n = hregEncoding(r);
    vassert(n <= 31);
    return n;
 }
 
-static UChar dregNo(HReg r)
+inline static UInt dregNo(HReg r)
 {
    UInt n;
    vassert(!hregIsVirtual(r));
-   n = hregNumber(r);
+   n = hregEncoding(r);
    vassert(n <= 31);
    return n;
 }
@@ -2918,13 +2495,13 @@ static UChar *mkMoveReg(UChar * p, UInt r_dst, UInt r_src)
    instruction was a profiler inc, set *is_profInc to True, else
    leave it unchanged. */
 Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
-                     UChar* buf, Int nbuf, MIPSInstr* i,
+                     UChar* buf, Int nbuf, const MIPSInstr* i,
                      Bool mode64,
                      VexEndness endness_host,
-                     void* disp_cp_chain_me_to_slowEP,
-                     void* disp_cp_chain_me_to_fastEP,
-                     void* disp_cp_xindir,
-                     void* disp_cp_xassisted )
+                     const void* disp_cp_chain_me_to_slowEP,
+                     const void* disp_cp_chain_me_to_fastEP,
+                     const void* disp_cp_xindir,
+                     const void* disp_cp_xassisted )
 {
    UChar *p = &buf[0];
    UChar *ptmp = p;
@@ -3439,11 +3016,11 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
             number of instructions (3) below. */
          /* move r9, VG_(disp_cp_chain_me_to_{slowEP,fastEP}) */
          /* jr  r9  */
-         void* disp_cp_chain_me
+         const void* disp_cp_chain_me
                   = i->Min.XDirect.toFastEP ? disp_cp_chain_me_to_fastEP
                                               : disp_cp_chain_me_to_slowEP;
          p = mkLoadImm_EXACTLY2or6(p, /*r*/ 9,
-                                     Ptr_to_ULong(disp_cp_chain_me), mode64);
+                                   (Addr)disp_cp_chain_me, mode64);
          /* jalr $9 */
          /* nop */
          p = mkFormR(p, 0, 9, 0, 31, 0, 9);  /* p += 4 */
@@ -3496,7 +3073,7 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          /* jalr   r9 */
          /* nop */
          p = mkLoadImm_EXACTLY2or6(p, /*r*/ 9,
-                                   Ptr_to_ULong(disp_cp_xindir), mode64);
+                                   (Addr)disp_cp_xindir, mode64);
          p = mkFormR(p, 0, 9, 0, 31, 0, 9);  /* p += 4 */
          p = mkFormR(p, 0, 0, 0, 0, 0, 0);   /* p += 4 */
 
@@ -3566,7 +3143,7 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
 
          /* move r9, VG_(disp_cp_xassisted) */
          p = mkLoadImm_EXACTLY2or6(p, /*r*/ 9,
-                          (ULong)Ptr_to_ULong(disp_cp_xassisted), mode64);
+                                   (ULong)(Addr)disp_cp_xassisted, mode64);
          /* jalr $9
              nop */
          p = mkFormR(p, 0, 9, 0, 31, 0, 9);  /* p += 4 */
@@ -4230,7 +3807,7 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          /* nofail: */
 
          /* Crosscheck */
-         vassert(evCheckSzB_MIPS(endness_host) == (UChar*)p - (UChar*)p0);
+         vassert(evCheckSzB_MIPS() == (UChar*)p - (UChar*)p0);
          goto done;
       }
 
@@ -4316,7 +3893,7 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
 /* How big is an event check?  See case for Min_EvCheck in
    emit_MIPSInstr just above.  That crosschecks what this returns, so
    we can tell if we're inconsistent. */
-Int evCheckSzB_MIPS ( VexEndness endness_host )
+Int evCheckSzB_MIPS (void)
 {
   UInt kInstrSize = 4;
   return 7*kInstrSize;
@@ -4326,8 +3903,8 @@ Int evCheckSzB_MIPS ( VexEndness endness_host )
    emitInstr case for XDirect, above. */
 VexInvalRange chainXDirect_MIPS ( VexEndness endness_host,
                                   void* place_to_chain,
-                                  void* disp_cp_chain_me_EXPECTED,
-                                  void* place_to_jump_to,
+                                  const void* disp_cp_chain_me_EXPECTED,
+                                  const void* place_to_jump_to,
                                   Bool  mode64 )
 {
    vassert(endness_host == VexEndnessLE || endness_host == VexEndnessBE);
@@ -4343,7 +3920,7 @@ VexInvalRange chainXDirect_MIPS ( VexEndness endness_host,
    UChar* p = (UChar*)place_to_chain;
    vassert(0 == (3 & (HWord)p));
    vassert(isLoadImm_EXACTLY2or6(p, /*r*/9,
-                                 (UInt)Ptr_to_ULong(disp_cp_chain_me_EXPECTED),
+                                 (UInt)(Addr)disp_cp_chain_me_EXPECTED,
                                  mode64));
    vassert(fetch32(p + (mode64 ? 24 : 8) + 0) == 0x120F809);
    vassert(fetch32(p + (mode64 ? 24 : 8) + 4) == 0x00000000);
@@ -4360,7 +3937,7 @@ VexInvalRange chainXDirect_MIPS ( VexEndness endness_host,
    */
 
    p = mkLoadImm_EXACTLY2or6(p, /*r*/9,
-                             Ptr_to_ULong(place_to_jump_to), mode64);
+                             (Addr)place_to_jump_to, mode64);
    p = emit32(p, 0x120F809);
    p = emit32(p, 0x00000000);
 
@@ -4374,8 +3951,8 @@ VexInvalRange chainXDirect_MIPS ( VexEndness endness_host,
    emitInstr case for XDirect, above. */
 VexInvalRange unchainXDirect_MIPS ( VexEndness endness_host,
                                     void* place_to_unchain,
-                                    void* place_to_jump_to_EXPECTED,
-                                    void* disp_cp_chain_me,
+                                    const void* place_to_jump_to_EXPECTED,
+                                    const void* disp_cp_chain_me,
                                     Bool  mode64 )
 {
    vassert(endness_host == VexEndnessLE || endness_host == VexEndnessBE);
@@ -4391,7 +3968,7 @@ VexInvalRange unchainXDirect_MIPS ( VexEndness endness_host,
    UChar* p = (UChar*)place_to_unchain;
    vassert(0 == (3 & (HWord)p));
    vassert(isLoadImm_EXACTLY2or6(p, /*r*/ 9,
-                                 Ptr_to_ULong(place_to_jump_to_EXPECTED),
+                                 (Addr)place_to_jump_to_EXPECTED,
                                  mode64));
    vassert(fetch32(p + (mode64 ? 24 : 8) + 0) == 0x120F809);
    vassert(fetch32(p + (mode64 ? 24 : 8) + 4) == 0x00000000);
@@ -4406,7 +3983,7 @@ VexInvalRange unchainXDirect_MIPS ( VexEndness endness_host,
       The replacement has the same length as the original.
    */
    p = mkLoadImm_EXACTLY2or6(p, /*r*/ 9,
-                             Ptr_to_ULong(disp_cp_chain_me), mode64);
+                             (Addr)disp_cp_chain_me, mode64);
    p = emit32(p, 0x120F809);
    p = emit32(p, 0x00000000);
 
@@ -4420,7 +3997,8 @@ VexInvalRange unchainXDirect_MIPS ( VexEndness endness_host,
    created by the Min_ProfInc case for emit_MIPSInstr. */
 VexInvalRange patchProfInc_MIPS ( VexEndness endness_host,
                                   void*  place_to_patch,
-                                  ULong* location_of_counter, Bool mode64 )
+                                  const ULong* location_of_counter,
+                                  Bool mode64 )
 {
    vassert(endness_host == VexEndnessLE || endness_host == VexEndnessBE);
    if (mode64) {
@@ -4449,7 +4027,7 @@ VexInvalRange patchProfInc_MIPS ( VexEndness endness_host,
    }
 
    p = mkLoadImm_EXACTLY2or6(p, /*r*/9,
-                             Ptr_to_ULong(location_of_counter), mode64);
+                             (Addr)location_of_counter, mode64);
 
    VexInvalRange vir = {(HWord)p, 8};
    return vir;
