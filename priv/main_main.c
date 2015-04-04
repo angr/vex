@@ -83,6 +83,9 @@
    To still compile the below for all supported architectures, define
    VEXMULTIARCH. This is used by the file multiarch_main_main.c */
 
+// Yeah, fuck you.
+#define VEXMULTIARCH 1
+
 #if defined(VGA_x86) || defined(VEXMULTIARCH)
 #define X86FN(f) f
 #define X86ST(f) f
@@ -378,12 +381,12 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
    vassert(vta->disp_cp_xassisted != NULL);
    /* Both the chainers and the indir are either NULL or non-NULL. */
    if (vta->disp_cp_chain_me_to_slowEP        != NULL) {
-      vassert(vta->disp_cp_chain_me_to_fastEP != NULL);
-      vassert(vta->disp_cp_xindir             != NULL);
-      chainingAllowed = True;
+       vassert(vta->disp_cp_chain_me_to_fastEP != NULL);
+       vassert(vta->disp_cp_xindir             != NULL);
+       chainingAllowed = True;
    } else {
-      vassert(vta->disp_cp_chain_me_to_fastEP == NULL);
-      vassert(vta->disp_cp_xindir             == NULL);
+       vassert(vta->disp_cp_chain_me_to_fastEP == NULL);
+       vassert(vta->disp_cp_xindir             == NULL);
    }
 
    vexSetAllocModeTEMP_and_clear();
@@ -793,6 +796,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
    VexRegisterUpdates pxControl = vex_control.iropt_register_updates_default;
    vassert(pxControl >= VexRegUpdSpAtMemAccess
            && pxControl <= VexRegUpdAllregsAtEachInsn);
+
 
    irsb = bb_to_IR ( vta->guest_extents,
                      &res.n_sc_extents,

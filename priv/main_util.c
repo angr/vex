@@ -535,7 +535,7 @@ UInt vex_printf ( const HChar* format, ... )
    UInt ret;
    va_list vargs;
    va_start(vargs, format);
-   ret = vex_vprintf(format, vargs);
+   ret = vprintf(format, vargs);
    va_end(vargs);
 
    return ret;
