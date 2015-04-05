@@ -446,7 +446,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          iselSB       = PPC32FN(iselSB_PPC);
          emit         = (__typeof__(emit)) PPC32FN(emit_PPCInstr);
          host_word_type = Ity_I32;
-         vassert(vta->archinfo_host.endness == VexEndnessBE);
+         // vassert(vta->archinfo_host.endness == VexEndnessBE);
          break;
 
       case VexArchPPC64:
@@ -623,7 +623,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          szB_GUEST_IP           = sizeof( ((VexGuestPPC32State*)0)->guest_CIA );
          offB_HOST_EvC_COUNTER  = offsetof(VexGuestPPC32State,host_EvC_COUNTER);
          offB_HOST_EvC_FAILADDR = offsetof(VexGuestPPC32State,host_EvC_FAILADDR);
-         vassert(vta->archinfo_guest.endness == VexEndnessBE);
+         // vassert(vta->archinfo_guest.endness == VexEndnessBE);
          vassert(0 == sizeof(VexGuestPPC32State) % LibVEX_GUEST_STATE_ALIGN);
          vassert(sizeof( ((VexGuestPPC32State*)0)->guest_CMSTART ) == 4);
          vassert(sizeof( ((VexGuestPPC32State*)0)->guest_CMLEN   ) == 4);
@@ -688,7 +688,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          szB_GUEST_IP           = sizeof( ((VexGuestARMState*)0)->guest_R15T );
          offB_HOST_EvC_COUNTER  = offsetof(VexGuestARMState,host_EvC_COUNTER);
          offB_HOST_EvC_FAILADDR = offsetof(VexGuestARMState,host_EvC_FAILADDR);
-         vassert(vta->archinfo_guest.endness == VexEndnessLE);
+         // vassert(vta->archinfo_guest.endness == VexEndnessLE);
          vassert(0 == sizeof(VexGuestARMState) % LibVEX_GUEST_STATE_ALIGN);
          vassert(sizeof( ((VexGuestARMState*)0)->guest_CMSTART) == 4);
          vassert(sizeof( ((VexGuestARMState*)0)->guest_CMLEN  ) == 4);
@@ -709,7 +709,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          szB_GUEST_IP         = sizeof( ((VexGuestARM64State*)0)->guest_PC );
          offB_HOST_EvC_COUNTER  = offsetof(VexGuestARM64State,host_EvC_COUNTER);
          offB_HOST_EvC_FAILADDR = offsetof(VexGuestARM64State,host_EvC_FAILADDR);
-         vassert(vta->archinfo_guest.endness == VexEndnessLE);
+         // vassert(vta->archinfo_guest.endness == VexEndnessLE);
          vassert(0 == sizeof(VexGuestARM64State) % LibVEX_GUEST_STATE_ALIGN);
          vassert(sizeof( ((VexGuestARM64State*)0)->guest_CMSTART) == 8);
          vassert(sizeof( ((VexGuestARM64State*)0)->guest_CMLEN  ) == 8);
@@ -910,172 +910,172 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       sanityCheckIRSB( irsb, "after instrumentation",
                        True/*must be flat*/, guest_word_type );
 
-   /* Do a post-instrumentation cleanup pass. */
-   if (vta->instrument1 || vta->instrument2) {
-      do_deadcode_BB( irsb );
-      irsb = cprop_BB( irsb );
-      do_deadcode_BB( irsb );
-      sanityCheckIRSB( irsb, "after post-instrumentation cleanup",
-                       True/*must be flat*/, guest_word_type );
-   }
+   // COMMENTED OUT FOR PYVEX: /* Do a post-instrumentation cleanup pass. */
+   // COMMENTED OUT FOR PYVEX: if (vta->instrument1 || vta->instrument2) {
+   // COMMENTED OUT FOR PYVEX:    do_deadcode_BB( irsb );
+   // COMMENTED OUT FOR PYVEX:    irsb = cprop_BB( irsb );
+   // COMMENTED OUT FOR PYVEX:    do_deadcode_BB( irsb );
+   // COMMENTED OUT FOR PYVEX:    sanityCheckIRSB( irsb, "after post-instrumentation cleanup",
+   // COMMENTED OUT FOR PYVEX:                     True/*must be flat*/, guest_word_type );
+   // COMMENTED OUT FOR PYVEX: }
 
-   vexAllocSanityCheck();
+   // COMMENTED OUT FOR PYVEX: vexAllocSanityCheck();
 
-   if (vex_traceflags & VEX_TRACE_OPT2) {
-      vex_printf("\n------------------------" 
-                   " After post-instr IR optimisation "
-                   "------------------------\n\n");
-      ppIRSB ( irsb );
-      vex_printf("\n");
-   }
+   // COMMENTED OUT FOR PYVEX: if (vex_traceflags & VEX_TRACE_OPT2) {
+   // COMMENTED OUT FOR PYVEX:    vex_printf("\n------------------------" 
+   // COMMENTED OUT FOR PYVEX:                 " After post-instr IR optimisation "
+   // COMMENTED OUT FOR PYVEX:                 "------------------------\n\n");
+   // COMMENTED OUT FOR PYVEX:    ppIRSB ( irsb );
+   // COMMENTED OUT FOR PYVEX:    vex_printf("\n");
+   // COMMENTED OUT FOR PYVEX: }
 
-   /* Turn it into virtual-registerised code.  Build trees -- this
-      also throws away any dead bindings. */
-   max_ga = ado_treebuild_BB( irsb, preciseMemExnsFn, pxControl );
+   // COMMENTED OUT FOR PYVEX: /* Turn it into virtual-registerised code.  Build trees -- this
+   // COMMENTED OUT FOR PYVEX:    also throws away any dead bindings. */
+   // COMMENTED OUT FOR PYVEX: max_ga = ado_treebuild_BB( irsb, preciseMemExnsFn );
 
-   if (vta->finaltidy) {
-      irsb = vta->finaltidy(irsb);
-   }
+   // COMMENTED OUT FOR PYVEX: if (vta->finaltidy) {
+   // COMMENTED OUT FOR PYVEX:    irsb = vta->finaltidy(irsb);
+   // COMMENTED OUT FOR PYVEX: }
 
-   vexAllocSanityCheck();
+   // COMMENTED OUT FOR PYVEX: vexAllocSanityCheck();
 
-   if (vex_traceflags & VEX_TRACE_TREES) {
-      vex_printf("\n------------------------" 
-                   "  After tree-building "
-                   "------------------------\n\n");
-      ppIRSB ( irsb );
-      vex_printf("\n");
-   }
+   // COMMENTED OUT FOR PYVEX: if (vex_traceflags & VEX_TRACE_TREES) {
+   // COMMENTED OUT FOR PYVEX:    vex_printf("\n------------------------" 
+   // COMMENTED OUT FOR PYVEX:                 "  After tree-building "
+   // COMMENTED OUT FOR PYVEX:                 "------------------------\n\n");
+   // COMMENTED OUT FOR PYVEX:    ppIRSB ( irsb );
+   // COMMENTED OUT FOR PYVEX:    vex_printf("\n");
+   // COMMENTED OUT FOR PYVEX: }
 
-   /* HACK */
-   if (0) {
-      *(vta->host_bytes_used) = 0;
-      res.status = VexTransOK; return res;
-   }
-   /* end HACK */
+   // COMMENTED OUT FOR PYVEX: /* HACK */
+   // COMMENTED OUT FOR PYVEX: if (0) {
+   // COMMENTED OUT FOR PYVEX:    *(vta->host_bytes_used) = 0;
+   // COMMENTED OUT FOR PYVEX:    res.status = VexTransOK; return res;
+   // COMMENTED OUT FOR PYVEX: }
+   // COMMENTED OUT FOR PYVEX: /* end HACK */
 
-   if (vex_traceflags & VEX_TRACE_VCODE)
-      vex_printf("\n------------------------" 
-                   " Instruction selection "
-                   "------------------------\n");
+   // COMMENTED OUT FOR PYVEX: if (vex_traceflags & VEX_TRACE_VCODE)
+   // COMMENTED OUT FOR PYVEX:    vex_printf("\n------------------------" 
+   // COMMENTED OUT FOR PYVEX:                 " Instruction selection "
+   // COMMENTED OUT FOR PYVEX:                 "------------------------\n");
 
-   /* No guest has its IP field at offset zero.  If this fails it
-      means some transformation pass somewhere failed to update/copy
-      irsb->offsIP properly. */
-   vassert(irsb->offsIP >= 16);
+   // COMMENTED OUT FOR PYVEX: /* No guest has its IP field at offset zero.  If this fails it
+   // COMMENTED OUT FOR PYVEX:    means some transformation pass somewhere failed to update/copy
+   // COMMENTED OUT FOR PYVEX:    irsb->offsIP properly. */
+   // COMMENTED OUT FOR PYVEX: vassert(irsb->offsIP >= 16);
 
-   vcode = iselSB ( irsb, vta->arch_host,
-                    &vta->archinfo_host, 
-                    &vta->abiinfo_both,
-                    offB_HOST_EvC_COUNTER,
-                    offB_HOST_EvC_FAILADDR,
-                    chainingAllowed,
-                    vta->addProfInc,
-                    max_ga );
+   // COMMENTED OUT FOR PYVEX: vcode = iselSB ( irsb, vta->arch_host,
+   // COMMENTED OUT FOR PYVEX:                  &vta->archinfo_host, 
+   // COMMENTED OUT FOR PYVEX:                  &vta->abiinfo_both,
+   // COMMENTED OUT FOR PYVEX:                  offB_HOST_EvC_COUNTER,
+   // COMMENTED OUT FOR PYVEX:                  offB_HOST_EvC_FAILADDR,
+   // COMMENTED OUT FOR PYVEX:                  chainingAllowed,
+   // COMMENTED OUT FOR PYVEX:                  vta->addProfInc,
+   // COMMENTED OUT FOR PYVEX:                  max_ga );
 
-   vexAllocSanityCheck();
+   // COMMENTED OUT FOR PYVEX: vexAllocSanityCheck();
 
-   if (vex_traceflags & VEX_TRACE_VCODE)
-      vex_printf("\n");
+   // COMMENTED OUT FOR PYVEX: if (vex_traceflags & VEX_TRACE_VCODE)
+   // COMMENTED OUT FOR PYVEX:    vex_printf("\n");
 
-   if (vex_traceflags & VEX_TRACE_VCODE) {
-      for (i = 0; i < vcode->arr_used; i++) {
-         vex_printf("%3d   ", i);
-         ppInstr(vcode->arr[i], mode64);
-         vex_printf("\n");
-      }
-      vex_printf("\n");
-   }
+   // COMMENTED OUT FOR PYVEX: if (vex_traceflags & VEX_TRACE_VCODE) {
+   // COMMENTED OUT FOR PYVEX:    for (i = 0; i < vcode->arr_used; i++) {
+   // COMMENTED OUT FOR PYVEX:       vex_printf("%3d   ", i);
+   // COMMENTED OUT FOR PYVEX:       ppInstr(vcode->arr[i], mode64);
+   // COMMENTED OUT FOR PYVEX:       vex_printf("\n");
+   // COMMENTED OUT FOR PYVEX:    }
+   // COMMENTED OUT FOR PYVEX:    vex_printf("\n");
+   // COMMENTED OUT FOR PYVEX: }
 
-   /* Register allocate. */
-   rcode = doRegisterAllocation ( vcode, rRegUniv,
-                                  isMove, getRegUsage, mapRegs, 
-                                  genSpill, genReload, directReload, 
-                                  guest_sizeB,
-                                  ppInstr, ppReg, mode64 );
+   // COMMENTED OUT FOR PYVEX: /* Register allocate. */
+   // COMMENTED OUT FOR PYVEX: rcode = doRegisterAllocation ( vcode, rRegUniv,
+   // COMMENTED OUT FOR PYVEX:                                isMove, getRegUsage, mapRegs, 
+   // COMMENTED OUT FOR PYVEX:                                genSpill, genReload, directReload, 
+   // COMMENTED OUT FOR PYVEX:                                guest_sizeB,
+   // COMMENTED OUT FOR PYVEX:                                ppInstr, ppReg, mode64 );
 
-   vexAllocSanityCheck();
+   // COMMENTED OUT FOR PYVEX: vexAllocSanityCheck();
 
-   if (vex_traceflags & VEX_TRACE_RCODE) {
-      vex_printf("\n------------------------" 
-                   " Register-allocated code "
-                   "------------------------\n\n");
-      for (i = 0; i < rcode->arr_used; i++) {
-         vex_printf("%3d   ", i);
-         ppInstr(rcode->arr[i], mode64);
-         vex_printf("\n");
-      }
-      vex_printf("\n");
-   }
+   // COMMENTED OUT FOR PYVEX: if (vex_traceflags & VEX_TRACE_RCODE) {
+   // COMMENTED OUT FOR PYVEX:    vex_printf("\n------------------------" 
+   // COMMENTED OUT FOR PYVEX:                 " Register-allocated code "
+   // COMMENTED OUT FOR PYVEX:                 "------------------------\n\n");
+   // COMMENTED OUT FOR PYVEX:    for (i = 0; i < rcode->arr_used; i++) {
+   // COMMENTED OUT FOR PYVEX:       vex_printf("%3d   ", i);
+   // COMMENTED OUT FOR PYVEX:       ppInstr(rcode->arr[i], mode64);
+   // COMMENTED OUT FOR PYVEX:       vex_printf("\n");
+   // COMMENTED OUT FOR PYVEX:    }
+   // COMMENTED OUT FOR PYVEX:    vex_printf("\n");
+   // COMMENTED OUT FOR PYVEX: }
 
-   /* HACK */
-   if (0) { 
-      *(vta->host_bytes_used) = 0;
-      res.status = VexTransOK; return res;
-   }
-   /* end HACK */
+   // COMMENTED OUT FOR PYVEX: /* HACK */
+   // COMMENTED OUT FOR PYVEX: if (0) { 
+   // COMMENTED OUT FOR PYVEX:    *(vta->host_bytes_used) = 0;
+   // COMMENTED OUT FOR PYVEX:    res.status = VexTransOK; return res;
+   // COMMENTED OUT FOR PYVEX: }
+   // COMMENTED OUT FOR PYVEX: /* end HACK */
 
-   /* Assemble */
-   if (vex_traceflags & VEX_TRACE_ASM) {
-      vex_printf("\n------------------------" 
-                   " Assembly "
-                   "------------------------\n\n");
-   }
+   // COMMENTED OUT FOR PYVEX: /* Assemble */
+   // COMMENTED OUT FOR PYVEX: if (vex_traceflags & VEX_TRACE_ASM) {
+   // COMMENTED OUT FOR PYVEX:    vex_printf("\n------------------------" 
+   // COMMENTED OUT FOR PYVEX:                 " Assembly "
+   // COMMENTED OUT FOR PYVEX:                 "------------------------\n\n");
+   // COMMENTED OUT FOR PYVEX: }
 
-   out_used = 0; /* tracks along the host_bytes array */
-   for (i = 0; i < rcode->arr_used; i++) {
-      HInstr* hi           = rcode->arr[i];
-      Bool    hi_isProfInc = False;
-      if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
-         ppInstr(hi, mode64);
-         vex_printf("\n");
-      }
-      j = emit( &hi_isProfInc,
-                insn_bytes, sizeof insn_bytes, hi,
-                mode64, vta->archinfo_host.endness,
-                vta->disp_cp_chain_me_to_slowEP,
-                vta->disp_cp_chain_me_to_fastEP,
-                vta->disp_cp_xindir,
-                vta->disp_cp_xassisted );
-      if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
-         for (k = 0; k < j; k++)
-            vex_printf("%02x ", (UInt)insn_bytes[k]);
-         vex_printf("\n\n");
-      }
-      if (UNLIKELY(out_used + j > vta->host_bytes_size)) {
-         vexSetAllocModeTEMP_and_clear();
-         vex_traceflags = 0;
-         res.status = VexTransOutputFull;
-         return res;
-      }
-      if (UNLIKELY(hi_isProfInc)) {
-         vassert(vta->addProfInc); /* else where did it come from? */
-         vassert(res.offs_profInc == -1); /* there can be only one (tm) */
-         vassert(out_used >= 0);
-         res.offs_profInc = out_used;
-      }
-      { UChar* dst = &vta->host_bytes[out_used];
-        for (k = 0; k < j; k++) {
-           dst[k] = insn_bytes[k];
-        }
-        out_used += j;
-      }
-   }
-   *(vta->host_bytes_used) = out_used;
+   // COMMENTED OUT FOR PYVEX: out_used = 0; /* tracks along the host_bytes array */
+   // COMMENTED OUT FOR PYVEX: for (i = 0; i < rcode->arr_used; i++) {
+   // COMMENTED OUT FOR PYVEX:    HInstr* hi           = rcode->arr[i];
+   // COMMENTED OUT FOR PYVEX:    Bool    hi_isProfInc = False;
+   // COMMENTED OUT FOR PYVEX:    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
+   // COMMENTED OUT FOR PYVEX:       ppInstr(hi, mode64);
+   // COMMENTED OUT FOR PYVEX:       vex_printf("\n");
+   // COMMENTED OUT FOR PYVEX:    }
+   // COMMENTED OUT FOR PYVEX:    j = emit( &hi_isProfInc,
+   // COMMENTED OUT FOR PYVEX:              insn_bytes, sizeof insn_bytes, hi,
+   // COMMENTED OUT FOR PYVEX:              mode64, vta->archinfo_host.endness,
+   // COMMENTED OUT FOR PYVEX:              vta->disp_cp_chain_me_to_slowEP,
+   // COMMENTED OUT FOR PYVEX:              vta->disp_cp_chain_me_to_fastEP,
+   // COMMENTED OUT FOR PYVEX:              vta->disp_cp_xindir,
+   // COMMENTED OUT FOR PYVEX:              vta->disp_cp_xassisted );
+   // COMMENTED OUT FOR PYVEX:    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
+   // COMMENTED OUT FOR PYVEX:       for (k = 0; k < j; k++)
+   // COMMENTED OUT FOR PYVEX:          vex_printf("%02x ", (UInt)insn_bytes[k]);
+   // COMMENTED OUT FOR PYVEX:       vex_printf("\n\n");
+   // COMMENTED OUT FOR PYVEX:    }
+   // COMMENTED OUT FOR PYVEX:    if (UNLIKELY(out_used + j > vta->host_bytes_size)) {
+   // COMMENTED OUT FOR PYVEX:       vexSetAllocModeTEMP_and_clear();
+   // COMMENTED OUT FOR PYVEX:       vex_traceflags = 0;
+   // COMMENTED OUT FOR PYVEX:       res.status = VexTransOutputFull;
+   // COMMENTED OUT FOR PYVEX:       return res;
+   // COMMENTED OUT FOR PYVEX:    }
+   // COMMENTED OUT FOR PYVEX:    if (UNLIKELY(hi_isProfInc)) {
+   // COMMENTED OUT FOR PYVEX:       vassert(vta->addProfInc); /* else where did it come from? */
+   // COMMENTED OUT FOR PYVEX:       vassert(res.offs_profInc == -1); /* there can be only one (tm) */
+   // COMMENTED OUT FOR PYVEX:       vassert(out_used >= 0);
+   // COMMENTED OUT FOR PYVEX:       res.offs_profInc = out_used;
+   // COMMENTED OUT FOR PYVEX:    }
+   // COMMENTED OUT FOR PYVEX:    { UChar* dst = &vta->host_bytes[out_used];
+   // COMMENTED OUT FOR PYVEX:      for (k = 0; k < j; k++) {
+   // COMMENTED OUT FOR PYVEX:         dst[k] = insn_bytes[k];
+   // COMMENTED OUT FOR PYVEX:      } 
+   // COMMENTED OUT FOR PYVEX:      out_used += j;
+   // COMMENTED OUT FOR PYVEX:    }
+   // COMMENTED OUT FOR PYVEX: }
+   // COMMENTED OUT FOR PYVEX: *(vta->host_bytes_used) = out_used;
 
-   vexAllocSanityCheck();
+   // COMMENTED OUT FOR PYVEX: vexAllocSanityCheck();
 
-   vexSetAllocModeTEMP_and_clear();
+   // COMMENTED OUT FOR PYVEX: vexSetAllocModeTEMP_and_clear();
 
-   if (vex_traceflags) {
-      /* Print the expansion ratio for this SB. */
-      j = 0; /* total guest bytes */
-      for (i = 0; i < vta->guest_extents->n_used; i++) {
-         j += vta->guest_extents->len[i];
-      }
-      if (1) vex_printf("VexExpansionRatio %d %d   %d :10\n\n",
-                        j, out_used, (10 * out_used) / (j == 0 ? 1 : j));
-   }
+   // COMMENTED OUT FOR PYVEX: if (vex_traceflags) {
+   // COMMENTED OUT FOR PYVEX:    /* Print the expansion ratio for this SB. */
+   // COMMENTED OUT FOR PYVEX:    j = 0; /* total guest bytes */
+   // COMMENTED OUT FOR PYVEX:    for (i = 0; i < vta->guest_extents->n_used; i++) {
+   // COMMENTED OUT FOR PYVEX:       j += vta->guest_extents->len[i];
+   // COMMENTED OUT FOR PYVEX:    }
+   // COMMENTED OUT FOR PYVEX:    if (1) vex_printf("VexExpansionRatio %d %d   %d :10\n\n",
+   // COMMENTED OUT FOR PYVEX:                      j, out_used, (10 * out_used) / (j == 0 ? 1 : j));
+   // COMMENTED OUT FOR PYVEX: }
 
    vex_traceflags = 0;
    res.status = VexTransOK;

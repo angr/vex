@@ -223,6 +223,7 @@ void vex_assert_fail ( const HChar* expr,
 {
    vex_printf( "\nvex: %s:%d (%s): Assertion `%s' failed.\n",
                file, line, fn, expr );
+   throw(VEXError, "exception in VEX (see console)");
    (*vex_failure_exit)();
 }
 
@@ -231,6 +232,7 @@ __attribute__ ((noreturn))
 void vpanic ( const HChar* str )
 {
    vex_printf("\nvex: the `impossible' happened:\n   %s\n", str);
+   throw(VEXError, str);
    (*vex_failure_exit)();
 }
 
@@ -548,9 +550,9 @@ void vfatal ( const HChar* format, ... )
 {
    va_list vargs;
    va_start(vargs, format);
-   vex_vprintf( format, vargs );
+   vprintf( format, vargs );
    va_end(vargs);
-   vex_printf("Cannot continue. Good-bye\n\n");
+   throw(VEXError, "Unsupported Operation in VEX (see console)");
 
    (*vex_failure_exit)();
 }

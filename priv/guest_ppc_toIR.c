@@ -203,6 +203,9 @@
 /* We need to know this to do sub-register accesses correctly. */
 static VexEndness host_endness;
 
+static IREndness guest_ir_endness;
+static VexEndness guest_endness;
+
 /* Pointer to the guest code area. */
 static const UChar* guest_code;
 
@@ -549,21 +552,21 @@ static ULong extend_s_32to64 ( UInt x )
    return (ULong)((((Long)x) << 32) >> 32);
 }
 
-/* Do a proper-endian load of a 32-bit word, regardless of the endianness
-   of the underlying host. */
+/* Do a proper-endian load of a 32-bit word, assuming the underlying
+   host is little-endian. */
 static UInt getUIntPPCendianly ( const UChar* p )
 {
    UInt w = 0;
-   if (host_endness == VexEndnessBE) {
-       w = (w << 8) | p[0];
-       w = (w << 8) | p[1];
-       w = (w << 8) | p[2];
+   if (guest_endness == VexEndnessLE) {
        w = (w << 8) | p[3];
+       w = (w << 8) | p[2];
+       w = (w << 8) | p[1];
+       w = (w << 8) | p[0];
    } else {
-       w = (w << 8) | p[3];
-       w = (w << 8) | p[2];
-       w = (w << 8) | p[1];
        w = (w << 8) | p[0];
+       w = (w << 8) | p[1];
+       w = (w << 8) | p[2];
+       w = (w << 8) | p[3];
    }
    return w;
 }
@@ -583,11 +586,7 @@ static void store ( IRExpr* addr, IRExpr* data )
 {
    IRType tyA = typeOfIRExpr(irsb->tyenv, addr);
    vassert(tyA == Ity_I32 || tyA == Ity_I64);
-
-   if (host_endness == VexEndnessBE)
-      stmt( IRStmt_Store(Iend_BE, addr, data) );
-   else
-      stmt( IRStmt_Store(Iend_LE, addr, data) );
+   stmt( IRStmt_Store(guest_ir_endness, addr, data) );
 }
 
 static IRExpr* unop ( IROp op, IRExpr* a )
@@ -645,10 +644,7 @@ static IRExpr* mkV128 ( UShort i )
 /* This generates a normal (non load-linked) load. */
 static IRExpr* load ( IRType ty, IRExpr* addr )
 {
-   if (host_endness == VexEndnessBE)
-      return IRExpr_Load(Iend_BE, ty, addr);
-   else
-      return IRExpr_Load(Iend_LE, ty, addr);
+   return IRExpr_Load(guest_ir_endness, ty, addr);
 }
 
 static IRStmt* stmt_load ( IRTemp result,
@@ -1169,7 +1165,7 @@ static Int floatGuestRegOffset ( UInt archreg )
 {
    vassert(archreg < 32);
    
-   if (host_endness == VexEndnessLE) {
+   if (guest_endness == VexEndnessLE) {
       switch (archreg) {
          case  0: return offsetofPPCGuestState(guest_VSR0) + 8;
          case  1: return offsetofPPCGuestState(guest_VSR1) + 8;
@@ -5348,7 +5344,9 @@ static Bool dis_int_store ( UInt theInstr, const VexAbiInfo* vbi )
             /* lower half of upper 64-bits */
             assign( EA_lo, ea_rAor0_simm( rA_addr, simm16+12 ) );
          }
+         //putIReg( rA_addr, mkexpr(EA_hi) );
          store( mkexpr(EA_hi), mkexpr(rS) );
+         //putIReg( rA_addr, mkexpr( EA_lo) );
          store( mkexpr(EA_lo), getIReg( rS_addr+1 ) );
          break;
       }
@@ -5381,7 +5379,6 @@ static Bool dis_int_ldst_mult ( UInt theInstr )
 
    Int     simm16 = extend_s_16to32(uimm16);
    IRType  ty     = mode64 ? Ity_I64 : Ity_I32;
-   IROp    mkAdd  = mode64 ? Iop_Add64 : Iop_Add32;
    IRTemp  EA     = newTemp(ty);
    UInt    r      = 0;
    UInt    ea_off = 0;
@@ -5397,8 +5394,8 @@ static Bool dis_int_ldst_mult ( UInt theInstr )
       }
       DIP("lmw r%u,%d(r%u)\n", rD_addr, simm16, rA_addr);
       for (r = rD_addr; r <= 31; r++) {
-         irx_addr = binop(mkAdd, mkexpr(EA), mode64 ? mkU64(ea_off) : mkU32(ea_off));
-         putIReg( r, mkWidenFrom32(ty, load(Ity_I32, irx_addr ),
+         irx_addr = binop(Iop_Add32, mkexpr(EA), mkU32(ea_off));
+         putIReg( r, mkWidenFrom32(ty, loadBE(Ity_I32, irx_addr ),
                                        False) );
          ea_off += 4;
       }
@@ -5407,8 +5404,8 @@ static Bool dis_int_ldst_mult ( UInt theInstr )
    case 0x2F: // stmw (Store Multiple Word, PPC32 p527)
       DIP("stmw r%u,%d(r%u)\n", rS_addr, simm16, rA_addr);
       for (r = rS_addr; r <= 31; r++) {
-         irx_addr = binop(mkAdd, mkexpr(EA), mode64 ? mkU64(ea_off) : mkU32(ea_off));
-         store( irx_addr, mkNarrowTo32(ty, getIReg(r)) );
+         irx_addr = binop(Iop_Add32, mkexpr(EA), mkU32(ea_off));
+         storeBE( irx_addr, mkNarrowTo32(ty, getIReg(r)) );
          ea_off += 4;
       }
       break;
@@ -6831,7 +6828,7 @@ static Bool dis_int_ldst_rev ( UInt theInstr )
                            ty == Ity_I64 ? mkU64( 4 ) : mkU32( 4 ) );
          assign( w3, load( Ity_I32, nextAddr ) );
          assign( w4, gen_byterev32( w3 ) );
-         if (host_endness == VexEndnessLE)
+         if (guest_endness == VexEndnessLE)
             putIReg( rD_addr, binop( Iop_32HLto64, mkexpr( w2 ), mkexpr( w4 ) ) );
          else
             putIReg( rD_addr, binop( Iop_32HLto64, mkexpr( w4 ), mkexpr( w2 ) ) );
@@ -14938,7 +14935,7 @@ dis_vxs_misc( UInt theInstr, UInt opc2 )
       {
          /* Move abs val of dw 0 of VSX[XB] to dw 0 of VSX[XT]. */
          IRTemp absVal = newTemp(Ity_V128);
-         if (host_endness == VexEndnessLE) {
+         if (guest_endness == VexEndnessLE) {
             IRTemp hi64 = newTemp(Ity_I64);
             IRTemp lo64 = newTemp(Ity_I64);
             assign( hi64, unop( Iop_V128HIto64, mkexpr(vB) ) );
@@ -15322,7 +15319,7 @@ dis_vx_load ( UInt theInstr )
       DIP("lxvw4x %d,r%u,r%u\n", (UInt)XT, rA_addr, rB_addr);
 
       /* The load will result in the data being in BE order. */
-      if (host_endness == VexEndnessLE) {
+      if (guest_endness == VexEndnessLE) {
          IRExpr *t0_BE;
          IRTemp perm_LE = newTemp(Ity_V128);
 
@@ -15620,13 +15617,20 @@ static Bool dis_av_load ( const VexAbiInfo* vbi, UInt theInstr )
                          mkU32(0)/*left*/,
                          mkU32(0)/*Little Endian*/);
       if (!mode64) {
-         d = unsafeIRDirty_0_N (
-                        0/*regparms*/, 
-                        "ppc32g_dirtyhelper_LVS",
-                        fnptr_to_fnentry(vbi, &ppc32g_dirtyhelper_LVS),
-                        args_be );
+         if (guest_endness == VexEndnessBE)
+            d = unsafeIRDirty_0_N (
+                           0/*regparms*/, 
+                           "ppc32g_dirtyhelper_LVS",
+                           fnptr_to_fnentry(vbi, &ppc32g_dirtyhelper_LVS),
+                           args_be );
+         else
+            d = unsafeIRDirty_0_N (
+                           0/*regparms*/,
+                           "ppc32g_dirtyhelper_LVS",
+                           &ppc32g_dirtyhelper_LVS,
+                           args_le );
       } else {
-         if (host_endness == VexEndnessBE)
+         if (guest_endness == VexEndnessBE)
             d = unsafeIRDirty_0_N (
                            0/*regparms*/,
                            "ppc64g_dirtyhelper_LVS",
@@ -15670,11 +15674,18 @@ static Bool dis_av_load ( const VexAbiInfo* vbi, UInt theInstr )
                              mkU32(0)/*Little Endian*/);
 
       if (!mode64) {
-         d = unsafeIRDirty_0_N (
-                        0/*regparms*/,
-                        "ppc32g_dirtyhelper_LVS",
-                        fnptr_to_fnentry(vbi, &ppc32g_dirtyhelper_LVS),
-                        args_be );
+         if (guest_endness == VexEndnessBE)
+            d = unsafeIRDirty_0_N (
+                           0/*regparms*/,
+                           "ppc32g_dirtyhelper_LVS",
+                           fnptr_to_fnentry(vbi, &ppc32g_dirtyhelper_LVS),
+                           args_be );
+         else
+            d = unsafeIRDirty_0_N (
+                           0/*regparms*/,
+                           "ppc32g_dirtyhelper_LVS",
+                           &ppc32g_dirtyhelper_LVS,
+                           args_le );
       } else {
          if (host_endness == VexEndnessBE)
             d = unsafeIRDirty_0_N (
@@ -15772,7 +15783,7 @@ static Bool dis_av_store ( UInt theInstr )
       assign( eb, binop(Iop_And8, mkU8(0xF),
                         unop(Iop_32to8,
                              mkNarrowTo32(ty, mkexpr(EA)) )) );
-     if (host_endness == VexEndnessLE) {
+     if (guest_endness == VexEndnessLE) {
          assign( idx, binop(Iop_Shl8, mkexpr(eb), mkU8(3)) );
       } else {
          assign( idx, binop(Iop_Shl8,
@@ -15789,7 +15800,7 @@ static Bool dis_av_store ( UInt theInstr )
       assign( addr_aligned, addr_align(mkexpr(EA), 2) );
       assign( eb, binop(Iop_And8, mkU8(0xF),
                         mkNarrowTo8(ty, mkexpr(addr_aligned) )) );
-      if (host_endness == VexEndnessLE) {
+      if (guest_endness == VexEndnessLE) {
           assign( idx, binop(Iop_Shl8, mkexpr(eb), mkU8(3)) );
       } else {
          assign( idx, binop(Iop_Shl8,
@@ -15806,7 +15817,7 @@ static Bool dis_av_store ( UInt theInstr )
       assign( addr_aligned, addr_align(mkexpr(EA), 4) );
       assign( eb, binop(Iop_And8, mkU8(0xF),
                         mkNarrowTo8(ty, mkexpr(addr_aligned) )) );
-      if (host_endness == VexEndnessLE) {
+      if (guest_endness == VexEndnessLE) {
          assign( idx, binop(Iop_Shl8, mkexpr(eb), mkU8(3)) );
       } else {
          assign( idx, binop(Iop_Shl8,
@@ -18766,20 +18777,20 @@ DisResult disInstr_PPC_WRK (
       const UChar* code = guest_code + delta;
       /* Spot the 16-byte preamble: 
          32-bit mode:
-            5400183E  rlwinm 0,0,3,0,31
-            5400683E  rlwinm 0,0,13,0,31
-            5400E83E  rlwinm 0,0,29,0,31
-            5400983E  rlwinm 0,0,19,0,31
+            54001800  rlwinm 0,0,3,0,0
+            54006800  rlwinm 0,0,13,0,0
+            5400E800  rlwinm 0,0,29,0,0
+            54009800  rlwinm 0,0,19,0,0
          64-bit mode:
             78001800  rotldi 0,0,3
             78006800  rotldi 0,0,13
             7800E802  rotldi 0,0,61
             78009802  rotldi 0,0,51
       */
-      UInt word1 = mode64 ? 0x78001800 : 0x5400183E;
-      UInt word2 = mode64 ? 0x78006800 : 0x5400683E;
-      UInt word3 = mode64 ? 0x7800E802 : 0x5400E83E;
-      UInt word4 = mode64 ? 0x78009802 : 0x5400983E;
+      UInt word1 = mode64 ? 0x78001800 : 0x54001800;
+      UInt word2 = mode64 ? 0x78006800 : 0x54006800;
+      UInt word3 = mode64 ? 0x7800E802 : 0x5400E800;
+      UInt word4 = mode64 ? 0x78009802 : 0x54009800;
       Bool is_special_preamble = False;
       if (getUIntPPCendianly(code+ 0) == word1 &&
           getUIntPPCendianly(code+ 4) == word2 &&
@@ -18822,7 +18833,7 @@ DisResult disInstr_PPC_WRK (
          else
          if (getUIntPPCendianly(code+16) == 0x7C631B78 /* or 3,3,3 */) {
             delta += 20;
-            if (host_endness == VexEndnessLE) {
+            if (guest_endness == VexEndnessLE) {
                 /*  branch-and-link-to-noredir %R12 */
                 DIP("branch-and-link-to-noredir r12\n");
                 putGST( PPC_GST_LR,
@@ -18851,10 +18862,8 @@ DisResult disInstr_PPC_WRK (
          else
          if (getUIntPPCendianly(code+16) == 0x7CA52B78 /* or 5,5,5 */) {
             DIP("IR injection\n");
-            if (host_endness == VexEndnessBE)
-               vex_inject_ir(irsb, Iend_BE);
-            else
-               vex_inject_ir(irsb, Iend_LE);
+
+            vex_inject_ir(irsb, guest_ir_endness);
 
             delta += 20;
             dres.len = 20;
@@ -20203,14 +20212,14 @@ DisResult disInstr_PPC ( IRSB*        irsb_IN,
    /* global -- ick */
    mode64 = guest_arch == VexArchPPC64;
    ty = mode64 ? Ity_I64 : Ity_I32;
-   if (!mode64 && (host_endness_IN == VexEndnessLE)) {
-      vex_printf("disInstr(ppc): Little Endian 32-bit mode is not supported\n");
-      dres.len         = 0;
-      dres.whatNext    = Dis_StopHere;
-      dres.jk_StopHere = Ijk_NoDecode;
-      dres.continueAt   = 0;
-      return dres;
-   }
+   // if (!mode64 && (host_endness_IN == VexEndnessLE)) {
+   //    vex_printf("disInstr(ppc): Little Endian 32-bit mode is not supported\n");
+   //    dres.len         = 0;
+   //    dres.whatNext    = Dis_StopHere;
+   //    dres.jk_StopHere = Ijk_NoDecode;
+   //    dres.continueAt   = 0;
+   //    return dres;
+   // }
 
    /* do some sanity checks */
    mask32 = VEX_HWCAPS_PPC32_F | VEX_HWCAPS_PPC32_V
@@ -20231,6 +20240,8 @@ DisResult disInstr_PPC ( IRSB*        irsb_IN,
    guest_code           = guest_code_IN;
    irsb                 = irsb_IN;
    host_endness         = host_endness_IN;
+   guest_endness        = archinfo->endness;
+   guest_ir_endness     = guest_endness == VexEndnessLE ? Iend_LE : Iend_BE;
 
    guest_CIA_curr_instr = mkSzAddr(ty, guest_IP);
    guest_CIA_bbstart    = mkSzAddr(ty, guest_IP - delta);
