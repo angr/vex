@@ -5395,7 +5395,7 @@ static Bool dis_int_ldst_mult ( UInt theInstr )
       DIP("lmw r%u,%d(r%u)\n", rD_addr, simm16, rA_addr);
       for (r = rD_addr; r <= 31; r++) {
          irx_addr = binop(Iop_Add32, mkexpr(EA), mkU32(ea_off));
-         putIReg( r, mkWidenFrom32(ty, loadBE(Ity_I32, irx_addr ),
+         putIReg( r, mkWidenFrom32(ty, load(Ity_I32, irx_addr ),
                                        False) );
          ea_off += 4;
       }
@@ -5405,7 +5405,7 @@ static Bool dis_int_ldst_mult ( UInt theInstr )
       DIP("stmw r%u,%d(r%u)\n", rS_addr, simm16, rA_addr);
       for (r = rS_addr; r <= 31; r++) {
          irx_addr = binop(Iop_Add32, mkexpr(EA), mkU32(ea_off));
-         storeBE( irx_addr, mkNarrowTo32(ty, getIReg(r)) );
+         store( irx_addr, mkNarrowTo32(ty, getIReg(r)) );
          ea_off += 4;
       }
       break;
