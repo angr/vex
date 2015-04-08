@@ -818,7 +818,7 @@ static Bool is_Branch_or_Jump_and_Link(const UChar * addr)
    return False;
 }
 
-static Bool is_Ret(UChar * addr)
+static Bool is_Ret(const UChar * addr)
 {
     UInt cins = getUInt(addr);
 
@@ -12038,8 +12038,8 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
 
    DisResult dres;
 
-   static IRExpr *lastn = NULL;  /* last jump addr */
-   static IRStmt *bstmt = NULL;  /* branch (Exit) stmt */
+   IRExpr *lastn = mips_lastn;  /* last jump addr */
+   IRStmt *bstmt = mips_bstmt;  /* branch (Exit) stmt */
 
    /* The running delta */
    Int delta = (Int) delta64;
@@ -17198,6 +17198,9 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
       }
       dres.whatNext = Dis_StopHere;
       dres.len = 0;
+
+      mips_lastn = lastn;
+      mips_bstmt = bstmt;
       return dres;
    }  /* switch (opc) for the main (primary) opcode switch. */
 
@@ -17222,6 +17225,7 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
    }
 
    if (likely_delay_slot) {
+      vassert(!delay_slot_jump);
       dres.jk_StopHere = Ijk_Boring;
       dres.whatNext = Dis_StopHere;
       putPC(lastn);
@@ -17276,6 +17280,8 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
 
    DIP("\n");
 
+   mips_lastn = lastn;
+   mips_bstmt = bstmt;
    return dres;
 
 }

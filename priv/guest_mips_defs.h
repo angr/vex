@@ -79,6 +79,16 @@ Bool guest_mips64_state_requires_precise_mem_exns ( Int, Int,
 extern VexGuestLayout mips32Guest_layout;
 extern VexGuestLayout mips64Guest_layout;
 
+/* Holds expressions that need to be pushed forward to the next
+   instruction because of MIPS' pipelining.
+
+   The original implementation had them as static variables in a
+   function in guest_mips_toIR.c, but it is possible to lift
+   single instructions out of context and out of order, so this
+   variable needs to be reset at the beginning of each basic block. */
+IRExpr *mips_lastn;
+IRStmt *mips_bstmt;
+
 /*---------------------------------------------------------*/
 /*---                mips guest helpers                 ---*/
 /*---------------------------------------------------------*/

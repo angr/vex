@@ -736,6 +736,8 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          vassert(sizeof( ((VexGuestMIPS32State*)0)->guest_CMSTART) == 4);
          vassert(sizeof( ((VexGuestMIPS32State*)0)->guest_CMLEN  ) == 4);
          vassert(sizeof( ((VexGuestMIPS32State*)0)->guest_NRADDR ) == 4);
+         mips_lastn = NULL;
+         mips_bstmt = NULL;
          break;
 
       case VexArchMIPS64:
