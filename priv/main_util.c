@@ -42,6 +42,9 @@
 #include "e4c_lite.h"
 E4C_DEFINE_EXCEPTION(VEXError, "VEX Error!", RuntimeException);
 
+#include <stdio.h>
+#include <execinfo.h>
+#include <string.h>
 
 /*---------------------------------------------------------*/
 /*--- Storage                                           ---*/
@@ -223,6 +226,7 @@ void vex_assert_fail ( const HChar* expr,
 {
    vex_printf( "\nvex: %s:%d (%s): Assertion `%s' failed.\n",
                file, line, fn, expr );
+   print_backtrace();
    throw(VEXError, "exception in VEX (see console)");
    (*vex_failure_exit)();
 }
@@ -232,8 +236,38 @@ __attribute__ ((noreturn))
 void vpanic ( const HChar* str )
 {
    vex_printf("\nvex: the `impossible' happened:\n   %s\n", str);
+   print_backtrace();
    throw(VEXError, str);
    (*vex_failure_exit)();
+}
+
+void print_backtrace() {
+   void *bt_data[256];
+   int bt_size;
+   char **bt_strings;
+   char* prefix_end;
+   int prefix_len;
+   int i;
+
+   vex_printf("Traceback:\n");
+   bt_size = backtrace(bt_data, 256);
+   bt_strings = backtrace_symbols(bt_data, bt_size);
+   prefix_end = strchr(bt_strings[0], '(');
+   if (prefix_end == NULL) {
+      // Can't handle this weird stuff. Just let libc do the printing.
+      backtrace_symbols_fd(bt_data, bt_size, 1);
+   } else {
+      //prefix_end++;
+      prefix_len = prefix_end - bt_strings[0];
+      for (i = 2; i < bt_size; i++) {
+         // Skip the first two entries - print_backtrace and the failure function that called it
+         if (strncmp(bt_strings[0], bt_strings[i], prefix_len) != 0) {
+             // Stop when we get to a backtrace entry in a different file
+             break;
+         }
+         vex_printf("%s\n", bt_strings[i]);
+      }
+   }
 }
 
 
@@ -552,6 +586,7 @@ void vfatal ( const HChar* format, ... )
    va_start(vargs, format);
    vprintf( format, vargs );
    va_end(vargs);
+   print_backtrace();
    throw(VEXError, "Unsupported Operation in VEX (see console)");
 
    (*vex_failure_exit)();

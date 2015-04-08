@@ -1364,6 +1364,7 @@ void ppIRExpr ( const IRExpr* e )
       vex_printf("BBPTR");
       break;
     default:
+      vex_printf("BAD BAD BAD EXPR TAG %d", e->tag);
       vpanic("ppIRExpr");
   }
 }
@@ -3443,6 +3444,16 @@ void typeOfPrimop ( IROp op,
 void addStmtToIRSB ( IRSB* bb, IRStmt* st )
 {
    Int i;
+   vex_printf("**** Statements so far:\n");
+   for (i = 0; i < bb->stmts_used; i++) {
+       vex_printf("******** ");
+       ppIRStmt(bb->stmts[i]);
+       vex_printf("\n");
+   }
+   vex_printf("**** Gonna add IRStmt: ");
+   ppIRStmt(st);
+   vex_printf("\n\n");
+
    if (bb->stmts_used == bb->stmts_size) {
       IRStmt** stmts2 = LibVEX_Alloc_inline(2 * bb->stmts_size * sizeof(IRStmt*));
       for (i = 0; i < bb->stmts_size; i++)

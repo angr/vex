@@ -41,7 +41,9 @@
 
 /* Misc. */
 
+#ifndef NULL
 #define NULL ((void*)0)
+#endif
 
 #define LIKELY(x)       __builtin_expect(!!(x), 1)
 #define UNLIKELY(x)     __builtin_expect(!!(x), 0)
@@ -79,6 +81,7 @@ extern UInt vex_printf ( const HChar *format, ... );
 __attribute__ ((format (printf, 2, 3)))
 extern UInt vex_sprintf ( HChar* buf, const HChar *format, ... );
 
+extern void print_backtrace();
 
 /* String ops */
 
