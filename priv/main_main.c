@@ -295,6 +295,11 @@ void LibVEX_Init (
    vexSetAllocMode ( VexAllocModeTEMP );
 }
 
+void vex_update_iropt_level(int level) {
+    vassert(level >= 0);
+    vassert(level <= 2);
+    vex_control.iropt_level = level;
+}
 
 /* --------- Make a translation. --------- */
 /* KLUDGE: S390 need to know the hwcaps of the host when generating

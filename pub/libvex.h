@@ -565,6 +565,7 @@ extern void LibVEX_Init (
    const VexControl* vcon
 );
 
+extern void vex_update_iropt_level(int level);
 
 /*-------------------------------------------------------*/
 /*--- Make a translation                              ---*/
