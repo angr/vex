@@ -124,13 +124,15 @@ typedef
          delicately-balanced PutI/GetI optimisation machinery.
          Therefore best to leave it as a UInt. */
       /* 768 */ UInt  guest_FTOP;
-      /* 772 */ ULong guest_FPREG[8];
-      /* 836 */ UChar guest_FPTAG[8];
-      /* 884 */ ULong guest_FPROUND;
-      /* 852 */ ULong guest_FC3210;
+      /* 772 */ UInt pad1;
+      /* 776 */ ULong guest_FPREG[8];
+      /* 840 */ UChar guest_FPTAG[8];
+      /* 848 */ ULong guest_FPROUND;
+      /* 856 */ ULong guest_FC3210;
 
       /* Emulation notes */
-      /* 860 */ UInt  guest_EMNOTE;
+      /* 864 */ UInt  guest_EMNOTE;
+      /* 868 */ UInt pad2;
 
       /* Translation-invalidation area description.  Not used on amd64
          (there is no invalidate-icache insn), but needed so as to
@@ -139,8 +141,8 @@ typedef
          compilation breakage.  On amd64, these two fields are set to
          zero by LibVEX_GuestAMD64_initialise and then should be
          ignored forever thereafter. */
-      /* 864 */ ULong guest_CMSTART;
-      /* 872 */ ULong guest_CMLEN;
+      /* 872 */ ULong guest_CMSTART;
+      /* 880 */ ULong guest_CMLEN;
 
       /* Used to record the unredirected guest address at the start of
          a translation whose start has been redirected.  By reading
@@ -148,27 +150,27 @@ typedef
          find out what the corresponding no-redirection address was.
          Note, this is only set for wrap-style redirects, not for
          replace-style ones. */
-      /* 880 */ ULong guest_NRADDR;
+      /* 888 */ ULong guest_NRADDR;
 
       /* Used for Darwin syscall dispatching. */
-      /* 888 */ ULong guest_SC_CLASS;
+      /* 896 */ ULong guest_SC_CLASS;
 
       /* HACK to make e.g. tls on darwin work, wine on linux work, ...
          %gs only ever seems to hold a constant value (e.g. 0x60 on darwin,
          0x6b on linux), and so guest_GS_CONST holds the 64-bit offset
          associated with this constant %gs value.  (A direct analogue
          of the %fs-const hack for amd64-linux). */
-      /* 896 */ ULong guest_GS_CONST;
+      /* 904 */ ULong guest_GS_CONST;
 
       /* Needed for Darwin (but mandated for all guest architectures):
          RIP at the last syscall insn (int 0x80/81/82, sysenter,
          syscall).  Used when backing up to restart a syscall that has
          been interrupted by a signal. */
-      /* 904 */ ULong guest_IP_AT_SYSCALL;
+      /* 912 */ ULong guest_IP_AT_SYSCALL;
 
       /* Padding to make it have an 16-aligned size */
-      /* 912 */ ULong pad1;
-   }  /* 920 */
+      /* 918 */ ULong pad3;
+   }  /* 926 */
    VexGuestAMD64State;
 
 
