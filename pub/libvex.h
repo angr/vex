@@ -40,10 +40,8 @@
 #include "libvex_basictypes.h"
 #include "libvex_ir.h"
 
-
 #include "e4c_lite.h"
 E4C_DECLARE_EXCEPTION(VEXError);
-
 
 
 /*---------------------------------------------------------------*/
@@ -144,7 +142,8 @@ typedef
 #define VEX_S390X_MODEL_Z114     9
 #define VEX_S390X_MODEL_ZEC12    10
 #define VEX_S390X_MODEL_ZBC12    11
-#define VEX_S390X_MODEL_UNKNOWN  12     /* always last in list */
+#define VEX_S390X_MODEL_Z13      12
+#define VEX_S390X_MODEL_UNKNOWN  13     /* always last in list */
 #define VEX_S390X_MODEL_MASK     0x3F
 
 #define VEX_HWCAPS_S390X_LDISP (1<<6)   /* Long-displacement facility */
@@ -321,14 +320,14 @@ void LibVEX_default_VexArchInfo ( /*OUT*/VexArchInfo* vai );
       guest is amd64-linux                ==> 128
       guest is other                      ==> inapplicable
 
-   guest_amd64_assume_fs_is_zero
+   guest_amd64_assume_fs_is_const
       guest is amd64-linux                ==> True
       guest is amd64-darwin               ==> False
       guest is other                      ==> inapplicable
 
-   guest_amd64_assume_gs_is_0x60
+   guest_amd64_assume_gs_is_const
       guest is amd64-darwin               ==> True
-      guest is amd64-linux                ==> False
+      guest is amd64-linux                ==> True
       guest is other                      ==> inapplicable
 
    guest_ppc_zap_RZ_at_blr
@@ -355,13 +354,13 @@ typedef
 
       /* AMD64 GUESTS only: should we translate %fs-prefixed
          instructions using the assumption that %fs always contains
-         zero? */
-      Bool guest_amd64_assume_fs_is_zero;
+         the same value? (typically zero on linux) */
+      Bool guest_amd64_assume_fs_is_const;
 
       /* AMD64 GUESTS only: should we translate %gs-prefixed
          instructions using the assumption that %gs always contains
-         0x60? */
-      Bool guest_amd64_assume_gs_is_0x60;
+         the same value? (typically 0x60 on darwin)? */
+      Bool guest_amd64_assume_gs_is_const;
 
       /* PPC GUESTS only: should we zap the stack red zone at a 'blr'
          (function return) ? */
@@ -371,7 +370,7 @@ typedef
          (function call) ?  Is supplied with the guest address of the
          target of the call since that may be significant.  If NULL,
          is assumed equivalent to a fn which always returns False. */
-      Bool (*guest_ppc_zap_RZ_at_bl)(Addr64);
+      Bool (*guest_ppc_zap_RZ_at_bl)(Addr);
 
       /* PPC32/PPC64 HOSTS only: does '&f' give us a pointer to a
          function descriptor on the host, or to the function code
@@ -391,25 +390,37 @@ void LibVEX_default_VexAbiInfo ( /*OUT*/VexAbiInfo* vbi );
 
 
 /* VexRegisterUpdates specifies when to ensure that the guest state is
-   up to date.
+   up to date, in order of increasing accuracy but increasing expense.
 
-   VexRegUpdSpAtMemAccess : all registers are updated at superblock
-   exits, SP is up to date at memory exception points. The SP is described
-   by the arch specific functions guest_<arch>_state_requires_precise_mem_exns.
+     VexRegUpdSpAtMemAccess: all registers are updated at superblock
+     exits, and SP is also up to date at memory exception points.  The
+     SP is described by the arch specific functions
+     guest_<arch>_state_requires_precise_mem_exns.
 
-   VexRegUpdUnwindregsAtMemAccess : registers needed to make a stack trace are
-   up to date at memory exception points.  Typically, these are PC/SP/FP. The
-   minimal registers are described by the arch specific functions
-   guest_<arch>_state_requires_precise_mem_exns.
+     VexRegUpdUnwindregsAtMemAccess: registers needed to make a stack
+     trace are up to date at memory exception points.  Typically,
+     these are PC/SP/FP.  The minimal registers are described by the
+     arch specific functions guest_<arch>_state_requires_precise_mem_exns.
+     This is what Valgrind sets as the default.
 
-   VexRegUpdAllregsAtMemAccess : all registers up to date at memory exception
-   points.
+     VexRegUpdAllregsAtMemAccess: all registers up to date at memory
+     exception points.  This is what normally might be considered as
+     providing "precise exceptions for memory", but does not
+     necessarily provide precise register values at any other kind of
+     exception.
 
-   VexRegUpdAllregsAtEachInsn : all registers up to date at each instruction. */
-typedef enum { VexRegUpdSpAtMemAccess=0x700,
-               VexRegUpdUnwindregsAtMemAccess,
-               VexRegUpdAllregsAtMemAccess,
-               VexRegUpdAllregsAtEachInsn } VexRegisterUpdates;
+     VexRegUpdAllregsAtEachInsn: all registers up to date at each
+     instruction. 
+*/
+typedef
+   enum {
+      VexRegUpd_INVALID=0x700,
+      VexRegUpdSpAtMemAccess,
+      VexRegUpdUnwindregsAtMemAccess,
+      VexRegUpdAllregsAtMemAccess,
+      VexRegUpdAllregsAtEachInsn
+   }
+   VexRegisterUpdates;
 
 /* Control of Vex's optimiser. */
 
@@ -420,8 +431,14 @@ typedef
       /* Control aggressiveness of iropt.  0 = no opt, 1 = simple
          opts, 2 (default) = max optimisation. */
       Int iropt_level;
-      /* Controls when registers are updated in guest state. */
-      VexRegisterUpdates iropt_register_updates;
+      /* Controls when registers are updated in guest state.  Note
+         that this is the default value.  The VEX client can override
+         this on a per-IRSB basis if it wants.  bb_to_IR() will query
+         the client to ask if it wants a different setting for the
+         block under construction, and that new setting is transported
+         back to LibVEX_Translate, which feeds it to iropt via the
+         various do_iropt_BB calls. */
+      VexRegisterUpdates iropt_register_updates_default;
       /* How aggressive should iropt be in unrolling loops?  Higher
          numbers make it more enthusiastic about loop unrolling.
          Default=120.  A setting of zero disables unrolling.  */
@@ -457,50 +474,8 @@ void LibVEX_default_VexControl ( /*OUT*/ VexControl* vcon );
    You can only call it inside an instrumentation or optimisation
    callback that you have previously specified in a call to
    LibVEX_Translate.  The storage allocated will only stay alive until
-   translation of the current basic block is complete.
- */
-extern HChar* private_LibVEX_alloc_first;
-extern HChar* private_LibVEX_alloc_curr;
-extern HChar* private_LibVEX_alloc_last;
-extern void   private_LibVEX_alloc_OOM(void) __attribute__((noreturn));
-
-static inline void* LibVEX_Alloc ( Int nbytes )
-{
-   struct align {
-      char c;
-      union {
-         char c;
-         short s;
-         int i;
-         long l;
-         long long ll;
-         float f;
-         double d;
-         /* long double is currently not used and would increase alignment
-            unnecessarily. */
-         /* long double ld; */
-         void *pto;
-         void (*ptf)(void);
-      } x;
-   };
-
-#if 0
-  /* Nasty debugging hack, do not use. */
-  return malloc(nbytes);
-#else
-   HChar* curr;
-   HChar* next;
-   Int    ALIGN;
-   ALIGN  = offsetof(struct align,x) - 1;
-   nbytes = (nbytes + ALIGN) & ~ALIGN;
-   curr   = private_LibVEX_alloc_curr;
-   next   = curr + nbytes;
-   if (next >= private_LibVEX_alloc_last)
-      private_LibVEX_alloc_OOM();
-   private_LibVEX_alloc_curr = next;
-   return curr;
-#endif
-}
+   translation of the current basic block is complete. */
+extern void* LibVEX_Alloc ( SizeT nbytes );
 
 /* Show Vex allocation statistics. */
 extern void LibVEX_ShowAllocStats ( void );
@@ -560,6 +535,8 @@ typedef
 
 #define LibVEX_N_SPILL_BYTES 4096
 
+/* The size of the guest state must be a multiple of this number. */
+#define LibVEX_GUEST_STATE_ALIGN 16
 
 /*-------------------------------------------------------*/
 /*--- Initialisation of the library                   ---*/
@@ -579,18 +556,16 @@ extern void LibVEX_Init (
    void (*failure_exit) ( void ),
 
    /* logging output function */
-   void (*log_bytes) ( HChar*, Int nbytes ),
+   void (*log_bytes) ( const HChar*, SizeT nbytes ),
 
    /* debug paranoia level */
    Int debuglevel,
 
-   /* Are we supporting valgrind checking? */
-   Bool valgrind_support,
-
    /* Control ... */
-   /*READONLY*/VexControl* vcon
+   const VexControl* vcon
 );
 
+extern void vex_update_iropt_level(int level);
 
 /*-------------------------------------------------------*/
 /*--- Make a translation                              ---*/
@@ -619,12 +594,13 @@ typedef
    scheme of describing a chunk of guest code merely by its start
    address and length is inadequate.
 
-   Hopefully this struct is only 32 bytes long.  Space is important as
-   clients will have to store one of these for each translation made.
+   This struct uses 20 bytes on a 32-bit archtecture and 32 bytes on a
+   64-bit architecture.  Space is important as clients will have to store
+   one of these for each translation made.
 */
 typedef
    struct {
-      Addr64 base[3];
+      Addr   base[3];
       UShort len[3];
       UShort n_used;
    }
@@ -650,16 +626,16 @@ typedef
 
       /* IN: the block to translate, and its guest address. */
       /* where are the actual bytes in the host's address space? */
-      UChar*  guest_bytes;
+      const UChar*  guest_bytes;
       /* where do the bytes really come from in the guest's aspace?
          This is the post-redirection guest address.  Not that Vex
          understands anything about redirection; that is all done on
          the Valgrind side. */
-      Addr64  guest_bytes_addr;
+      Addr    guest_bytes_addr;
 
       /* Is it OK to chase into this guest address?  May not be
 	 NULL. */
-      Bool    (*chase_into_ok) ( /*callback_opaque*/void*, Addr64 );
+      Bool    (*chase_into_ok) ( /*callback_opaque*/void*, Addr );
 
       /* OUT: which bits of guest code actually got translated */
       VexGuestExtents* guest_extents;
@@ -674,15 +650,15 @@ typedef
 	 NULL. */
       IRSB*   (*instrument1) ( /*callback_opaque*/void*, 
                                IRSB*, 
-                               VexGuestLayout*, 
-                               VexGuestExtents*,
-                               VexArchInfo*,
+                               const VexGuestLayout*, 
+                               const VexGuestExtents*,
+                               const VexArchInfo*,
                                IRType gWordTy, IRType hWordTy );
       IRSB*   (*instrument2) ( /*callback_opaque*/void*, 
                                IRSB*, 
-                               VexGuestLayout*, 
-                               VexGuestExtents*,
-                               VexArchInfo*,
+                               const VexGuestLayout*, 
+                               const VexGuestExtents*,
+                               const VexArchInfo*,
                                IRType gWordTy, IRType hWordTy );
 
       IRSB* (*finaltidy) ( IRSB* );
@@ -691,9 +667,20 @@ typedef
          if any, a self check is required for.  Must not be NULL.
          The returned value is a bitmask with a 1 in position i indicating
          that the i'th extent needs a check.  Since there can be at most
-         3 extents, the returned values must be between 0 and 7. */
+         3 extents, the returned values must be between 0 and 7.
+
+         This call also gives the VEX client the opportunity to change
+         the precision of register update preservation as performed by
+         the IR optimiser.  Before the call, VEX will set *pxControl
+         to hold the default register-update status value as specified
+         by VexControl::iropt_register_updates_default as passed to
+         LibVEX_Init at library initialisation time.  The client (in
+         this callback) can if it wants, inspect the value and change
+         it to something different, and that value will be used for
+         subsequent IR optimisation of the block. */
       UInt (*needs_self_check)( /*callback_opaque*/void*,
-                                VexGuestExtents* );
+                                /*MAYBE_MOD*/VexRegisterUpdates* pxControl,
+                                const VexGuestExtents* );
 
       /* IN: optionally, a callback which allows the caller to add its
          own IR preamble following the self-check and any other
@@ -751,10 +738,10 @@ typedef
 
          FIXME: update this comment
       */
-      void* disp_cp_chain_me_to_slowEP;
-      void* disp_cp_chain_me_to_fastEP;
-      void* disp_cp_xindir;
-      void* disp_cp_xassisted;
+      const void* disp_cp_chain_me_to_slowEP;
+      const void* disp_cp_chain_me_to_fastEP;
+      const void* disp_cp_xindir;
+      const void* disp_cp_xassisted;
    }
    VexTranslateArgs;
 
@@ -795,39 +782,38 @@ typedef
    currently contains a call to the dispatcher specified by
    disp_cp_chain_me_EXPECTED. */
 extern
-VexInvalRange LibVEX_Chain ( VexArch    arch_host,
-                             VexEndness endhess_host,
-                             void*      place_to_chain,
-                             void*      disp_cp_chain_me_EXPECTED,
-                             void*      place_to_jump_to );
+VexInvalRange LibVEX_Chain ( VexArch     arch_host,
+                             VexEndness  endhess_host,
+                             void*       place_to_chain,
+                             const void* disp_cp_chain_me_EXPECTED,
+                             const void* place_to_jump_to );
 
 /* Undo an XDirect jump located at place_to_unchain, so it is
    converted back into a call to disp_cp_chain_me.  It is expected
    (and checked) that this site currently contains a jump directly to
    the address specified by place_to_jump_to_EXPECTED. */
 extern
-VexInvalRange LibVEX_UnChain ( VexArch    arch_host,
-                               VexEndness endness_host,
-                               void*      place_to_unchain,
-                               void*      place_to_jump_to_EXPECTED,
-                               void*      disp_cp_chain_me );
+VexInvalRange LibVEX_UnChain ( VexArch     arch_host,
+                               VexEndness  endness_host,
+                               void*       place_to_unchain,
+                               const void* place_to_jump_to_EXPECTED,
+                               const void* disp_cp_chain_me );
 
 /* Returns a constant -- the size of the event check that is put at
    the start of every translation.  This makes it possible to
    calculate the fast entry point address if the slow entry point
    address is known (the usual case), or vice versa. */
 extern
-Int LibVEX_evCheckSzB ( VexArch    arch_host,
-                        VexEndness endness_host );
+Int LibVEX_evCheckSzB ( VexArch arch_host );
 
 
 /* Patch the counter location into an existing ProfInc point.  The
    specified point is checked to make sure it is plausible. */
 extern
-VexInvalRange LibVEX_PatchProfInc ( VexArch    arch_host,
-                                    VexEndness endness_host,
-                                    void*      place_to_patch,
-                                    ULong*     location_of_counter );
+VexInvalRange LibVEX_PatchProfInc ( VexArch      arch_host,
+                                    VexEndness   endness_host,
+                                    void*        place_to_patch,
+                                    const ULong* location_of_counter );
 
 
 /*-------------------------------------------------------*/

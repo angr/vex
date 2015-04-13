@@ -188,12 +188,12 @@ typedef
 
 static HashHW* newHHW ( void )
 {
-   HashHW* h = LibVEX_Alloc(sizeof(HashHW));
+   HashHW* h = LibVEX_Alloc_inline(sizeof(HashHW));
    h->size   = 8;
    h->used   = 0;
-   h->inuse  = LibVEX_Alloc(h->size * sizeof(Bool));
-   h->key    = LibVEX_Alloc(h->size * sizeof(HWord));
-   h->val    = LibVEX_Alloc(h->size * sizeof(HWord));
+   h->inuse  = LibVEX_Alloc_inline(h->size * sizeof(Bool));
+   h->key    = LibVEX_Alloc_inline(h->size * sizeof(HWord));
+   h->val    = LibVEX_Alloc_inline(h->size * sizeof(HWord));
    return h;
 }
 
@@ -233,9 +233,9 @@ static void addToHHW ( HashHW* h, HWord key, HWord val )
    /* Ensure a space is available. */
    if (h->used == h->size) {
       /* Copy into arrays twice the size. */
-      Bool*  inuse2 = LibVEX_Alloc(2 * h->size * sizeof(Bool));
-      HWord* key2   = LibVEX_Alloc(2 * h->size * sizeof(HWord));
-      HWord* val2   = LibVEX_Alloc(2 * h->size * sizeof(HWord));
+      Bool*  inuse2 = LibVEX_Alloc_inline(2 * h->size * sizeof(Bool));
+      HWord* key2   = LibVEX_Alloc_inline(2 * h->size * sizeof(HWord));
+      HWord* val2   = LibVEX_Alloc_inline(2 * h->size * sizeof(HWord));
       for (i = j = 0; i < h->size; i++) {
          if (!h->inuse[i]) continue;
          inuse2[j] = True;
@@ -716,7 +716,8 @@ static void redundant_get_removal_BB ( IRSB* bb )
 static void handle_gets_Stmt ( 
                HashHW* env, 
                IRStmt* st,
-               Bool (*preciseMemExnsFn)(Int,Int)
+               Bool (*preciseMemExnsFn)(Int,Int,VexRegisterUpdates),
+               VexRegisterUpdates pxControl
             )
 {
    Int     j;
@@ -803,6 +804,10 @@ static void handle_gets_Stmt (
          vassert(isIRAtom(st->Ist.Exit.guard));
          break;
 
+      case Ist_Put:
+         vassert(isIRAtom(st->Ist.Put.data));
+         break;
+
       case Ist_PutI:
          vassert(isIRAtom(st->Ist.PutI.details->ix));
          vassert(isIRAtom(st->Ist.PutI.details->data));
@@ -824,7 +829,7 @@ static void handle_gets_Stmt (
          of the environment corresponding to guest state that may not
          be reordered with respect to memory references.  That means
          at least the stack pointer. */
-      switch (vex_control.iropt_register_updates) {
+      switch (pxControl) {
          case VexRegUpdAllregsAtMemAccess:
             /* Precise exceptions required at mem access.
                Flush all guest state. */
@@ -845,13 +850,15 @@ static void handle_gets_Stmt (
                   preciseMemExnsFn. */
                HWord k_lo = (env->key[j] >> 16) & 0xFFFF;
                HWord k_hi = env->key[j] & 0xFFFF;
-               if (preciseMemExnsFn( k_lo, k_hi ))
+               if (preciseMemExnsFn( k_lo, k_hi, pxControl ))
                   env->inuse[j] = False;
             }
             break;
-         default:
+         case VexRegUpdAllregsAtEachInsn:
             // VexRegUpdAllregsAtEachInsn cannot happen here.
-            // Neither any rubbish other value.
+            // fall through
+         case VexRegUpd_INVALID:
+         default:
             vassert(0);
       }
    } /* if (memRW) */
@@ -877,7 +884,8 @@ static void handle_gets_Stmt (
 
 static void redundant_put_removal_BB ( 
                IRSB* bb,
-               Bool (*preciseMemExnsFn)(Int,Int)
+               Bool (*preciseMemExnsFn)(Int,Int,VexRegisterUpdates),
+               VexRegisterUpdates pxControl
             )
 {
    Int     i, j;
@@ -885,7 +893,7 @@ static void redundant_put_removal_BB (
    IRStmt* st;
    UInt    key = 0; /* keep gcc -O happy */
 
-   vassert(vex_control.iropt_register_updates < VexRegUpdAllregsAtEachInsn);
+   vassert(pxControl < VexRegUpdAllregsAtEachInsn);
 
    HashHW* env = newHHW();
 
@@ -977,7 +985,7 @@ static void redundant_put_removal_BB (
          of the guest state is no longer a write, but a read.  Also
          deals with implicit reads of guest state needed to maintain
          precise exceptions. */
-      handle_gets_Stmt( env, st, preciseMemExnsFn );
+      handle_gets_Stmt( env, st, preciseMemExnsFn, pxControl );
    }
 }
 
@@ -1349,6 +1357,15 @@ static IRExpr* chase ( IRExpr** env, IRExpr* e )
    return e;
 }
 
+/* Similar to |chase|, but follows at most one level of tmp reference. */
+static IRExpr* chase1 ( IRExpr** env, IRExpr* e )
+{
+   if (e == NULL || e->tag != Iex_RdTmp)
+      return e;
+   else
+      return env[(Int)e->Iex.RdTmp.tmp];
+}
+
 static IRExpr* fold_Expr ( IRExpr** env, IRExpr* e )
 {
    Int     shift;
@@ -1397,17 +1414,17 @@ static IRExpr* fold_Expr ( IRExpr** env, IRExpr* e )
             break;
 
          case Iop_8Sto32: {
-            /* signed */ Int s32 = e->Iex.Unop.arg->Iex.Const.con->Ico.U8;
-            s32 <<= 24;
-            s32 >>= 24;
-            e2 = IRExpr_Const(IRConst_U32((UInt)s32));
+            UInt u32 = e->Iex.Unop.arg->Iex.Const.con->Ico.U8;
+            u32 <<= 24;
+            u32 = (Int)u32 >> 24;   /* signed shift */
+            e2 = IRExpr_Const(IRConst_U32(u32));
             break;
          }
          case Iop_16Sto32: {
-            /* signed */ Int s32 = e->Iex.Unop.arg->Iex.Const.con->Ico.U16;
-            s32 <<= 16;
-            s32 >>= 16;
-            e2 = IRExpr_Const(IRConst_U32( (UInt)s32) );
+            UInt u32 = e->Iex.Unop.arg->Iex.Const.con->Ico.U16;
+            u32 <<= 16;
+            u32 = (Int)u32 >> 16;   /* signed shift */
+            e2 = IRExpr_Const(IRConst_U32(u32));
             break;
          }
          case Iop_8Uto64:
@@ -1423,10 +1440,10 @@ static IRExpr* fold_Expr ( IRExpr** env, IRExpr* e )
                     0xFF & e->Iex.Unop.arg->Iex.Const.con->Ico.U8));
             break;
          case Iop_8Sto16: {
-            /* signed */ Short s16 = e->Iex.Unop.arg->Iex.Const.con->Ico.U8;
-            s16 <<= 8;
-            s16 >>= 8;
-            e2 = IRExpr_Const(IRConst_U16( (UShort)s16) );
+            UShort u16 = e->Iex.Unop.arg->Iex.Const.con->Ico.U8;
+            u16 <<= 8;
+            u16 = (Short)u16 >> 8;  /* signed shift */
+            e2 = IRExpr_Const(IRConst_U16(u16));
             break;
          }
          case Iop_8Uto16:
@@ -1512,17 +1529,17 @@ static IRExpr* fold_Expr ( IRExpr** env, IRExpr* e )
                     & e->Iex.Unop.arg->Iex.Const.con->Ico.U32));
             break;
          case Iop_16Sto64: {
-            /* signed */ Long s64 = e->Iex.Unop.arg->Iex.Const.con->Ico.U16;
-            s64 <<= 48;
-            s64 >>= 48;
-            e2 = IRExpr_Const(IRConst_U64((ULong)s64));
+            ULong u64 = e->Iex.Unop.arg->Iex.Const.con->Ico.U16;
+            u64 <<= 48;
+            u64 = (Long)u64 >> 48;   /* signed shift */
+            e2 = IRExpr_Const(IRConst_U64(u64));
             break;
          }
          case Iop_32Sto64: {
-            /* signed */ Long s64 = e->Iex.Unop.arg->Iex.Const.con->Ico.U32;
-            s64 <<= 32;
-            s64 >>= 32;
-            e2 = IRExpr_Const(IRConst_U64((ULong)s64));
+            ULong u64 = e->Iex.Unop.arg->Iex.Const.con->Ico.U32;
+            u64 <<= 32;
+            u64 = (Long)u64 >> 32;   /* signed shift */
+            e2 = IRExpr_Const(IRConst_U64(u64));
             break;
          }
 
@@ -1651,6 +1668,18 @@ static IRExpr* fold_Expr ( IRExpr** env, IRExpr* e )
             UInt v256 = e->Iex.Unop.arg->Iex.Const.con->Ico.V256;
             if (v256 == 0x00000000) {
                e2 = IRExpr_Const(IRConst_U64(0));
+            } else {
+               goto unhandled;
+            }
+            break;
+         }
+
+         case Iop_ZeroHI64ofV128: {
+            /* Could do better here -- only need to look at the bottom 64 bits
+               of the argument, really. */
+            UShort v128 = e->Iex.Unop.arg->Iex.Const.con->Ico.V128;
+            if (v128 == 0x0000) {
+               e2 = IRExpr_Const(IRConst_V128(0x0000));
             } else {
                goto unhandled;
             }
@@ -2058,7 +2087,8 @@ static IRExpr* fold_Expr ( IRExpr** env, IRExpr* e )
             case Iop_Shl32:
             case Iop_Shl64:
             case Iop_Shr64:
-               /* Shl32/Shl64/Shr64(x,0) ==> x */
+            case Iop_Sar64:
+               /* Shl32/Shl64/Shr64/Sar64(x,0) ==> x */
                if (isZeroU(e->Iex.Binop.arg2)) {
                   e2 = e->Iex.Binop.arg1;
                   break;
@@ -2070,8 +2100,9 @@ static IRExpr* fold_Expr ( IRExpr** env, IRExpr* e )
                }
                break;
 
+            case Iop_Sar32:
             case Iop_Shr32:
-               /* Shr32(x,0) ==> x */
+               /* Shr32/Sar32(x,0) ==> x */
                if (isZeroU(e->Iex.Binop.arg2)) {
                   e2 = e->Iex.Binop.arg1;
                   break;
@@ -2258,6 +2289,29 @@ static IRExpr* fold_Expr ( IRExpr** env, IRExpr* e )
                if (sameIRExprs(env, e->Iex.Binop.arg1, e->Iex.Binop.arg2)) {
                   e2 = mkZeroOfPrimopResultType(e->Iex.Binop.op);
                   break;
+               }
+               /* XorV128(t,0) ==> t */
+               if (e->Iex.Binop.op == Iop_XorV128) {
+                  if (isZeroV128(e->Iex.Binop.arg2)) {
+                     e2 = e->Iex.Binop.arg1;
+                     break;
+                  }
+                  //Disabled because there's no known test case right now.
+                  //if (isZeroV128(e->Iex.Binop.arg1)) {
+                  //   e2 = e->Iex.Binop.arg2;
+                  //   break;
+                  //}
+               } else {
+                  /* Xor8/16/32/64(0,t) ==> t */
+                  if (isZeroU(e->Iex.Binop.arg1)) {
+                     e2 = e->Iex.Binop.arg2;
+                     break;
+                  }
+                  /* Xor8/16/32/64(t,0) ==> t */
+                  if (isZeroU(e->Iex.Binop.arg2)) {
+                     e2 = e->Iex.Binop.arg1;
+                     break;
+                  }
                }
                break;
 
@@ -2704,7 +2758,7 @@ IRSB* cprop_BB ( IRSB* in )
    IRSB*    out;
    IRStmt*  st2;
    Int      n_tmps = in->tyenv->types_used;
-   IRExpr** env = LibVEX_Alloc(n_tmps * sizeof(IRExpr*));
+   IRExpr** env = LibVEX_Alloc_inline(n_tmps * sizeof(IRExpr*));
    /* Keep track of IRStmt_LoadGs that we need to revisit after
       processing all the other statements. */
    const Int N_FIXUPS = 16;
@@ -3040,7 +3094,7 @@ static Bool isOneU1 ( IRExpr* e )
 {
    Int     i, i_unconditional_exit;
    Int     n_tmps = bb->tyenv->types_used;
-   Bool*   set = LibVEX_Alloc(n_tmps * sizeof(Bool));
+   Bool*   set = LibVEX_Alloc_inline(n_tmps * sizeof(Bool));
    IRStmt* st;
 
    for (i = 0; i < n_tmps; i++)
@@ -3312,6 +3366,35 @@ static Bool eqIRCallee ( IRCallee* cee1, IRCallee* cee2 )
    return eq;
 }
 
+/* Convert an atomic IRExpr* to a TmpOrConst. */
+static void irExpr_to_TmpOrConst ( /*OUT*/TmpOrConst* tc, IRExpr* e )
+{
+   switch (e->tag) {
+      case Iex_RdTmp:
+         tc->tag   = TCt;
+         tc->u.tmp = e->Iex.RdTmp.tmp;
+         break;
+      case Iex_Const:
+         tc->tag   = TCc;
+         tc->u.con = e->Iex.Const.con;
+         break;
+      default:
+         /* Getting here is a serious error.  It means that the
+            presented arg isn't an IR atom, as it should be. */
+         vpanic("irExpr_to_TmpOrConst");
+   }
+}
+
+/* Convert a TmpOrConst to an atomic IRExpr*. */
+static IRExpr* tmpOrConst_to_IRExpr ( TmpOrConst* tc )
+{
+   switch (tc->tag) {
+      case TCc: return IRExpr_Const(tc->u.con);
+      case TCt: return IRExpr_RdTmp(tc->u.tmp);
+      default:  vpanic("tmpOrConst_to_IRExpr");
+   }
+}
+
 /* Convert a NULL terminated IRExpr* vector to an array of
    TmpOrConsts, and a length. */
 static void irExprVec_to_TmpOrConsts ( /*OUT*/TmpOrConst** outs,
@@ -3322,32 +3405,20 @@ static void irExprVec_to_TmpOrConsts ( /*OUT*/TmpOrConst** outs,
    /* We have to make two passes, one to count, one to copy. */
    for (n = 0; ins[n]; n++)
       ;
-   *outs  = LibVEX_Alloc(n * sizeof(TmpOrConst));
+   *outs  = LibVEX_Alloc_inline(n * sizeof(TmpOrConst));
    *nOuts = n;
    /* and now copy .. */
    for (i = 0; i < n; i++) {
-      IRExpr*       arg = ins[i];
+      IRExpr*     arg = ins[i];
       TmpOrConst* dst = &(*outs)[i];
-      if (arg->tag == Iex_RdTmp) {
-         dst->tag   = TCt;
-         dst->u.tmp = arg->Iex.RdTmp.tmp;
-      }
-      else if (arg->tag == Iex_Const) {
-         dst->tag   = TCc;
-         dst->u.con = arg->Iex.Const.con;
-      }
-      else {
-         /* Failure of this is serious; it means that the presented arg
-            isn't an IR atom, as it should be. */
-         vpanic("irExprVec_to_TmpOrConsts");
-      }
+      irExpr_to_TmpOrConst(dst, arg);
    }
 }
 
 typedef
    struct {
       enum { Ut, Btt, Btc, Bct, Cf64i, Ittt, Itct, Ittc, Itcc, GetIt,
-             CCall
+             CCall, Load
       } tag;
       union {
          /* unop(tmp) */
@@ -3414,6 +3485,12 @@ typedef
             Int         nArgs;
             IRType      retty;
          } CCall;
+         /* Load(end,ty,addr) */
+         struct {
+            IREndness  end;
+            IRType     ty;
+            TmpOrConst addr;
+         } Load;
       } u;
    }
    AvailExpr;
@@ -3481,7 +3558,14 @@ static Bool eq_AvailExpr ( AvailExpr* a1, AvailExpr* a2 )
          if (eq) vassert(a1->u.CCall.retty == a2->u.CCall.retty);
          return eq;  
       }
-      default: vpanic("eq_AvailExpr");
+      case Load: {
+         Bool eq = toBool(a1->u.Load.end == a2->u.Load.end
+                          && a1->u.Load.ty == a2->u.Load.ty
+                          && eqTmpOrConst(&a1->u.Load.addr, &a2->u.Load.addr));
+         return eq;
+      }
+      default:
+         vpanic("eq_AvailExpr");
    }
 }
 
@@ -3496,13 +3580,13 @@ static IRExpr* availExpr_to_IRExpr ( AvailExpr* ae )
                               IRExpr_RdTmp(ae->u.Btt.arg1),
                               IRExpr_RdTmp(ae->u.Btt.arg2) );
       case Btc:
-         con = LibVEX_Alloc(sizeof(IRConst));
+         con = LibVEX_Alloc_inline(sizeof(IRConst));
          *con = ae->u.Btc.con2;
          return IRExpr_Binop( ae->u.Btc.op,
                               IRExpr_RdTmp(ae->u.Btc.arg1), 
                               IRExpr_Const(con) );
       case Bct:
-         con = LibVEX_Alloc(sizeof(IRConst));
+         con = LibVEX_Alloc_inline(sizeof(IRConst));
          *con = ae->u.Bct.con1;
          return IRExpr_Binop( ae->u.Bct.op,
                               IRExpr_Const(con), 
@@ -3514,21 +3598,21 @@ static IRExpr* availExpr_to_IRExpr ( AvailExpr* ae )
                            IRExpr_RdTmp(ae->u.Ittt.e1), 
                            IRExpr_RdTmp(ae->u.Ittt.e0));
       case Ittc:
-         con0 = LibVEX_Alloc(sizeof(IRConst));
+         con0 = LibVEX_Alloc_inline(sizeof(IRConst));
          *con0 = ae->u.Ittc.con0;
          return IRExpr_ITE(IRExpr_RdTmp(ae->u.Ittc.co), 
                            IRExpr_RdTmp(ae->u.Ittc.e1),
                            IRExpr_Const(con0));
       case Itct:
-         con1 = LibVEX_Alloc(sizeof(IRConst));
+         con1 = LibVEX_Alloc_inline(sizeof(IRConst));
          *con1 = ae->u.Itct.con1;
          return IRExpr_ITE(IRExpr_RdTmp(ae->u.Itct.co), 
                            IRExpr_Const(con1),
                            IRExpr_RdTmp(ae->u.Itct.e0));
 
       case Itcc:
-         con0 = LibVEX_Alloc(sizeof(IRConst));
-         con1 = LibVEX_Alloc(sizeof(IRConst));
+         con0 = LibVEX_Alloc_inline(sizeof(IRConst));
+         con1 = LibVEX_Alloc_inline(sizeof(IRConst));
          *con0 = ae->u.Itcc.con0;
          *con1 = ae->u.Itcc.con1;
          return IRExpr_ITE(IRExpr_RdTmp(ae->u.Itcc.co), 
@@ -3541,22 +3625,18 @@ static IRExpr* availExpr_to_IRExpr ( AvailExpr* ae )
       case CCall: {
          Int i, n = ae->u.CCall.nArgs;
          vassert(n >= 0);
-         IRExpr** vec = LibVEX_Alloc((n+1) * sizeof(IRExpr*));
+         IRExpr** vec = LibVEX_Alloc_inline((n+1) * sizeof(IRExpr*));
          vec[n] = NULL;
          for (i = 0; i < n; i++) {
-            TmpOrConst* tc = &ae->u.CCall.args[i];
-            if (tc->tag == TCc) {
-               vec[i] = IRExpr_Const(tc->u.con);
-            }
-            else if (tc->tag == TCt) {
-               vec[i] = IRExpr_RdTmp(tc->u.tmp);
-            }
-            else vpanic("availExpr_to_IRExpr:CCall-arg");
+            vec[i] = tmpOrConst_to_IRExpr(&ae->u.CCall.args[i]);
          }
          return IRExpr_CCall(ae->u.CCall.cee,
                              ae->u.CCall.retty,
                              vec);
       }
+      case Load:
+         return IRExpr_Load(ae->u.Load.end, ae->u.Load.ty,
+                            tmpOrConst_to_IRExpr(&ae->u.Load.addr));
       default:
          vpanic("availExpr_to_IRExpr");
    }
@@ -3571,6 +3651,16 @@ static IRTemp subst_AvailExpr_Temp ( HashHW* env, IRTemp tmp )
       return (IRTemp)res;
    else
       return tmp;
+}
+
+inline
+static void subst_AvailExpr_TmpOrConst ( /*MB_MOD*/TmpOrConst* tc,
+                                          HashHW* env )
+{
+   /* env :: IRTemp -> IRTemp */
+   if (tc->tag == TCt) {
+      tc->u.tmp = subst_AvailExpr_Temp( env, tc->u.tmp );
+   }
 }
 
 static void subst_AvailExpr ( HashHW* env, AvailExpr* ae )
@@ -3614,26 +3704,26 @@ static void subst_AvailExpr ( HashHW* env, AvailExpr* ae )
       case CCall: {
          Int i, n = ae->u.CCall.nArgs;;
          for (i = 0; i < n; i++) {
-            TmpOrConst* tc = &ae->u.CCall.args[i];
-            if (tc->tag == TCt) {
-               tc->u.tmp = subst_AvailExpr_Temp( env, tc->u.tmp );
-            }
+            subst_AvailExpr_TmpOrConst(&ae->u.CCall.args[i], env);
          }
          break;
       }
+      case Load:
+         subst_AvailExpr_TmpOrConst(&ae->u.Load.addr, env);
+         break;
       default: 
          vpanic("subst_AvailExpr");
    }
 }
 
-static AvailExpr* irExpr_to_AvailExpr ( IRExpr* e )
+static AvailExpr* irExpr_to_AvailExpr ( IRExpr* e, Bool allowLoadsToBeCSEd )
 {
    AvailExpr* ae;
 
    switch (e->tag) {
       case Iex_Unop:
          if (e->Iex.Unop.arg->tag == Iex_RdTmp) {
-            ae = LibVEX_Alloc(sizeof(AvailExpr));
+            ae = LibVEX_Alloc_inline(sizeof(AvailExpr));
             ae->tag      = Ut;
             ae->u.Ut.op  = e->Iex.Unop.op;
             ae->u.Ut.arg = e->Iex.Unop.arg->Iex.RdTmp.tmp;
@@ -3644,7 +3734,7 @@ static AvailExpr* irExpr_to_AvailExpr ( IRExpr* e )
       case Iex_Binop:
          if (e->Iex.Binop.arg1->tag == Iex_RdTmp) {
             if (e->Iex.Binop.arg2->tag == Iex_RdTmp) {
-               ae = LibVEX_Alloc(sizeof(AvailExpr));
+               ae = LibVEX_Alloc_inline(sizeof(AvailExpr));
                ae->tag        = Btt;
                ae->u.Btt.op   = e->Iex.Binop.op;
                ae->u.Btt.arg1 = e->Iex.Binop.arg1->Iex.RdTmp.tmp;
@@ -3652,7 +3742,7 @@ static AvailExpr* irExpr_to_AvailExpr ( IRExpr* e )
                return ae;
             }
             if (e->Iex.Binop.arg2->tag == Iex_Const) {
-               ae = LibVEX_Alloc(sizeof(AvailExpr));
+               ae = LibVEX_Alloc_inline(sizeof(AvailExpr));
                ae->tag        = Btc;
                ae->u.Btc.op   = e->Iex.Binop.op;
                ae->u.Btc.arg1 = e->Iex.Binop.arg1->Iex.RdTmp.tmp;
@@ -3661,7 +3751,7 @@ static AvailExpr* irExpr_to_AvailExpr ( IRExpr* e )
             }
          } else if (e->Iex.Binop.arg1->tag == Iex_Const
                     && e->Iex.Binop.arg2->tag == Iex_RdTmp) {
-            ae = LibVEX_Alloc(sizeof(AvailExpr));
+            ae = LibVEX_Alloc_inline(sizeof(AvailExpr));
             ae->tag        = Bct;
             ae->u.Bct.op   = e->Iex.Binop.op;
             ae->u.Bct.arg2 = e->Iex.Binop.arg2->Iex.RdTmp.tmp;
@@ -3672,7 +3762,7 @@ static AvailExpr* irExpr_to_AvailExpr ( IRExpr* e )
 
       case Iex_Const:
          if (e->Iex.Const.con->tag == Ico_F64i) {
-            ae = LibVEX_Alloc(sizeof(AvailExpr));
+            ae = LibVEX_Alloc_inline(sizeof(AvailExpr));
             ae->tag          = Cf64i;
             ae->u.Cf64i.f64i = e->Iex.Const.con->Ico.F64i;
             return ae;
@@ -3683,7 +3773,7 @@ static AvailExpr* irExpr_to_AvailExpr ( IRExpr* e )
          if (e->Iex.ITE.cond->tag == Iex_RdTmp) {
             if (e->Iex.ITE.iffalse->tag == Iex_RdTmp) {
                if (e->Iex.ITE.iftrue->tag == Iex_RdTmp) {
-                  ae = LibVEX_Alloc(sizeof(AvailExpr));
+                  ae = LibVEX_Alloc_inline(sizeof(AvailExpr));
                   ae->tag       = Ittt;
                   ae->u.Ittt.co = e->Iex.ITE.cond->Iex.RdTmp.tmp;
                   ae->u.Ittt.e1 = e->Iex.ITE.iftrue->Iex.RdTmp.tmp;
@@ -3691,7 +3781,7 @@ static AvailExpr* irExpr_to_AvailExpr ( IRExpr* e )
                   return ae;
                }
                if (e->Iex.ITE.iftrue->tag == Iex_Const) {
-                  ae = LibVEX_Alloc(sizeof(AvailExpr));
+                  ae = LibVEX_Alloc_inline(sizeof(AvailExpr));
                   ae->tag       = Itct;
                   ae->u.Itct.co = e->Iex.ITE.cond->Iex.RdTmp.tmp;
                   ae->u.Itct.con1 = *(e->Iex.ITE.iftrue->Iex.Const.con);
@@ -3700,7 +3790,7 @@ static AvailExpr* irExpr_to_AvailExpr ( IRExpr* e )
                }
             } else if (e->Iex.ITE.iffalse->tag == Iex_Const) {
                if (e->Iex.ITE.iftrue->tag == Iex_RdTmp) {
-                  ae = LibVEX_Alloc(sizeof(AvailExpr));
+                  ae = LibVEX_Alloc_inline(sizeof(AvailExpr));
                   ae->tag       = Ittc;
                   ae->u.Ittc.co = e->Iex.ITE.cond->Iex.RdTmp.tmp;
                   ae->u.Ittc.e1 = e->Iex.ITE.iftrue->Iex.RdTmp.tmp;
@@ -3708,7 +3798,7 @@ static AvailExpr* irExpr_to_AvailExpr ( IRExpr* e )
                   return ae;
                }
                if (e->Iex.ITE.iftrue->tag == Iex_Const) {
-                  ae = LibVEX_Alloc(sizeof(AvailExpr));
+                  ae = LibVEX_Alloc_inline(sizeof(AvailExpr));
                   ae->tag       = Itcc;
                   ae->u.Itcc.co = e->Iex.ITE.cond->Iex.RdTmp.tmp;
                   ae->u.Itcc.con1 = *(e->Iex.ITE.iftrue->Iex.Const.con);
@@ -3721,7 +3811,7 @@ static AvailExpr* irExpr_to_AvailExpr ( IRExpr* e )
 
       case Iex_GetI:
          if (e->Iex.GetI.ix->tag == Iex_RdTmp) {
-            ae = LibVEX_Alloc(sizeof(AvailExpr));
+            ae = LibVEX_Alloc_inline(sizeof(AvailExpr));
             ae->tag           = GetIt;
             ae->u.GetIt.descr = e->Iex.GetI.descr;
             ae->u.GetIt.ix    = e->Iex.GetI.ix->Iex.RdTmp.tmp;
@@ -3731,7 +3821,7 @@ static AvailExpr* irExpr_to_AvailExpr ( IRExpr* e )
          break;
 
       case Iex_CCall:
-         ae = LibVEX_Alloc(sizeof(AvailExpr));
+         ae = LibVEX_Alloc_inline(sizeof(AvailExpr));
          ae->tag = CCall;
          /* Ok to share only the cee, since it is immutable. */
          ae->u.CCall.cee   = e->Iex.CCall.cee;
@@ -3745,6 +3835,22 @@ static AvailExpr* irExpr_to_AvailExpr ( IRExpr* e )
                                  );
          return ae;
 
+      case Iex_Load:
+         /* If the caller of do_cse_BB has requested that loads also
+            be CSEd, convert them into AvailExprs.  If not, we'll just
+            return NULL here, and the load never becomes considered
+            "available", which effectively disables CSEing of them, as
+            desired. */
+         if (allowLoadsToBeCSEd) {
+            ae = LibVEX_Alloc_inline(sizeof(AvailExpr));
+            ae->tag        = Load;
+            ae->u.Load.end = e->Iex.Load.end;
+            ae->u.Load.ty  = e->Iex.Load.ty;
+            irExpr_to_TmpOrConst(&ae->u.Load.addr, e->Iex.Load.addr);
+            return ae;
+         }
+         break;
+
       default:
          break;
    }
@@ -3754,9 +3860,12 @@ static AvailExpr* irExpr_to_AvailExpr ( IRExpr* e )
 
 
 /* The BB is modified in-place.  Returns True if any changes were
-   made. */
+   made.  The caller can choose whether or not loads should be CSEd.
+   In the normal course of things we don't do that, since CSEing loads
+   is something of a dodgy proposition if the guest program is doing
+   some screwy stuff to do with races and spinloops. */
 
-static Bool do_cse_BB ( IRSB* bb )
+static Bool do_cse_BB ( IRSB* bb, Bool allowLoadsToBeCSEd )
 {
    Int        i, j, paranoia;
    IRTemp     t, q;
@@ -3794,7 +3903,7 @@ static Bool do_cse_BB ( IRSB* bb )
       /* ------ BEGIN invalidate aenv bindings ------ */
       /* This is critical: remove from aenv any E' -> .. bindings
          which might be invalidated by this statement.  The only
-         vulnerable kind of bindings are the GetI kind.
+         vulnerable kind of bindings are the GetI and Load kinds.
             Dirty call - dump (paranoia level -> 2) 
             Store      - dump (ditto) 
             Put, PutI  - dump unless no-overlap is proven (.. -> 1)
@@ -3820,13 +3929,21 @@ static Bool do_cse_BB ( IRSB* bb )
             if (!aenv->inuse[j])
                continue;
             ae = (AvailExpr*)aenv->key[j];
-            if (ae->tag != GetIt) 
+            if (ae->tag != GetIt && ae->tag != Load) 
                continue;
             invalidate = False;
             if (paranoia >= 2) {
                invalidate = True;
             } else {
                vassert(paranoia == 1);
+               if (ae->tag == Load) {
+                  /* Loads can be invalidated by anything that could
+                     possibly touch memory.  But in that case we
+                     should have |paranoia| == 2 and we won't get
+                     here.  So there's nothing to do; we don't have to
+                     invalidate the load. */
+               }
+               else
                if (st->tag == Ist_Put) {
                   if (getAliasingRelation_IC(
                          ae->u.GetIt.descr, 
@@ -3867,7 +3984,7 @@ static Bool do_cse_BB ( IRSB* bb )
          continue;
 
       t = st->Ist.WrTmp.tmp;
-      eprime = irExpr_to_AvailExpr(st->Ist.WrTmp.data);
+      eprime = irExpr_to_AvailExpr(st->Ist.WrTmp.data, allowLoadsToBeCSEd);
       /* ignore if not of AvailExpr form */
       if (!eprime)
          continue;
@@ -4361,13 +4478,13 @@ void do_redundant_GetI_elimination ( IRSB* bb )
    bb is modified in-place. */
 
 static
-void do_redundant_PutI_elimination ( IRSB* bb )
+void do_redundant_PutI_elimination ( IRSB* bb, VexRegisterUpdates pxControl )
 {
    Int    i, j;
    Bool   delete;
    IRStmt *st, *stj;
 
-   vassert(vex_control.iropt_register_updates < VexRegUpdAllregsAtEachInsn);
+   vassert(pxControl < VexRegUpdAllregsAtEachInsn);
 
    for (i = 0; i < bb->stmts_used; i++) {
       st = bb->stmts[i];
@@ -4619,7 +4736,7 @@ static Int calc_unroll_factor( IRSB* bb )
 }
 
 
-static IRSB* maybe_loop_unroll_BB ( IRSB* bb0, Addr64 my_addr )
+static IRSB* maybe_loop_unroll_BB ( IRSB* bb0, Addr my_addr )
 {
    Int      i, j, jmax, n_vars;
    Bool     xxx_known;
@@ -4779,7 +4896,7 @@ static IRSB* maybe_loop_unroll_BB ( IRSB* bb0, Addr64 my_addr )
    }
 
    if (DEBUG_IROPT) {
-      vex_printf("\nUNROLLED (%llx)\n", my_addr);
+      vex_printf("\nUNROLLED (%lx)\n", my_addr);
       ppIRSB(bb1);
       vex_printf("\n");
    }
@@ -5220,6 +5337,11 @@ static IRExpr* fold_IRExpr_Unop ( IROp op, IRExpr* aa )
       if (is_Unop(aa, Iop_Left64))
          return IRExpr_Unop( Iop_Left64, aa->Iex.Unop.arg );
       break;
+   case Iop_ZeroHI64ofV128:
+      /* ZeroHI64ofV128( ZeroHI64ofV128(x) ) --> ZeroHI64ofV128(x) */
+      if (is_Unop(aa, Iop_ZeroHI64ofV128))
+         return IRExpr_Unop( Iop_ZeroHI64ofV128, aa->Iex.Unop.arg );
+      break;
    case Iop_32to1:
       /* 32to1( 1Uto32 ( x ) ) --> x */
       if (is_Unop(aa, Iop_1Uto32))
@@ -5488,9 +5610,12 @@ static Bool dirty_helper_stores ( const IRDirty *d )
 }
 
 inline
-static Interval dirty_helper_puts ( const IRDirty *d,
-                                    Bool (*preciseMemExnsFn)(Int, Int),
-                                    Bool *requiresPreciseMemExns )
+static Interval dirty_helper_puts (
+                   const IRDirty *d,
+                   Bool (*preciseMemExnsFn)(Int,Int,VexRegisterUpdates),
+                   VexRegisterUpdates pxControl,
+                   /*OUT*/Bool *requiresPreciseMemExns
+                )
 {
    Int i;
    Interval interval;
@@ -5522,7 +5647,8 @@ static Interval dirty_helper_puts ( const IRDirty *d,
          Int repeatLen = d->fxState[i].repeatLen;
 
          if (preciseMemExnsFn(offset,
-                              offset + nRepeats * repeatLen + size - 1)) {
+                              offset + nRepeats * repeatLen + size - 1,
+                              pxControl)) {
             *requiresPreciseMemExns = True;
          }
          update_interval(&interval, offset,
@@ -5533,11 +5659,15 @@ static Interval dirty_helper_puts ( const IRDirty *d,
    return interval;
 }
 
-/* Return an interval if st modifies the guest state. Via requiresPreciseMemExns
-   return whether or not that modification requires precise exceptions. */
-static Interval stmt_modifies_guest_state ( IRSB *bb, const IRStmt *st,
-                                            Bool (*preciseMemExnsFn)(Int,Int),
-                                            Bool *requiresPreciseMemExns )
+/* Return an interval if st modifies the guest state.  Via
+   requiresPreciseMemExns return whether or not that modification
+   requires precise exceptions. */
+static Interval stmt_modifies_guest_state ( 
+                   IRSB *bb, const IRStmt *st,
+                   Bool (*preciseMemExnsFn)(Int,Int,VexRegisterUpdates),
+                   VexRegisterUpdates pxControl,
+                   /*OUT*/Bool *requiresPreciseMemExns
+                )
 {
    Interval interval;
 
@@ -5546,7 +5676,8 @@ static Interval stmt_modifies_guest_state ( IRSB *bb, const IRStmt *st,
       Int offset = st->Ist.Put.offset;
       Int size = sizeofIRType(typeOfIRExpr(bb->tyenv, st->Ist.Put.data));
 
-      *requiresPreciseMemExns = preciseMemExnsFn(offset, offset + size - 1);
+      *requiresPreciseMemExns
+         = preciseMemExnsFn(offset, offset + size - 1, pxControl);
       interval.present = True;
       interval.low  = offset;
       interval.high = offset + size - 1;
@@ -5562,8 +5693,9 @@ static Interval stmt_modifies_guest_state ( IRSB *bb, const IRStmt *st,
          are no holes. This is to avoid a loop. The assumption is conservative
          in the sense that we might report that precise memory exceptions are
          needed when in fact they are not. */
-      *requiresPreciseMemExns = 
-         preciseMemExnsFn(offset, offset + descr->nElems * size - 1);
+      *requiresPreciseMemExns
+         = preciseMemExnsFn(offset, offset + descr->nElems * size - 1,
+                            pxControl);
       interval.present = True;
       interval.low  = offset;
       interval.high = offset + descr->nElems * size - 1;
@@ -5571,7 +5703,8 @@ static Interval stmt_modifies_guest_state ( IRSB *bb, const IRStmt *st,
    }
 
    case Ist_Dirty:
-      return dirty_helper_puts(st->Ist.Dirty.details, preciseMemExnsFn,
+      return dirty_helper_puts(st->Ist.Dirty.details,
+                               preciseMemExnsFn, pxControl,
                                requiresPreciseMemExns);
 
    default:
@@ -5583,8 +5716,11 @@ static Interval stmt_modifies_guest_state ( IRSB *bb, const IRStmt *st,
    }
 }
 
-/* notstatic */ Addr64 ado_treebuild_BB ( IRSB* bb,
-                                          Bool (*preciseMemExnsFn)(Int,Int) )
+/* notstatic */ Addr ado_treebuild_BB (
+                        IRSB* bb,
+                        Bool (*preciseMemExnsFn)(Int,Int,VexRegisterUpdates),
+                        VexRegisterUpdates pxControl
+                     )
 {
    Int      i, j, k, m;
    Bool     stmtStores, invalidateMe;
@@ -5594,10 +5730,10 @@ static Interval stmt_modifies_guest_state ( IRSB *bb, const IRStmt *st,
    ATmpInfo env[A_NENV];
 
    Bool   max_ga_known = False;
-   Addr64 max_ga       = 0;
+   Addr   max_ga       = 0;
 
    Int       n_tmps = bb->tyenv->types_used;
-   UShort*   uses   = LibVEX_Alloc(n_tmps * sizeof(UShort));
+   UShort*   uses   = LibVEX_Alloc_inline(n_tmps * sizeof(UShort));
 
    /* Phase 1.  Scan forwards in bb, counting use occurrences of each
       temp.  Also count occurrences in the bb->next field.  Take the
@@ -5614,8 +5750,8 @@ static Interval stmt_modifies_guest_state ( IRSB *bb, const IRStmt *st,
          case Ist_NoOp:
             continue;
          case Ist_IMark: {
-            Int    len = st->Ist.IMark.len;
-            Addr64 mga = st->Ist.IMark.addr + (len < 1 ? 1 : len) - 1;
+            UInt len = st->Ist.IMark.len;
+            Addr mga = st->Ist.IMark.addr + (len < 1 ? 1 : len) - 1;
             max_ga_known = True;
             if (mga > max_ga)
                max_ga = mga;
@@ -5723,8 +5859,10 @@ static Interval stmt_modifies_guest_state ( IRSB *bb, const IRStmt *st,
          consideration does, or might do (sidely safe @ True). */
 
       Bool putRequiresPreciseMemExns;
-      putInterval = stmt_modifies_guest_state( bb, st, preciseMemExnsFn,
-                                               &putRequiresPreciseMemExns);
+      putInterval = stmt_modifies_guest_state(
+                       bb, st, preciseMemExnsFn, pxControl,
+                       &putRequiresPreciseMemExns
+                    );
 
       /* be True if this stmt writes memory or might do (==> we don't
          want to reorder other loads or stores relative to it).  Also,
@@ -5803,7 +5941,434 @@ static Interval stmt_modifies_guest_state ( IRSB *bb, const IRStmt *st,
    bb->next = atbSubst_Expr(env, bb->next);
    bb->stmts_used = j;
 
-   return max_ga_known ? max_ga : ~(Addr64)0;
+   return max_ga_known ? max_ga : ~(Addr)0;
+}
+
+
+/*---------------------------------------------------------------*/
+/*--- MSVC specific transformation hacks                      ---*/
+/*---------------------------------------------------------------*/
+
+/* The purpose of all this is to find MSVC's idiom for non-constant
+   bitfield assignment, "a ^ ((a ^ b) & c)", and transform it into
+   gcc's idiom "(a & ~c) | (b & c)".  Motivation is that Memcheck has
+   generates a lot of false positives from the MSVC version because it
+   doesn't understand that XORing an undefined bit with itself gives a
+   defined result.
+
+   This isn't a problem for the simple case "x ^ x", because iropt
+   folds it to a constant zero before Memcheck ever sees it.  But in
+   this case we have an intervening "& c" which defeats the simple
+   case.  So we have to carefully inspect all expressions rooted at an
+   XOR to see if any of them match "a ^ ((a ^ b) & c)", or any of the
+   7 other variants resulting from swapping the order of arguments to
+   the three binary operations.  If we get a match, we then replace
+   the tree with "(a & ~c) | (b & c)", and Memcheck is happy.
+
+   The key difficulty is to spot the two uses of "a".  To normalise
+   the IR to maximise the chances of success, we first do a CSE pass,
+   with CSEing of loads enabled, since the two "a" expressions may be
+   loads, which need to be commoned up.  Then we do a constant folding
+   pass, so as to remove any tmp-to-tmp assignment chains that would
+   make matching the original expression more difficult.
+*/
+
+
+/* Helper function for debug printing */
+__attribute__((unused))
+static void print_flat_expr ( IRExpr** env, IRExpr* e )
+{
+   if (e == NULL) {
+      vex_printf("?");
+      return;
+   }
+   switch (e->tag) {
+      case Iex_Binop: {
+         ppIROp(e->Iex.Binop.op);
+         vex_printf("(");
+         print_flat_expr(env, e->Iex.Binop.arg1);
+         vex_printf(",");
+         print_flat_expr(env, e->Iex.Binop.arg2);
+         vex_printf(")");
+         break;
+      }
+      case Iex_Unop: {
+         ppIROp(e->Iex.Unop.op);
+         vex_printf("(");
+         print_flat_expr(env, e->Iex.Unop.arg);
+         vex_printf(")");
+         break;
+      }
+      case Iex_RdTmp:
+         ppIRTemp(e->Iex.RdTmp.tmp);
+         vex_printf("=");
+         print_flat_expr(env, chase(env, e));
+         break;
+      case Iex_Const:
+      case Iex_CCall:
+      case Iex_Load:
+      case Iex_ITE:
+      case Iex_Get:
+         ppIRExpr(e);
+         break;
+      default:
+         vex_printf("FAIL: "); ppIRExpr(e); vex_printf("\n");
+         vassert(0);
+   }
+}
+
+/* Spot   a ^ ((a ^ b) & c)   for a,b and c tmp-or-const (atoms)
+   or any of the other 7 variants generated by switching the order
+   of arguments to the outer ^, the inner ^ and the &.
+*/
+static UInt spotBitfieldAssignment ( /*OUT*/IRExpr** aa, /*OUT*/IRExpr** bb,
+                                     /*OUT*/IRExpr** cc,
+                                     IRExpr** env, IRExpr* e,
+                                     IROp opAND, IROp opXOR)
+{
+#  define ISBIN(_e,_op) ((_e) && (_e)->tag == Iex_Binop \
+                              && (_e)->Iex.Binop.op == (_op))
+#  define ISATOM(_e)    isIRAtom(_e)
+#  define STEP(_e)      chase1(env, (_e))
+#  define LL(_e)        ((_e)->Iex.Binop.arg1)
+#  define RR(_e)        ((_e)->Iex.Binop.arg2)
+
+   IRExpr *a1, *and, *xor, *c, *a2bL, *a2bR;
+
+   /* This is common to all 8 cases */
+   if (!ISBIN(e, opXOR)) goto fail;
+
+   /*                        -----and------ */
+   /*                         --xor---      */
+   /* find variant 1:   a1 ^ ((a2 ^ b) & c) */
+   /* find variant 2:   a1 ^ ((b ^ a2) & c) */
+   a1 = and = xor = c = a2bL = a2bR = NULL;
+
+   a1   = LL(e);
+   and  = STEP(RR(e));
+   if (!ISBIN(and, opAND)) goto v34;
+   xor  = STEP(LL(and));
+   c    = RR(and);
+   if (!ISBIN(xor, opXOR)) goto v34;
+   a2bL = LL(xor);
+   a2bR = RR(xor);
+
+   if (eqIRAtom(a1, a2bL) && !eqIRAtom(a1, a2bR)) {
+      *aa = a1;
+      *bb = a2bR;
+      *cc = c;
+      return 1;
+   }
+   if (eqIRAtom(a1, a2bR) && !eqIRAtom(a1, a2bL)) {
+      *aa = a1;
+      *bb = a2bL;
+      *cc = c;
+      return 2;
+   }
+
+  v34:
+   /*                   -----and------      */
+   /*                    --xor---           */
+   /* find variant 3:   ((a2 ^ b) & c) ^ a1 */
+   /* find variant 4:   ((b ^ a2) & c) ^ a1 */
+   a1 = and = xor = c = a2bL = a2bR = NULL;
+
+   a1   = RR(e);
+   and  = STEP(LL(e));
+   if (!ISBIN(and, opAND)) goto v56;
+   xor  = STEP(LL(and));
+   c    = RR(and);
+   if (!ISBIN(xor, opXOR)) goto v56;
+   a2bL = LL(xor);
+   a2bR = RR(xor);
+
+   if (eqIRAtom(a1, a2bL) && !eqIRAtom(a1, a2bR)) {
+      *aa = a1;
+      *bb = a2bR;
+      *cc = c;
+      return 3;
+   }
+   if (eqIRAtom(a1, a2bR) && !eqIRAtom(a1, a2bL)) {
+      *aa = a1;
+      *bb = a2bL;
+      *cc = c;
+      return 4;
+   }
+
+  v56:
+   /*                        -----and------ */
+   /*                         --xor---      */
+   /* find variant 5:   a1 ^ (c & (a2 ^ b)) */
+   /* find variant 6:   a1 ^ (c & (b ^ a2)) */
+   a1 = and = xor = c = a2bL = a2bR = NULL;
+
+   a1   = LL(e);
+   and  = STEP(RR(e));
+   if (!ISBIN(and, opAND)) goto v78;
+   xor  = STEP(RR(and));
+   c    = LL(and);
+   if (!ISBIN(xor, opXOR)) goto v78;
+   a2bL = LL(xor);
+   a2bR = RR(xor);
+
+   if (eqIRAtom(a1, a2bL) && !eqIRAtom(a1, a2bR)) {
+      *aa = a1;
+      *bb = a2bR;
+      *cc = c;
+      vassert(5-5); // ATC
+      return 5;
+   }
+   if (eqIRAtom(a1, a2bR) && !eqIRAtom(a1, a2bL)) {
+      *aa = a1;
+      *bb = a2bL;
+      *cc = c;
+      vassert(6-6); // ATC
+      return 6;
+   }
+
+ v78:
+   /*                   -----and------      */
+   /*                    --xor---           */
+   /* find variant 7:   (c & (a2 ^ b)) ^ a1 */
+   /* find variant 8:   (c & (b ^ a2)) ^ a1 */
+   a1 = and = xor = c = a2bL = a2bR = NULL;
+
+   a1   = RR(e);
+   and  = STEP(LL(e));
+   if (!ISBIN(and, opAND)) goto fail;
+   xor  = STEP(RR(and));
+   c    = LL(and);
+   if (!ISBIN(xor, opXOR)) goto fail;
+   a2bL = LL(xor);
+   a2bR = RR(xor);
+
+   if (eqIRAtom(a1, a2bL) && !eqIRAtom(a1, a2bR)) {
+      *aa = a1;
+      *bb = a2bR;
+      *cc = c;
+      return 7;
+   }
+   if (eqIRAtom(a1, a2bR) && !eqIRAtom(a1, a2bL)) {
+      *aa = a1;
+      *bb = a2bL;
+      *cc = c;
+      return 8;
+   }
+
+ fail:
+   return 0;
+
+#  undef ISBIN
+#  undef ISATOM
+#  undef STEP
+#  undef LL
+#  undef RR
+}
+
+/* If |e| is of the form a ^ ((a ^ b) & c) (or any of the 7 other
+   variants thereof generated by switching arguments around), return
+   the IRExpr* for (a & ~c) | (b & c).  Else return NULL. */
+static IRExpr* do_XOR_TRANSFORMS_IRExpr ( IRExpr** env, IRExpr* e )
+{
+   if (e->tag != Iex_Binop)
+      return NULL;
+
+   const HChar* tyNm = NULL;
+   IROp   opOR  = Iop_INVALID;
+   IROp   opAND = Iop_INVALID;
+   IROp   opNOT = Iop_INVALID;
+   IROp   opXOR = Iop_INVALID;
+   switch (e->Iex.Binop.op) {
+      case Iop_Xor32:
+         tyNm  = "I32";
+         opOR  = Iop_Or32;  opAND = Iop_And32;
+         opNOT = Iop_Not32; opXOR = Iop_Xor32;
+         break;
+      case Iop_Xor16:
+         tyNm  = "I16";
+         opOR  = Iop_Or16;  opAND = Iop_And16;
+         opNOT = Iop_Not16; opXOR = Iop_Xor16;
+         break;
+      case Iop_Xor8:
+         tyNm  = "I8";
+         opOR  = Iop_Or8;  opAND = Iop_And8;
+         opNOT = Iop_Not8; opXOR = Iop_Xor8;
+         break;
+      default:
+         return NULL;
+   }
+
+   IRExpr* aa = NULL;
+   IRExpr* bb = NULL;
+   IRExpr* cc = NULL;
+   UInt variant = spotBitfieldAssignment(&aa, &bb, &cc, env, e, opAND, opXOR);
+   if (variant > 0) {
+      static UInt ctr = 0;
+      if (0)
+         vex_printf("XXXXXXXXXX Bitfield Assignment number %u, "
+                    "type %s, variant %u\n",
+                    ++ctr, tyNm, variant);
+      /* It's vitally important that the returned aa, bb and cc are
+         atoms -- either constants or tmps.  If it's anything else
+         (eg, a GET) then incorporating them in a tree at this point
+         in the SB may erroneously pull them forwards (eg of a PUT
+         that originally was after the GET) and so transform the IR
+         wrongly.  spotBitfieldAssignment should guarantee only to
+         give us atoms, but we check here anyway. */
+      vassert(aa && isIRAtom(aa));
+      vassert(bb && isIRAtom(bb));
+      vassert(cc && isIRAtom(cc));
+      return IRExpr_Binop(
+                opOR,
+                IRExpr_Binop(opAND, aa, IRExpr_Unop(opNOT, cc)),
+                IRExpr_Binop(opAND, bb, cc)
+             );
+   }
+   return NULL;
+}
+
+
+/* SB is modified in-place.  Visit all the IRExprs and, for those
+   which are allowed to be non-atomic, perform the XOR transform if
+   possible.  This makes |sb| be non-flat, but that's ok, the caller
+   can re-flatten it.  Returns True iff any changes were made. */
+static Bool do_XOR_TRANSFORM_IRSB ( IRSB* sb )
+{
+   Int  i;
+   Bool changed = False;
+
+   /* Make the tmp->expr environment, so we can use it for
+      chasing expressions. */
+   Int      n_tmps = sb->tyenv->types_used;
+   IRExpr** env = LibVEX_Alloc_inline(n_tmps * sizeof(IRExpr*));
+   for (i = 0; i < n_tmps; i++)
+      env[i] = NULL;
+
+   for (i = 0; i < sb->stmts_used; i++) {
+      IRStmt* st = sb->stmts[i];
+      if (st->tag != Ist_WrTmp)
+         continue;
+      IRTemp t = st->Ist.WrTmp.tmp;
+      vassert(t >= 0 && t < n_tmps);
+      env[t] = st->Ist.WrTmp.data;
+   }
+
+   for (i = 0; i < sb->stmts_used; i++) {
+      IRStmt* st = sb->stmts[i];
+
+      switch (st->tag) {
+         case Ist_AbiHint:
+            vassert(isIRAtom(st->Ist.AbiHint.base));
+            vassert(isIRAtom(st->Ist.AbiHint.nia));
+            break;
+         case Ist_Put:
+            vassert(isIRAtom(st->Ist.Put.data));
+            break;
+         case Ist_PutI: {
+            IRPutI* puti = st->Ist.PutI.details;
+            vassert(isIRAtom(puti->ix));
+            vassert(isIRAtom(puti->data));
+            break;
+         }
+         case Ist_WrTmp: {
+            /* This is the one place where an expr (st->Ist.WrTmp.data) is
+               allowed to be more than just a constant or a tmp. */
+            IRExpr* mb_new_data
+               = do_XOR_TRANSFORMS_IRExpr(env, st->Ist.WrTmp.data);
+            if (mb_new_data) {
+               //ppIRSB(sb);
+               st->Ist.WrTmp.data = mb_new_data;
+               //ppIRSB(sb);
+               changed = True;
+            }
+            break;
+         }
+         case Ist_Store:
+            vassert(isIRAtom(st->Ist.Store.addr));
+            vassert(isIRAtom(st->Ist.Store.data));
+            break;
+         case Ist_StoreG: {
+            IRStoreG* sg = st->Ist.StoreG.details;
+            vassert(isIRAtom(sg->addr));
+            vassert(isIRAtom(sg->data));
+            vassert(isIRAtom(sg->guard));
+            break;
+         }
+         case Ist_LoadG: {
+            IRLoadG* lg = st->Ist.LoadG.details;
+            vassert(isIRAtom(lg->addr));
+            vassert(isIRAtom(lg->alt));
+            vassert(isIRAtom(lg->guard));
+            break;
+         }
+         case Ist_CAS: {
+            IRCAS* cas = st->Ist.CAS.details;
+            vassert(isIRAtom(cas->addr));
+            vassert(cas->expdHi == NULL || isIRAtom(cas->expdHi));
+            vassert(isIRAtom(cas->expdLo));
+            vassert(cas->dataHi == NULL || isIRAtom(cas->dataHi));
+            vassert(isIRAtom(cas->dataLo));
+            break;
+         }
+         case Ist_LLSC:
+            vassert(isIRAtom(st->Ist.LLSC.addr));
+            if (st->Ist.LLSC.storedata)
+               vassert(isIRAtom(st->Ist.LLSC.storedata));
+            break;
+         case Ist_Dirty: {
+            IRDirty* d = st->Ist.Dirty.details;
+            if (d->mFx != Ifx_None) {
+               vassert(isIRAtom(d->mAddr));
+            }
+            vassert(isIRAtom(d->guard));
+            for (Int j = 0; d->args[j]; j++) {
+               IRExpr* arg = d->args[j];
+               if (LIKELY(!is_IRExpr_VECRET_or_BBPTR(arg))) {
+                  vassert(isIRAtom(arg));
+               }
+            }
+            break;
+         }
+         case Ist_IMark:
+         case Ist_NoOp:
+         case Ist_MBE:
+            break;
+         case Ist_Exit:
+            vassert(isIRAtom(st->Ist.Exit.guard));
+            break;
+         default:
+            vex_printf("\n"); ppIRStmt(st);
+            vpanic("do_XOR_TRANSFORMS_IRSB");
+      }
+   }
+
+   vassert(isIRAtom(sb->next));
+   return changed;
+}
+
+
+static IRSB* do_MSVC_HACKS ( IRSB* sb )
+{
+   // Normalise as much as we can.  This is the one-and-only place
+   // where we call do_cse_BB with allowLoadsToBeCSEd set to True.
+   Bool any_cse_changes = do_cse_BB( sb, True/*allowLoadsToBeCSEd*/ );
+   if (any_cse_changes) {
+      // CSEing might have created dead code.  Remove it.
+      sb = cprop_BB ( sb );
+      do_deadcode_BB(sb);
+   }
+
+   // Visit all atoms, do the transformation proper.  bb is modified
+   // in-place.
+   Bool changed = do_XOR_TRANSFORM_IRSB(sb);
+
+   if (changed) {
+      // The transformation generates non-flat expressions, so we now
+      // need to re-flatten the block.
+      sb = flatten_BB(sb);
+   }
+
+   return sb;
 }
 
 
@@ -5824,7 +6389,8 @@ static
 IRSB* cheap_transformations ( 
          IRSB* bb,
          IRExpr* (*specHelper) (const HChar*, IRExpr**, IRStmt**, Int),
-         Bool (*preciseMemExnsFn)(Int,Int)
+         Bool (*preciseMemExnsFn)(Int,Int,VexRegisterUpdates),
+         VexRegisterUpdates pxControl
       )
 {
    redundant_get_removal_BB ( bb );
@@ -5833,8 +6399,8 @@ IRSB* cheap_transformations (
       ppIRSB(bb);
    }
 
-   if (vex_control.iropt_register_updates < VexRegUpdAllregsAtEachInsn) {
-      redundant_put_removal_BB ( bb, preciseMemExnsFn );
+   if (pxControl < VexRegUpdAllregsAtEachInsn) {
+      redundant_put_removal_BB ( bb, preciseMemExnsFn, pxControl );
    }
    if (iropt_verbose) {
       vex_printf("\n========= REDUNDANT PUT\n\n" );
@@ -5868,13 +6434,13 @@ IRSB* cheap_transformations (
    optimising as much as possible in the presence of GetI and PutI.  */
 
 static
-IRSB* expensive_transformations( IRSB* bb )
+IRSB* expensive_transformations( IRSB* bb, VexRegisterUpdates pxControl )
 {
-   (void)do_cse_BB( bb );
+   (void)do_cse_BB( bb, False/*!allowLoadsToBeCSEd*/ );
    collapse_AddSub_chains_BB( bb );
    do_redundant_GetI_elimination( bb );
-   if (vex_control.iropt_register_updates < VexRegUpdAllregsAtEachInsn) {
-      do_redundant_PutI_elimination( bb );
+   if (pxControl < VexRegUpdAllregsAtEachInsn) {
+      do_redundant_PutI_elimination( bb, pxControl );
    }
    do_deadcode_BB( bb );
    return bb;
@@ -5916,7 +6482,7 @@ static void considerExpensives ( /*OUT*/Bool* hasGetIorPutI,
                case Ity_I1: case Ity_I8: case Ity_I16: 
                case Ity_I32: case Ity_I64: case Ity_I128: 
                   break;
-               case Ity_F32: case Ity_F64: case Ity_F128:
+               case Ity_F16: case Ity_F32: case Ity_F64: case Ity_F128:
                case Ity_V128: case Ity_V256:
                   *hasVorFtemps = True;
                   break;
@@ -6002,8 +6568,9 @@ static void considerExpensives ( /*OUT*/Bool* hasGetIorPutI,
 IRSB* do_iropt_BB(
          IRSB* bb0,
          IRExpr* (*specHelper) (const HChar*, IRExpr**, IRStmt**, Int),
-         Bool (*preciseMemExnsFn)(Int,Int),
-         Addr64 guest_addr,
+         Bool (*preciseMemExnsFn)(Int,Int,VexRegisterUpdates),
+         VexRegisterUpdates pxControl,
+         Addr    guest_addr,
          VexArch guest_arch
       )
 {
@@ -6034,17 +6601,17 @@ IRSB* do_iropt_BB(
       If needed, do expensive transformations and then another cheap
       cleanup pass. */
 
-   bb = cheap_transformations( bb, specHelper, preciseMemExnsFn );
+   bb = cheap_transformations( bb, specHelper, preciseMemExnsFn, pxControl );
 
    if (guest_arch == VexArchARM) {
       /* Translating Thumb2 code produces a lot of chaff.  We have to
          work extra hard to get rid of it. */
       bb = cprop_BB(bb);
       bb = spec_helpers_BB ( bb, specHelper );
-      if (vex_control.iropt_register_updates < VexRegUpdAllregsAtEachInsn) {
-         redundant_put_removal_BB ( bb, preciseMemExnsFn );
+      if (pxControl < VexRegUpdAllregsAtEachInsn) {
+         redundant_put_removal_BB ( bb, preciseMemExnsFn, pxControl );
       }
-      do_cse_BB( bb );
+      do_cse_BB( bb, False/*!allowLoadsToBeCSEd*/ );
       do_deadcode_BB( bb );
    }
 
@@ -6060,7 +6627,7 @@ IRSB* do_iropt_BB(
             rounding modes.  Don't bother if hasGetIorPutI since that
             case leads into the expensive transformations, which do
             CSE anyway. */
-         (void)do_cse_BB( bb );
+         (void)do_cse_BB( bb, False/*!allowLoadsToBeCSEd*/ );
          do_deadcode_BB( bb );
       }
 
@@ -6069,26 +6636,37 @@ IRSB* do_iropt_BB(
          n_expensive++;
          if (DEBUG_IROPT)
             vex_printf("***** EXPENSIVE %d %d\n", n_total, n_expensive);
-         bb = expensive_transformations( bb );
-         bb = cheap_transformations( bb, specHelper, preciseMemExnsFn );
+         bb = expensive_transformations( bb, pxControl );
+         bb = cheap_transformations( bb, specHelper,
+                                     preciseMemExnsFn, pxControl );
          /* Potentially common up GetIs */
-         cses = do_cse_BB( bb );
+         cses = do_cse_BB( bb, False/*!allowLoadsToBeCSEd*/ );
          if (cses)
-            bb = cheap_transformations( bb, specHelper, preciseMemExnsFn );
+            bb = cheap_transformations( bb, specHelper,
+                                        preciseMemExnsFn, pxControl );
       }
+
+      ///////////////////////////////////////////////////////////
+      // BEGIN MSVC optimised code transformation hacks
+      if (0)
+         bb = do_MSVC_HACKS(bb);
+      // END   MSVC optimised code transformation hacks
+      ///////////////////////////////////////////////////////////
 
       /* Now have a go at unrolling simple (single-BB) loops.  If
          successful, clean up the results as much as possible. */
 
       bb2 = maybe_loop_unroll_BB( bb, guest_addr );
       if (bb2) {
-         bb = cheap_transformations( bb2, specHelper, preciseMemExnsFn );
+         bb = cheap_transformations( bb2, specHelper,
+                                     preciseMemExnsFn, pxControl );
          if (hasGetIorPutI) {
-            bb = expensive_transformations( bb );
-            bb = cheap_transformations( bb, specHelper, preciseMemExnsFn );
+            bb = expensive_transformations( bb, pxControl );
+            bb = cheap_transformations( bb, specHelper,
+                                        preciseMemExnsFn, pxControl );
          } else {
             /* at least do CSE and dead code removal */
-            do_cse_BB( bb );
+            do_cse_BB( bb, False/*!allowLoadsToBeCSEd*/ );
             do_deadcode_BB( bb );
          }
          if (0) vex_printf("vex iropt: unrolled a loop\n");

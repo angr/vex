@@ -68,7 +68,7 @@
 /* Reads a complete, consistent 64-bit TB value. */
 ULong ppcg_dirtyhelper_MFTB ( void )
 {
-#  if defined(__powerpc__) || defined(_AIX)
+#  if defined(__powerpc__)
    ULong res;
    UInt  lo, hi1, hi2;
    while (1) {
@@ -93,7 +93,7 @@ ULong ppcg_dirtyhelper_MFTB ( void )
 /* DIRTY HELPER (non-referentially transparent) */
 UInt ppc32g_dirtyhelper_MFSPR_268_269 ( UInt r269 )
 {
-#  if defined(__powerpc__) || defined(_AIX)
+#  if defined(__powerpc__)
    UInt spr;
    if (r269) {
       __asm__ __volatile__("mfspr %0,269" : "=b"(spr));
@@ -111,7 +111,7 @@ UInt ppc32g_dirtyhelper_MFSPR_268_269 ( UInt r269 )
 /* DIRTY HELPER (I'm not really sure what the side effects are) */
 UInt ppc32g_dirtyhelper_MFSPR_287 ( void )
 {
-#  if defined(__powerpc__) || defined(_AIX)
+#  if defined(__powerpc__)
    UInt spr;
    __asm__ __volatile__("mfspr %0,287" : "=b"(spr));
    return spr;
@@ -153,10 +153,12 @@ void ppc32g_dirtyhelper_LVS ( VexGuestPPC32State* gst,
 /* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (reads guest state, writes guest mem) */
 void ppc64g_dirtyhelper_LVS ( VexGuestPPC64State* gst,
-                              UInt vD_off, UInt sh, UInt shift_right )
+                              UInt vD_off, UInt sh, UInt shift_right,
+                              UInt endness )
 {
   UChar ref[32];
   ULong i;
+  Int k;
   /* ref[] used to be a static const array, but this doesn't work on
      ppc64 because VEX doesn't load the TOC pointer for the call here,
      and so we wind up picking up some totally random other data.
@@ -179,10 +181,19 @@ void ppc64g_dirtyhelper_LVS ( VexGuestPPC64State* gst,
   pU128_src = (U128*)&ref[sh];
   pU128_dst = (U128*)( ((UChar*)gst) + vD_off );
 
-  (*pU128_dst)[0] = (*pU128_src)[0];
-  (*pU128_dst)[1] = (*pU128_src)[1];
-  (*pU128_dst)[2] = (*pU128_src)[2];
-  (*pU128_dst)[3] = (*pU128_src)[3];
+  if ((0x1 & endness) == 0x0) {
+     /* Little endian */
+     unsigned char *srcp, *dstp;
+     srcp = (unsigned char *)pU128_src;
+     dstp = (unsigned char *)pU128_dst;
+     for (k = 15; k >= 0; k--, srcp++)
+        dstp[k] = *srcp;
+  } else {
+     (*pU128_dst)[0] = (*pU128_src)[0];
+     (*pU128_dst)[1] = (*pU128_src)[1];
+     (*pU128_dst)[2] = (*pU128_src)[2];
+     (*pU128_dst)[3] = (*pU128_src)[3];
+  }
 }
 
 
@@ -700,8 +711,9 @@ void LibVEX_GuestPPC64_initialise ( /*OUT*/VexGuestPPC64State* vex_state )
 
    Only R1 is needed in mode VexRegUpdSpAtMemAccess.   
 */
-Bool guest_ppc32_state_requires_precise_mem_exns ( Int minoff, 
-                                                   Int maxoff )
+Bool guest_ppc32_state_requires_precise_mem_exns (
+        Int minoff, Int maxoff, VexRegisterUpdates pxControl
+     )
 {
    Int lr_min  = offsetof(VexGuestPPC32State, guest_LR);
    Int lr_max  = lr_min + 4 - 1;
@@ -712,7 +724,7 @@ Bool guest_ppc32_state_requires_precise_mem_exns ( Int minoff,
 
    if (maxoff < r1_min || minoff > r1_max) {
       /* no overlap with R1 */
-      if (vex_control.iropt_register_updates == VexRegUpdSpAtMemAccess)
+      if (pxControl == VexRegUpdSpAtMemAccess)
          return False; // We only need to check stack pointer.
    } else {
       return True;
@@ -733,8 +745,9 @@ Bool guest_ppc32_state_requires_precise_mem_exns ( Int minoff,
    return False;
 }
 
-Bool guest_ppc64_state_requires_precise_mem_exns ( Int minoff, 
-                                                   Int maxoff )
+Bool guest_ppc64_state_requires_precise_mem_exns (
+        Int minoff, Int maxoff, VexRegisterUpdates pxControl
+     )
 {
    /* Given that R2 is a Big Deal in the ELF ppc64 ABI, it seems
       prudent to be conservative with it, even though thus far there
@@ -751,7 +764,7 @@ Bool guest_ppc64_state_requires_precise_mem_exns ( Int minoff,
 
    if (maxoff < r1_min || minoff > r1_max) {
       /* no overlap with R1 */
-      if (vex_control.iropt_register_updates == VexRegUpdSpAtMemAccess)
+      if (pxControl == VexRegUpdSpAtMemAccess)
          return False; // We only need to check stack pointer.
    } else {
       return True;

@@ -151,7 +151,7 @@ static const UChar parity_table[256] = {
 static inline Long lshift ( Long x, Int n )
 {
    if (n >= 0)
-      return x << n;
+      return (ULong)x << n;
    else
       return x >> (-n);
 }
@@ -190,8 +190,8 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_ADD(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
-     Long argL, argR, res;					\
+   { ULong cf, pf, af, zf, sf, of;				\
+     ULong argL, argR, res;					\
      argL = CC_DEP1;						\
      argR = CC_DEP2;						\
      res  = argL + argR;					\
@@ -211,8 +211,8 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_SUB(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
-     Long argL, argR, res;					\
+   { ULong cf, pf, af, zf, sf, of;				\
+     ULong argL, argR, res;					\
      argL = CC_DEP1;						\
      argR = CC_DEP2;						\
      res  = argL - argR;					\
@@ -232,8 +232,8 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_ADC(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
-     Long argL, argR, oldC, res;		 		\
+   { ULong cf, pf, af, zf, sf, of;				\
+     ULong argL, argR, oldC, res;		 		\
      oldC = CC_NDEP & AMD64G_CC_MASK_C;				\
      argL = CC_DEP1;						\
      argR = CC_DEP2 ^ oldC;	       				\
@@ -257,8 +257,8 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_SBB(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
-     Long argL, argR, oldC, res;	       			\
+   { ULong cf, pf, af, zf, sf, of;				\
+     ULong argL, argR, oldC, res;	       			\
      oldC = CC_NDEP & AMD64G_CC_MASK_C;				\
      argL = CC_DEP1;						\
      argR = CC_DEP2 ^ oldC;	       				\
@@ -282,7 +282,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_LOGIC(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
+   { ULong cf, pf, af, zf, sf, of;				\
      cf = 0;							\
      pf = parity_table[(UChar)CC_DEP1];				\
      af = 0;							\
@@ -298,8 +298,8 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_INC(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
-     Long argL, argR, res;					\
+   { ULong cf, pf, af, zf, sf, of;				\
+     ULong argL, argR, res;					\
      res  = CC_DEP1;						\
      argL = res - 1;						\
      argR = 1;							\
@@ -318,8 +318,8 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_DEC(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
-     Long argL, argR, res;					\
+   { ULong cf, pf, af, zf, sf, of;				\
+     ULong argL, argR, res;					\
      res  = CC_DEP1;						\
      argL = res + 1;						\
      argR = 1;							\
@@ -339,7 +339,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_SHL(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
+   { ULong cf, pf, af, zf, sf, of;				\
      cf = (CC_DEP2 >> (DATA_BITS - 1)) & AMD64G_CC_MASK_C;	\
      pf = parity_table[(UChar)CC_DEP1];				\
      af = 0; /* undefined */					\
@@ -357,7 +357,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_SHR(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);  					\
-   { Long cf, pf, af, zf, sf, of;				\
+   { ULong cf, pf, af, zf, sf, of;				\
      cf = CC_DEP2 & 1;						\
      pf = parity_table[(UChar)CC_DEP1];				\
      af = 0; /* undefined */					\
@@ -377,7 +377,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_ROL(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long fl 							\
+   { ULong fl 							\
         = (CC_NDEP & ~(AMD64G_CC_MASK_O | AMD64G_CC_MASK_C))	\
           | (AMD64G_CC_MASK_C & CC_DEP1)			\
           | (AMD64G_CC_MASK_O & (lshift(CC_DEP1,  		\
@@ -394,7 +394,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_ROR(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long fl 							\
+   { ULong fl 							\
         = (CC_NDEP & ~(AMD64G_CC_MASK_O | AMD64G_CC_MASK_C))	\
           | (AMD64G_CC_MASK_C & (CC_DEP1 >> (DATA_BITS-1)))	\
           | (AMD64G_CC_MASK_O & (lshift(CC_DEP1, 		\
@@ -410,7 +410,7 @@ static inline ULong idULong ( ULong x )
                                 DATA_U2TYPE, NARROWto2U)        \
 {                                                               \
    PREAMBLE(DATA_BITS);                                         \
-   { Long cf, pf, af, zf, sf, of;                               \
+   { ULong cf, pf, af, zf, sf, of;                              \
      DATA_UTYPE  hi;                                            \
      DATA_UTYPE  lo                                             \
         = NARROWtoU( ((DATA_UTYPE)CC_DEP1)                      \
@@ -436,11 +436,11 @@ static inline ULong idULong ( ULong x )
                                 DATA_S2TYPE, NARROWto2S)        \
 {                                                               \
    PREAMBLE(DATA_BITS);                                         \
-   { Long cf, pf, af, zf, sf, of;                               \
+   { ULong cf, pf, af, zf, sf, of;                              \
      DATA_STYPE  hi;                                            \
      DATA_STYPE  lo                                             \
-        = NARROWtoS( ((DATA_STYPE)CC_DEP1)                      \
-                     * ((DATA_STYPE)CC_DEP2) );                 \
+        = NARROWtoS( ((DATA_S2TYPE)(DATA_STYPE)CC_DEP1)         \
+                     * ((DATA_S2TYPE)(DATA_STYPE)CC_DEP2) );    \
      DATA_S2TYPE rr                                             \
         = NARROWto2S(                                           \
              ((DATA_S2TYPE)((DATA_STYPE)CC_DEP1))               \
@@ -461,7 +461,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_UMULQ                                           \
 {                                                               \
    PREAMBLE(64);                                                \
-   { Long cf, pf, af, zf, sf, of;                               \
+   { ULong cf, pf, af, zf, sf, of;                              \
      ULong lo, hi;                                              \
      mullU64( (ULong)CC_DEP1, (ULong)CC_DEP2, &hi, &lo );       \
      cf = (hi != 0);                                            \
@@ -479,7 +479,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_SMULQ                                           \
 {                                                               \
    PREAMBLE(64);                                                \
-   { Long cf, pf, af, zf, sf, of;                               \
+   { ULong cf, pf, af, zf, sf, of;                              \
      Long lo, hi;                                               \
      mullS64( (Long)CC_DEP1, (Long)CC_DEP2, &hi, &lo );         \
      cf = (hi != (lo >>/*s*/ (64-1)));                          \
@@ -497,7 +497,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_ANDN(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
+   { ULong cf, pf, af, zf, sf, of;				\
      cf = 0;							\
      pf = 0;							\
      af = 0;							\
@@ -513,7 +513,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_BLSI(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
+   { ULong cf, pf, af, zf, sf, of;				\
      cf = ((DATA_UTYPE)CC_DEP2 != 0);				\
      pf = 0;							\
      af = 0;							\
@@ -545,7 +545,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_BLSR(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
+   { ULong cf, pf, af, zf, sf, of;				\
      cf = ((DATA_UTYPE)CC_DEP2 == 0);				\
      pf = 0;							\
      af = 0;							\
@@ -993,26 +993,56 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                            mkU64(0)));
       }
 
+      /*---------------- ADDL ----------------*/
+
+      if (isU64(cc_op, AMD64G_CC_OP_ADDL) && isU64(cond, AMD64CondO)) {
+         /* This is very commonly generated by Javascript JITs, for
+            the idiom "do a 32-bit add and jump to out-of-line code if
+            an overflow occurs". */
+         /* long add, then O (overflow)
+            --> ((dep1 ^ dep2 ^ -1) & (dep1 ^ (dep1 + dep2)))[31]
+            --> (((dep1 ^ dep2 ^ -1) & (dep1 ^ (dep1 +64 dep2))) >>u 31) & 1
+            --> (((not(dep1 ^ dep2)) & (dep1 ^ (dep1 +64 dep2))) >>u 31) & 1
+         */
+         vassert(isIRAtom(cc_dep1));
+         vassert(isIRAtom(cc_dep2));
+         return
+            binop(Iop_And64,
+                  binop(Iop_Shr64,
+                        binop(Iop_And64,
+                              unop(Iop_Not64,
+                                   binop(Iop_Xor64, cc_dep1, cc_dep2)),
+                              binop(Iop_Xor64,
+                                    cc_dep1,
+                                    binop(Iop_Add64, cc_dep1, cc_dep2))),
+                        mkU8(31)),
+                  mkU64(1));
+
+      }
+
       /*---------------- SUBQ ----------------*/
 
-      if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondZ)) {
-         /* long long sub/cmp, then Z --> test dst==src */
-         return unop(Iop_1Uto64,
-                     binop(Iop_CmpEQ64,cc_dep1,cc_dep2));
+      /* 0, */
+      if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondO)) {
+         /* long long sub/cmp, then O (overflow)
+            --> ((dep1 ^ dep2) & (dep1 ^ (dep1 - dep2)))[63]
+            --> ((dep1 ^ dep2) & (dep1 ^ (dep1 - dep2))) >>u 63
+         */
+         vassert(isIRAtom(cc_dep1));
+         vassert(isIRAtom(cc_dep2));
+         return binop(Iop_Shr64,
+                      binop(Iop_And64,
+                            binop(Iop_Xor64, cc_dep1, cc_dep2),
+                            binop(Iop_Xor64,
+                                  cc_dep1,
+                                  binop(Iop_Sub64, cc_dep1, cc_dep2))),
+                      mkU8(64));
       }
-      if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondNZ)) {
-         /* long long sub/cmp, then NZ --> test dst!=src */
-         return unop(Iop_1Uto64,
-                     binop(Iop_CmpNE64,cc_dep1,cc_dep2));
+      if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondNO)) {
+         /* No action.  Never yet found a test case. */
       }
 
-      if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondL)) {
-         /* long long sub/cmp, then L (signed less than) 
-            --> test dst <s src */
-         return unop(Iop_1Uto64,
-                     binop(Iop_CmpLT64S, cc_dep1, cc_dep2));
-      }
-
+      /* 2, 3 */
       if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondB)) {
          /* long long sub/cmp, then B (unsigned less than)
             --> test dst <u src */
@@ -1027,16 +1057,19 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                      binop(Iop_CmpLE64U, cc_dep2, cc_dep1));
       }
 
-      if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondNLE)) {
-         /* long sub/cmp, then NLE (signed greater than) 
-            --> test !(dst <=s src)
-            --> test (dst >s src)
-            --> test (src <s dst) */
+      /* 4, 5 */
+      if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondZ)) {
+         /* long long sub/cmp, then Z --> test dst==src */
          return unop(Iop_1Uto64,
-                     binop(Iop_CmpLT64S, cc_dep2, cc_dep1));
-
+                     binop(Iop_CmpEQ64,cc_dep1,cc_dep2));
+      }
+      if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondNZ)) {
+         /* long long sub/cmp, then NZ --> test dst!=src */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpNE64,cc_dep1,cc_dep2));
       }
 
+      /* 6, 7 */
       if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondBE)) {
          /* long long sub/cmp, then BE (unsigned less than or equal)
             --> test dst <=u src */
@@ -1052,8 +1085,106 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                       mkU64(1));
       }
 
+      /* 8, 9 */
+      if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondS)) {
+         /* long long sub/cmp, then S (negative)
+            --> (dst-src)[63]
+            --> (dst-src) >>u 63 */
+         return binop(Iop_Shr64,
+                      binop(Iop_Sub64, cc_dep1, cc_dep2),
+                      mkU8(63));
+      }
+      if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondNS)) {
+         /* long long sub/cmp, then NS (not negative)
+            --> (dst-src)[63] ^ 1
+            --> ((dst-src) >>u 63) ^ 1 */
+         return binop(Iop_Xor64,
+                      binop(Iop_Shr64,
+                            binop(Iop_Sub64, cc_dep1, cc_dep2),
+                            mkU8(63)),
+                      mkU64(1));
+      }
+
+      /* 12, 13 */
+      if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondL)) {
+         /* long long sub/cmp, then L (signed less than) 
+            --> test dst <s src */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLT64S, cc_dep1, cc_dep2));
+      }
+      if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondNL)) {
+         /* long long sub/cmp, then NL (signed greater than or equal) 
+            --> test dst >=s src
+            --> test src <=s dst */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLE64S, cc_dep2, cc_dep1));
+      }
+
+      /* 14, 15 */
+      if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondLE)) {
+         /* long long sub/cmp, then LE (signed less than or equal)
+            --> test dst <=s src */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLE64S, cc_dep1, cc_dep2));
+      }
+      if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondNLE)) {
+         /* long sub/cmp, then NLE (signed greater than) 
+            --> test !(dst <=s src)
+            --> test (dst >s src)
+            --> test (src <s dst) */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLT64S, cc_dep2, cc_dep1));
+
+      }
+
       /*---------------- SUBL ----------------*/
 
+      /* 0, */
+      if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondO)) {
+         /* This is very commonly generated by Javascript JITs, for
+            the idiom "do a 32-bit subtract and jump to out-of-line
+            code if an overflow occurs". */
+         /* long sub/cmp, then O (overflow)
+            --> ((dep1 ^ dep2) & (dep1 ^ (dep1 - dep2)))[31]
+            --> (((dep1 ^ dep2) & (dep1 ^ (dep1 -64 dep2))) >>u 31) & 1
+         */
+         vassert(isIRAtom(cc_dep1));
+         vassert(isIRAtom(cc_dep2));
+         return
+            binop(Iop_And64,
+                  binop(Iop_Shr64,
+                        binop(Iop_And64,
+                              binop(Iop_Xor64, cc_dep1, cc_dep2),
+                              binop(Iop_Xor64,
+                                    cc_dep1,
+                                    binop(Iop_Sub64, cc_dep1, cc_dep2))),
+                        mkU8(31)),
+                  mkU64(1));
+      }
+      if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondNO)) {
+         /* No action.  Never yet found a test case. */
+      }
+
+      /* 2, 3 */
+      if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondB)) {
+         /* long sub/cmp, then B (unsigned less than)
+            --> test dst <u src */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLT32U,
+                           unop(Iop_64to32, cc_dep1),
+                           unop(Iop_64to32, cc_dep2)));
+      }
+      if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondNB)) {
+         /* long sub/cmp, then NB (unsigned greater than or equal)
+            --> test src <=u dst */
+         /* Note, args are opposite way round from the usual */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLE32U,
+                           unop(Iop_64to32, cc_dep2),
+                           unop(Iop_64to32, cc_dep1)));
+      }
+
+      /* 4, 5 */
       if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondZ)) {
          /* long sub/cmp, then Z --> test dst==src */
          return unop(Iop_1Uto64,
@@ -1069,6 +1200,52 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                            unop(Iop_64to32, cc_dep2)));
       }
 
+      /* 6, 7 */
+      if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondBE)) {
+         /* long sub/cmp, then BE (unsigned less than or equal)
+            --> test dst <=u src */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLE32U, 
+                           unop(Iop_64to32, cc_dep1),
+                           unop(Iop_64to32, cc_dep2)));
+      }
+      if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondNBE)) {
+         /* long sub/cmp, then NBE (unsigned greater than)
+            --> test src <u dst */
+         /* Note, args are opposite way round from the usual */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLT32U, 
+                           unop(Iop_64to32, cc_dep2),
+                           unop(Iop_64to32, cc_dep1)));
+      }
+
+      /* 8, 9 */
+      if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondS)) {
+         /* long sub/cmp, then S (negative)
+            --> (dst-src)[31]
+            --> ((dst -64 src) >>u 31) & 1
+            Pointless to narrow the args to 32 bit before the subtract. */
+         return binop(Iop_And64,
+                      binop(Iop_Shr64,
+                            binop(Iop_Sub64, cc_dep1, cc_dep2),
+                            mkU8(31)),
+                      mkU64(1));
+      }
+      if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondNS)) {
+         /* long sub/cmp, then NS (not negative)
+            --> (dst-src)[31] ^ 1
+            --> (((dst -64 src) >>u 31) & 1) ^ 1
+            Pointless to narrow the args to 32 bit before the subtract. */
+         return binop(Iop_Xor64,
+                      binop(Iop_And64,
+                            binop(Iop_Shr64,
+                                  binop(Iop_Sub64, cc_dep1, cc_dep2),
+                                  mkU8(31)),
+                            mkU64(1)),
+                      mkU64(1));
+      }
+
+      /* 12, 13 */
       if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondL)) {
          /* long sub/cmp, then L (signed less than) 
             --> test dst <s src */
@@ -1077,7 +1254,17 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                            unop(Iop_64to32, cc_dep1),
                            unop(Iop_64to32, cc_dep2)));
       }
+      if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondNL)) {
+         /* long sub/cmp, then NL (signed greater than or equal) 
+            --> test dst >=s src
+            --> test src <=s dst */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLE32S,
+                           unop(Iop_64to32, cc_dep2),
+                           unop(Iop_64to32, cc_dep1)));
+      }
 
+      /* 14, 15 */
       if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondLE)) {
          /* long sub/cmp, then LE (signed less than or equal) 
             --> test dst <=s src */
@@ -1099,45 +1286,9 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
 
       }
 
-      if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondBE)) {
-         /* long sub/cmp, then BE (unsigned less than or equal)
-            --> test dst <=u src */
-         return unop(Iop_1Uto64,
-                     binop(Iop_CmpLE32U, 
-                           unop(Iop_64to32, cc_dep1),
-                           unop(Iop_64to32, cc_dep2)));
-      }
-      if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondNBE)) {
-         /* long sub/cmp, then NBE (unsigned greater than)
-            --> test src <u dst */
-         /* Note, args are opposite way round from the usual */
-         return unop(Iop_1Uto64,
-                     binop(Iop_CmpLT32U, 
-                           unop(Iop_64to32, cc_dep2),
-                           unop(Iop_64to32, cc_dep1)));
-      }
-
-      if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondS)) {
-         /* long sub/cmp, then S (negative) --> test (dst-src <s 0) */
-         return unop(Iop_1Uto64,
-                     binop(Iop_CmpLT32S,
-                           binop(Iop_Sub32,
-                                 unop(Iop_64to32, cc_dep1), 
-                                 unop(Iop_64to32, cc_dep2)),
-                           mkU32(0)));
-      }
-
-      if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondB)) {
-         /* long sub/cmp, then B (unsigned less than)
-            --> test dst <u src */
-         return unop(Iop_1Uto64,
-                     binop(Iop_CmpLT32U,
-                           unop(Iop_64to32, cc_dep1),
-                           unop(Iop_64to32, cc_dep2)));
-      }
-
       /*---------------- SUBW ----------------*/
 
+      /* 4, 5 */
       if (isU64(cc_op, AMD64G_CC_OP_SUBW) && isU64(cond, AMD64CondZ)) {
          /* word sub/cmp, then Z --> test dst==src */
          return unop(Iop_1Uto64,
@@ -1153,6 +1304,17 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                            unop(Iop_64to16,cc_dep2)));
       }
 
+      /* 6, */
+      if (isU64(cc_op, AMD64G_CC_OP_SUBW) && isU64(cond, AMD64CondBE)) {
+         /* word sub/cmp, then BE (unsigned less than or equal)
+            --> test dst <=u src */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLE64U,
+                           binop(Iop_Shl64, cc_dep1, mkU8(48)),
+                           binop(Iop_Shl64, cc_dep2, mkU8(48))));
+      }
+
+      /* 14, */
       if (isU64(cc_op, AMD64G_CC_OP_SUBW) && isU64(cond, AMD64CondLE)) {
          /* word sub/cmp, then LE (signed less than or equal) 
             --> test dst <=s src */
@@ -1165,6 +1327,26 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
 
       /*---------------- SUBB ----------------*/
 
+      /* 2, 3 */
+      if (isU64(cc_op, AMD64G_CC_OP_SUBB) && isU64(cond, AMD64CondB)) {
+         /* byte sub/cmp, then B (unsigned less than)
+            --> test dst <u src */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLT64U,
+                           binop(Iop_And64, cc_dep1, mkU64(0xFF)),
+                           binop(Iop_And64, cc_dep2, mkU64(0xFF))));
+      }
+      if (isU64(cc_op, AMD64G_CC_OP_SUBB) && isU64(cond, AMD64CondNB)) {
+         /* byte sub/cmp, then NB (unsigned greater than or equal)
+            --> test src <=u dst */
+         /* Note, args are opposite way round from the usual */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLE64U,
+                           binop(Iop_And64, cc_dep2, mkU64(0xFF)),
+                           binop(Iop_And64, cc_dep1, mkU64(0xFF))));
+      }
+
+      /* 4, 5 */
       if (isU64(cc_op, AMD64G_CC_OP_SUBB) && isU64(cond, AMD64CondZ)) {
          /* byte sub/cmp, then Z --> test dst==src */
          return unop(Iop_1Uto64,
@@ -1180,6 +1362,7 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                            unop(Iop_64to8,cc_dep2)));
       }
 
+      /* 6, */
       if (isU64(cc_op, AMD64G_CC_OP_SUBB) && isU64(cond, AMD64CondBE)) {
          /* byte sub/cmp, then BE (unsigned less than or equal)
             --> test dst <=u src */
@@ -1189,6 +1372,7 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                            binop(Iop_And64, cc_dep2, mkU64(0xFF))));
       }
 
+      /* 8, 9 */
       if (isU64(cc_op, AMD64G_CC_OP_SUBB) && isU64(cond, AMD64CondS)
                                           && isU64(cc_dep2, 0)) {
          /* byte sub/cmp of zero, then S --> test (dst-0 <s 0)
@@ -1723,7 +1907,8 @@ void do_get_x87 ( /*IN*/VexGuestAMD64State* vex_state,
 /* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (reads guest state, writes guest mem) */
 /* NOTE: only handles 32-bit format (no REX.W on the insn) */
-void amd64g_dirtyhelper_FXSAVE ( VexGuestAMD64State* gst, HWord addr )
+void amd64g_dirtyhelper_FXSAVE_ALL_EXCEPT_XMM ( VexGuestAMD64State* gst,
+                                                HWord addr )
 {
    /* Derived from values obtained from
       vendor_id       : AuthenticAMD
@@ -1738,7 +1923,6 @@ void amd64g_dirtyhelper_FXSAVE ( VexGuestAMD64State* gst, HWord addr )
    Fpu_State tmp;
    UShort*   addrS = (UShort*)addr;
    UChar*    addrC = (UChar*)addr;
-   U128*     xmm   = (U128*)(addr + 160);
    UInt      mxcsr;
    UShort    fp_tags;
    UInt      summary_tags;
@@ -1803,76 +1987,30 @@ void amd64g_dirtyhelper_FXSAVE ( VexGuestAMD64State* gst, HWord addr )
    }
 
    /* That's the first 160 bytes of the image done.  Now only %xmm0
-      .. %xmm15 remain to be copied.  If the host is big-endian, these
-      need to be byte-swapped. */
-   vassert(host_is_little_endian());
-
-#  define COPY_U128(_dst,_src)                       \
-      do { _dst[0] = _src[0]; _dst[1] = _src[1];     \
-           _dst[2] = _src[2]; _dst[3] = _src[3]; }   \
-      while (0)
-
-   COPY_U128( xmm[0],  gst->guest_YMM0 );
-   COPY_U128( xmm[1],  gst->guest_YMM1 );
-   COPY_U128( xmm[2],  gst->guest_YMM2 );
-   COPY_U128( xmm[3],  gst->guest_YMM3 );
-   COPY_U128( xmm[4],  gst->guest_YMM4 );
-   COPY_U128( xmm[5],  gst->guest_YMM5 );
-   COPY_U128( xmm[6],  gst->guest_YMM6 );
-   COPY_U128( xmm[7],  gst->guest_YMM7 );
-   COPY_U128( xmm[8],  gst->guest_YMM8 );
-   COPY_U128( xmm[9],  gst->guest_YMM9 );
-   COPY_U128( xmm[10], gst->guest_YMM10 );
-   COPY_U128( xmm[11], gst->guest_YMM11 );
-   COPY_U128( xmm[12], gst->guest_YMM12 );
-   COPY_U128( xmm[13], gst->guest_YMM13 );
-   COPY_U128( xmm[14], gst->guest_YMM14 );
-   COPY_U128( xmm[15], gst->guest_YMM15 );
-
-#  undef COPY_U128
+      .. %xmm15 remain to be copied, and we let the generated IR do
+      that, so as to make Memcheck's definedness flow for the non-XMM
+      parts independant from that of the all the other control and
+      status words in the structure.  This avoids the false positives
+      shown in #291310. */
 }
 
 
 /* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (writes guest state, reads guest mem) */
-VexEmNote amd64g_dirtyhelper_FXRSTOR ( VexGuestAMD64State* gst, HWord addr )
+VexEmNote amd64g_dirtyhelper_FXRSTOR_ALL_EXCEPT_XMM ( VexGuestAMD64State* gst,
+                                                      HWord addr )
 {
    Fpu_State tmp;
    VexEmNote warnX87 = EmNote_NONE;
    VexEmNote warnXMM = EmNote_NONE;
    UShort*   addrS   = (UShort*)addr;
    UChar*    addrC   = (UChar*)addr;
-   U128*     xmm     = (U128*)(addr + 160);
    UShort    fp_tags;
    Int       r, stno, i;
 
-   /* Restore %xmm0 .. %xmm15.  If the host is big-endian, these need
-      to be byte-swapped. */
-   vassert(host_is_little_endian());
-
-#  define COPY_U128(_dst,_src)                       \
-      do { _dst[0] = _src[0]; _dst[1] = _src[1];     \
-           _dst[2] = _src[2]; _dst[3] = _src[3]; }   \
-      while (0)
-
-   COPY_U128( gst->guest_YMM0, xmm[0] );
-   COPY_U128( gst->guest_YMM1, xmm[1] );
-   COPY_U128( gst->guest_YMM2, xmm[2] );
-   COPY_U128( gst->guest_YMM3, xmm[3] );
-   COPY_U128( gst->guest_YMM4, xmm[4] );
-   COPY_U128( gst->guest_YMM5, xmm[5] );
-   COPY_U128( gst->guest_YMM6, xmm[6] );
-   COPY_U128( gst->guest_YMM7, xmm[7] );
-   COPY_U128( gst->guest_YMM8, xmm[8] );
-   COPY_U128( gst->guest_YMM9, xmm[9] );
-   COPY_U128( gst->guest_YMM10, xmm[10] );
-   COPY_U128( gst->guest_YMM11, xmm[11] );
-   COPY_U128( gst->guest_YMM12, xmm[12] );
-   COPY_U128( gst->guest_YMM13, xmm[13] );
-   COPY_U128( gst->guest_YMM14, xmm[14] );
-   COPY_U128( gst->guest_YMM15, xmm[15] );
-
-#  undef COPY_U128
+   /* Don't restore %xmm0 .. %xmm15, for the same reasons that
+      amd64g_dirtyhelper_FXSAVE_ALL_EXCEPT_XMM doesn't save them.  See
+      comment in that function for details. */
 
    /* Copy the x87 registers out of the image, into a temporary
       Fpu_State struct. */
@@ -1938,18 +2076,18 @@ void amd64g_dirtyhelper_FINIT ( VexGuestAMD64State* gst )
 
 /* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (reads guest memory) */
-ULong amd64g_dirtyhelper_loadF80le ( ULong addrU )
+ULong amd64g_dirtyhelper_loadF80le ( Addr addrU )
 {
    ULong f64;
-   convert_f80le_to_f64le ( (UChar*)ULong_to_Ptr(addrU), (UChar*)&f64 );
+   convert_f80le_to_f64le ( (UChar*)addrU, (UChar*)&f64 );
    return f64;
 }
 
 /* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (writes guest memory) */
-void amd64g_dirtyhelper_storeF80le ( ULong addrU, ULong f64 )
+void amd64g_dirtyhelper_storeF80le ( Addr addrU, ULong f64 )
 {
-   convert_f64le_to_f80le( (UChar*)&f64, (UChar*)ULong_to_Ptr(addrU) );
+   convert_f64le_to_f80le( (UChar*)&f64, (UChar*)addrU );
 }
 
 
@@ -3732,10 +3870,19 @@ extern void amd64g_dirtyhelper_AESKEYGENASSIST (
    V128* argL = (V128*)( ((UChar*)gst) + gstOffL );
    V128* argR = (V128*)( ((UChar*)gst) + gstOffR );
 
-   argR->w32[3] = RotWord (SubWord (argL->w32[3])) ^ imm8;
-   argR->w32[2] = SubWord (argL->w32[3]);
-   argR->w32[1] = RotWord (SubWord (argL->w32[1])) ^ imm8;
-   argR->w32[0] = SubWord (argL->w32[1]);
+   // We have to create the result in a temporary in the
+   // case where the src and dst regs are the same.  See #341698.
+   V128 tmp;
+
+   tmp.w32[3] = RotWord (SubWord (argL->w32[3])) ^ imm8;
+   tmp.w32[2] = SubWord (argL->w32[3]);
+   tmp.w32[1] = RotWord (SubWord (argL->w32[1])) ^ imm8;
+   tmp.w32[0] = SubWord (argL->w32[1]);
+
+   argR->w32[3] = tmp.w32[3];
+   argR->w32[2] = tmp.w32[2];
+   argR->w32[1] = tmp.w32[1];
+   argR->w32[0] = tmp.w32[0];
 }
 
 
@@ -3779,9 +3926,10 @@ void LibVEX_GuestAMD64_initialise ( /*OUT*/VexGuestAMD64State* vex_state )
    vex_state->guest_IDFLAG  = 0;
    vex_state->guest_ACFLAG  = 0;
 
-   /* HACK: represent the offset associated with %fs==0. This
-      assumes that %fs is only ever zero. */
-   vex_state->guest_FS_ZERO = 0;
+   /* HACK: represent the offset associated with a constant %fs. 
+      Typically, on linux, this assumes that %fs is only ever zero (main
+      thread) or 0x63. */
+   vex_state->guest_FS_CONST = 0;
 
    vex_state->guest_RIP = 0;
 
@@ -3823,7 +3971,7 @@ void LibVEX_GuestAMD64_initialise ( /*OUT*/VexGuestAMD64State* vex_state )
 
    vex_state->guest_NRADDR   = 0;
    vex_state->guest_SC_CLASS = 0;
-   vex_state->guest_GS_0x60  = 0;
+   vex_state->guest_GS_CONST = 0;
 
    vex_state->guest_IP_AT_SYSCALL = 0;
    vex_state->pad1 = 0;
@@ -3840,8 +3988,9 @@ void LibVEX_GuestAMD64_initialise ( /*OUT*/VexGuestAMD64State* vex_state )
 
    Only %RSP is needed in mode VexRegUpdSpAtMemAccess.   
 */
-Bool guest_amd64_state_requires_precise_mem_exns ( Int minoff,
-                                                   Int maxoff)
+Bool guest_amd64_state_requires_precise_mem_exns (
+        Int minoff, Int maxoff, VexRegisterUpdates pxControl
+     )
 {
    Int rbp_min = offsetof(VexGuestAMD64State, guest_RBP);
    Int rbp_max = rbp_min + 8 - 1;
@@ -3852,7 +4001,7 @@ Bool guest_amd64_state_requires_precise_mem_exns ( Int minoff,
 
    if (maxoff < rsp_min || minoff > rsp_max) {
       /* no overlap with rsp */
-      if (vex_control.iropt_register_updates == VexRegUpdSpAtMemAccess)
+      if (pxControl == VexRegUpdSpAtMemAccess)
          return False; // We only need to check stack pointer.
    } else {
       return True;
@@ -3909,7 +4058,7 @@ VexGuestLayout
 		 /*  2 */ ALWAYSDEFD(guest_DFLAG),
                  /*  3 */ ALWAYSDEFD(guest_IDFLAG),
                  /*  4 */ ALWAYSDEFD(guest_RIP),
-                 /*  5 */ ALWAYSDEFD(guest_FS_ZERO),
+                 /*  5 */ ALWAYSDEFD(guest_FS_CONST),
                  /*  6 */ ALWAYSDEFD(guest_FTOP),
                  /*  7 */ ALWAYSDEFD(guest_FPTAG),
                  /*  8 */ ALWAYSDEFD(guest_FPROUND),

@@ -66,7 +66,7 @@ typedef
 
       /* The disassembled insn has this length.  Must always be
          set. */
-      Int len;
+      UInt len;
 
       /* What happens next?
          Dis_StopHere:  this insn terminates the BB; we must stop.
@@ -88,7 +88,7 @@ typedef
 
       /* For Dis_Resteer, this is the guest address we should continue
          at.  Otherwise ignored (should be zero). */
-      Addr64 continueAt;
+      Addr   continueAt;
 
    }
 
@@ -124,7 +124,7 @@ typedef
 
       /* Return True iff resteering to the given addr is allowed (for
          branches/calls to destinations that are known at JIT-time) */
-      /*IN*/  Bool         (*resteerOkFn) ( /*opaque*/void*, Addr64 ),
+      /*IN*/  Bool         (*resteerOkFn) ( /*opaque*/void*, Addr ),
 
       /* Should we speculatively resteer across conditional branches?
          (Experimental and not enabled by default).  The strategy is
@@ -137,20 +137,20 @@ typedef
       /*IN*/  void*        callback_opaque,
 
       /* Where is the guest code? */
-      /*IN*/  UChar*       guest_code,
+      /*IN*/  const UChar* guest_code,
 
       /* Where is the actual insn?  Note: it's at &guest_code[delta] */
       /*IN*/  Long         delta,
 
       /* What is the guest IP of the insn? */
-      /*IN*/  Addr64       guest_IP,
+      /*IN*/  Addr         guest_IP,
 
       /* Info about the guest architecture */
       /*IN*/  VexArch      guest_arch,
-      /*IN*/  VexArchInfo* archinfo,
+      /*IN*/  const VexArchInfo* archinfo,
 
       /* ABI info for both guest and host */
-      /*IN*/  VexAbiInfo*  abiinfo,
+      /*IN*/  const VexAbiInfo*  abiinfo,
 
       /* The endianness of the host */
       /*IN*/  VexEndness   host_endness,
@@ -165,24 +165,27 @@ typedef
    Top-level BB to IR conversion fn.
    --------------------------------------------------------------- */
 
-/* See detailed comment in bb_to_IR.c. */
+/* See detailed comment in guest_generic_bb_to_IR.c. */
 extern
 IRSB* bb_to_IR ( 
          /*OUT*/VexGuestExtents* vge,
          /*OUT*/UInt*            n_sc_extents,
          /*OUT*/UInt*            n_guest_instrs, /* stats only */
+         /*MOD*/VexRegisterUpdates* pxControl,
          /*IN*/ void*            callback_opaque,
          /*IN*/ DisOneInstrFn    dis_instr_fn,
-         /*IN*/ UChar*           guest_code,
-         /*IN*/ Addr64           guest_IP_bbstart,
-         /*IN*/ Bool             (*chase_into_ok)(void*,Addr64),
+         /*IN*/ const UChar*     guest_code,
+         /*IN*/ Addr             guest_IP_bbstart,
+         /*IN*/ Bool             (*chase_into_ok)(void*,Addr),
          /*IN*/ VexEndness       host_endness,
          /*IN*/ Bool             sigill_diag,
          /*IN*/ VexArch          arch_guest,
-         /*IN*/ VexArchInfo*     archinfo_guest,
-         /*IN*/ VexAbiInfo*      abiinfo_both,
+         /*IN*/ const VexArchInfo* archinfo_guest,
+         /*IN*/ const VexAbiInfo*  abiinfo_both,
          /*IN*/ IRType           guest_word_type,
-         /*IN*/ UInt             (*needs_self_check)(void*,VexGuestExtents*),
+         /*IN*/ UInt             (*needs_self_check)
+                                    (void*, /*MB_MOD*/VexRegisterUpdates*,
+                                            const VexGuestExtents*),
          /*IN*/ Bool             (*preamble_function)(void*,IRSB*),
          /*IN*/ Int              offB_GUEST_CMSTART,
          /*IN*/ Int              offB_GUEST_CMLEN,

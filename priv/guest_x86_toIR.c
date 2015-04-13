@@ -199,7 +199,7 @@ static VexEndness host_endness;
 
 /* Pointer to the guest code area (points to start of BB, not to the
    insn being processed). */
-static UChar* guest_code;
+static const UChar* guest_code;
 
 /* The guest address corresponding to guest_code[0]. */
 static Addr32 guest_EIP_bbstart;
@@ -326,12 +326,12 @@ static IRTemp newTemp ( IRType ty )
 
 static UInt extend_s_8to32( UInt x )
 {
-   return (UInt)((((Int)x) << 24) >> 24);
+   return (UInt)((Int)(x << 24) >> 24);
 }
 
 static UInt extend_s_16to32 ( UInt x )
 {
-   return (UInt)((((Int)x) << 16) >> 16);
+  return (UInt)((Int)(x << 16) >> 16);
 }
 
 /* Fetch a byte from the guest insn stream. */
@@ -405,7 +405,7 @@ static UInt getSDisp8 ( Int delta )
 
 static UInt getSDisp16 ( Int delta0 )
 {
-   UChar* eip = (UChar*)(&guest_code[delta0]);
+   const UChar* eip = &guest_code[delta0];
    UInt d = *eip++;
    d |= ((*eip++) << 8);
    return extend_s_16to32(d);
@@ -6310,7 +6310,7 @@ static const HChar* nameBtOp ( BtOp op )
 
 
 static
-UInt dis_bt_G_E ( VexAbiInfo* vbi,
+UInt dis_bt_G_E ( const VexAbiInfo* vbi,
                   UChar sorb, Bool locked, Int sz, Int delta, BtOp op )
 {
    HChar  dis_buf[50];
@@ -7940,7 +7940,7 @@ static void gen_SEGV_if_not_16_aligned ( IRTemp effective_addr )
 
    Same for BTS, BTR
 */
-static Bool can_be_used_with_LOCK_prefix ( UChar* opc )
+static Bool can_be_used_with_LOCK_prefix ( const UChar* opc )
 {
    switch (opc[0]) {
       case 0x00: case 0x01: case 0x08: case 0x09:
@@ -8061,12 +8061,12 @@ static IRTemp math_BSWAP ( IRTemp t1, IRType ty )
 static
 DisResult disInstr_X86_WRK (
              /*OUT*/Bool* expect_CAS,
-             Bool         (*resteerOkFn) ( /*opaque*/void*, Addr64 ),
+             Bool         (*resteerOkFn) ( /*opaque*/void*, Addr ),
              Bool         resteerCisOk,
              void*        callback_opaque,
              Long         delta64,
-             VexArchInfo* archinfo,
-             VexAbiInfo*  vbi,
+             const VexArchInfo* archinfo,
+             const VexAbiInfo*  vbi,
              Bool         sigill_diag
           )
 {
@@ -8078,7 +8078,7 @@ DisResult disInstr_X86_WRK (
    HChar     dis_buf[50];
    Int       am_sz, d_sz, n_prefixes;
    DisResult dres;
-   UChar*    insn; /* used in SSE decoders */
+   const UChar* insn; /* used in SSE decoders */
 
    /* The running delta */
    Int delta = (Int)delta64;
@@ -8114,7 +8114,7 @@ DisResult disInstr_X86_WRK (
 
    /* Spot "Special" instructions (see comment at top of file). */
    {
-      UChar* code = (UChar*)(guest_code + delta);
+      const UChar* code = guest_code + delta;
       /* Spot the 12-byte preamble:
          C1C703   roll $3,  %edi
          C1C70D   roll $13, %edi
@@ -8186,7 +8186,7 @@ DisResult disInstr_X86_WRK (
    /* Handle a couple of weird-ass NOPs that have been observed in the
       wild. */
    {
-      UChar* code = (UChar*)(guest_code + delta);
+      const UChar* code = guest_code + delta;
       /* Sun's JVM 1.5.0 uses the following as a NOP:
          26 2E 64 65 90  %es:%cs:%fs:%gs:nop */
       if (code[0] == 0x26 && code[1] == 0x2E && code[2] == 0x64 
@@ -8282,7 +8282,7 @@ DisResult disInstr_X86_WRK (
       allowed. */
 
    if (pfx_lock) {
-      if (can_be_used_with_LOCK_prefix( (UChar*)&guest_code[delta] )) {
+     if (can_be_used_with_LOCK_prefix( &guest_code[delta] )) {
          DIP("lock ");
       } else {
          *expect_CAS = False;
@@ -8301,7 +8301,7 @@ DisResult disInstr_X86_WRK (
    /* Note, this doesn't handle SSE2 or SSE3.  That is handled in a
       later section, further on. */
 
-   insn = (UChar*)&guest_code[delta];
+   insn = &guest_code[delta];
 
    /* Treat fxsave specially.  It should be doable even on an SSE0
       (Pentium-II class) CPU.  Hence be prepared to handle it on
@@ -9351,7 +9351,7 @@ DisResult disInstr_X86_WRK (
    if (insn[0] == 0x0F && insn[1] == 0x53) {
       vassert(sz == 4);
       delta = dis_SSE_E_to_G_unary_all( sorb, delta+2, 
-                                        "rcpps", Iop_Recip32Fx4 );
+                                        "rcpps", Iop_RecipEst32Fx4 );
       goto decode_success;
    }
 
@@ -9359,7 +9359,7 @@ DisResult disInstr_X86_WRK (
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x53) {
       vassert(sz == 4);
       delta = dis_SSE_E_to_G_unary_lo32( sorb, delta+3, 
-                                         "rcpss", Iop_Recip32F0x4 );
+                                         "rcpss", Iop_RecipEst32F0x4 );
       goto decode_success;
    }
 
@@ -9367,7 +9367,7 @@ DisResult disInstr_X86_WRK (
    if (insn[0] == 0x0F && insn[1] == 0x52) {
       vassert(sz == 4);
       delta = dis_SSE_E_to_G_unary_all( sorb, delta+2, 
-                                        "rsqrtps", Iop_RSqrt32Fx4 );
+                                        "rsqrtps", Iop_RSqrtEst32Fx4 );
       goto decode_success;
    }
 
@@ -9375,7 +9375,7 @@ DisResult disInstr_X86_WRK (
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x52) {
       vassert(sz == 4);
       delta = dis_SSE_E_to_G_unary_lo32( sorb, delta+3, 
-                                         "rsqrtss", Iop_RSqrt32F0x4 );
+                                         "rsqrtss", Iop_RSqrtEst32F0x4 );
       goto decode_success;
    }
 
@@ -9537,7 +9537,7 @@ DisResult disInstr_X86_WRK (
    if (0 == (archinfo->hwcaps & VEX_HWCAPS_X86_SSE2))
       goto after_sse_decoders; /* no SSE2 capabilities */
 
-   insn = (UChar*)&guest_code[delta];
+   insn = &guest_code[delta];
 
    /* 66 0F 58 = ADDPD -- add 32Fx4 from R/M to R */
    if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x58) {
@@ -11777,14 +11777,10 @@ DisResult disInstr_X86_WRK (
 
    /* Skip parts of the decoder which don't apply given the stated
       guest subarchitecture. */
-   /* if (0 == (archinfo->hwcaps & VEX_HWCAPS_X86_SSE3)) */
-   /* In fact this is highly bogus; we accept SSE3 insns even on a
-      SSE2-only guest since they turn into IR which can be re-emitted
-      successfully on an SSE2 host. */
-   if (0 == (archinfo->hwcaps & VEX_HWCAPS_X86_SSE2))
+   if (0 == (archinfo->hwcaps & VEX_HWCAPS_X86_SSE3))
       goto after_sse_decoders; /* no SSE3 capabilities */
 
-   insn = (UChar*)&guest_code[delta];
+   insn = &guest_code[delta];
 
    /* F3 0F 12 = MOVSLDUP -- move from E (mem or xmm) to G (xmm),
       duplicating some lanes (2:2:0:0). */
@@ -13082,10 +13078,10 @@ DisResult disInstr_X86_WRK (
          assign(t1, binop(Iop_Sub32, getIReg(4,R_ESP), mkU32(4)));
          putIReg(4, R_ESP, mkexpr(t1));
          storeLE( mkexpr(t1), mkU32(guest_EIP_bbstart+delta));
-         if (resteerOkFn( callback_opaque, (Addr64)(Addr32)d32 )) {
+         if (resteerOkFn( callback_opaque, (Addr32)d32 )) {
             /* follow into the call target. */
             dres.whatNext   = Dis_ResteerU;
-            dres.continueAt = (Addr64)(Addr32)d32;
+            dres.continueAt = (Addr32)d32;
          } else {
             jmp_lit(&dres, Ijk_Call, d32);
             vassert(dres.whatNext == Dis_StopHere);
@@ -13397,9 +13393,9 @@ DisResult disInstr_X86_WRK (
    case 0xEB: /* Jb (jump, byte offset) */
       d32 = (((Addr32)guest_EIP_bbstart)+delta+1) + getSDisp8(delta); 
       delta++;
-      if (resteerOkFn( callback_opaque, (Addr64)(Addr32)d32) ) {
+      if (resteerOkFn( callback_opaque, (Addr32)d32) ) {
          dres.whatNext   = Dis_ResteerU;
-         dres.continueAt = (Addr64)(Addr32)d32;
+         dres.continueAt = (Addr32)d32;
       } else {
          jmp_lit(&dres, Ijk_Boring, d32);
          vassert(dres.whatNext == Dis_StopHere);
@@ -13411,9 +13407,9 @@ DisResult disInstr_X86_WRK (
       vassert(sz == 4); /* JRS added 2004 July 11 */
       d32 = (((Addr32)guest_EIP_bbstart)+delta+sz) + getSDisp(sz,delta); 
       delta += sz;
-      if (resteerOkFn( callback_opaque, (Addr64)(Addr32)d32) ) {
+      if (resteerOkFn( callback_opaque, (Addr32)d32) ) {
          dres.whatNext   = Dis_ResteerU;
-         dres.continueAt = (Addr64)(Addr32)d32;
+         dres.continueAt = (Addr32)d32;
       } else {
          jmp_lit(&dres, Ijk_Boring, d32);
          vassert(dres.whatNext == Dis_StopHere);
@@ -13447,7 +13443,7 @@ DisResult disInstr_X86_WRK (
           && vex_control.guest_chase_cond
           && (Addr32)d32 != (Addr32)guest_EIP_bbstart
           && jmpDelta < 0
-          && resteerOkFn( callback_opaque, (Addr64)(Addr32)d32) ) {
+          && resteerOkFn( callback_opaque, (Addr32)d32) ) {
          /* Speculation: assume this backward branch is taken.  So we
             need to emit a side-exit to the insn following this one,
             on the negation of the condition, and continue at the
@@ -13460,7 +13456,7 @@ DisResult disInstr_X86_WRK (
                   IRConst_U32(guest_EIP_bbstart+delta),
                   OFFB_EIP ) );
          dres.whatNext   = Dis_ResteerC;
-         dres.continueAt = (Addr64)(Addr32)d32;
+         dres.continueAt = (Addr32)d32;
          comment = "(assumed taken)";
       }
       else
@@ -13469,7 +13465,7 @@ DisResult disInstr_X86_WRK (
           && (Addr32)d32 != (Addr32)guest_EIP_bbstart
           && jmpDelta >= 0
           && resteerOkFn( callback_opaque, 
-                          (Addr64)(Addr32)(guest_EIP_bbstart+delta)) ) {
+                          (Addr32)(guest_EIP_bbstart+delta)) ) {
          /* Speculation: assume this forward branch is not taken.  So
             we need to emit a side-exit to d32 (the dest) and continue
             disassembling at the insn immediately following this
@@ -13480,7 +13476,7 @@ DisResult disInstr_X86_WRK (
                   IRConst_U32(d32),
                   OFFB_EIP ) );
          dres.whatNext   = Dis_ResteerC;
-         dres.continueAt = (Addr64)(Addr32)(guest_EIP_bbstart+delta);
+         dres.continueAt = guest_EIP_bbstart + delta;
          comment = "(assumed not taken)";
       }
       else {
@@ -15011,7 +15007,7 @@ DisResult disInstr_X86_WRK (
              && vex_control.guest_chase_cond
              && (Addr32)d32 != (Addr32)guest_EIP_bbstart
              && jmpDelta < 0
-             && resteerOkFn( callback_opaque, (Addr64)(Addr32)d32) ) {
+             && resteerOkFn( callback_opaque, (Addr32)d32) ) {
             /* Speculation: assume this backward branch is taken.  So
                we need to emit a side-exit to the insn following this
                one, on the negation of the condition, and continue at
@@ -15025,7 +15021,7 @@ DisResult disInstr_X86_WRK (
                      IRConst_U32(guest_EIP_bbstart+delta),
                      OFFB_EIP ) );
             dres.whatNext   = Dis_ResteerC;
-            dres.continueAt = (Addr64)(Addr32)d32;
+            dres.continueAt = (Addr32)d32;
             comment = "(assumed taken)";
          }
          else
@@ -15034,7 +15030,7 @@ DisResult disInstr_X86_WRK (
              && (Addr32)d32 != (Addr32)guest_EIP_bbstart
              && jmpDelta >= 0
              && resteerOkFn( callback_opaque, 
-                             (Addr64)(Addr32)(guest_EIP_bbstart+delta)) ) {
+                             (Addr32)(guest_EIP_bbstart+delta)) ) {
             /* Speculation: assume this forward branch is not taken.
                So we need to emit a side-exit to d32 (the dest) and
                continue disassembling at the insn immediately
@@ -15045,7 +15041,7 @@ DisResult disInstr_X86_WRK (
                      IRConst_U32(d32),
                      OFFB_EIP ) );
             dres.whatNext   = Dis_ResteerC;
-            dres.continueAt = (Addr64)(Addr32)(guest_EIP_bbstart+delta);
+            dres.continueAt = guest_EIP_bbstart + delta;
             comment = "(assumed not taken)";
          }
          else {
@@ -15412,15 +15408,15 @@ DisResult disInstr_X86_WRK (
    is located in host memory at &guest_code[delta]. */
 
 DisResult disInstr_X86 ( IRSB*        irsb_IN,
-                         Bool         (*resteerOkFn) ( void*, Addr64 ),
+                         Bool         (*resteerOkFn) ( void*, Addr ),
                          Bool         resteerCisOk,
                          void*        callback_opaque,
-                         UChar*       guest_code_IN,
+                         const UChar* guest_code_IN,
                          Long         delta,
-                         Addr64       guest_IP,
+                         Addr         guest_IP,
                          VexArch      guest_arch,
-                         VexArchInfo* archinfo,
-                         VexAbiInfo*  abiinfo,
+                         const VexArchInfo* archinfo,
+                         const VexAbiInfo*  abiinfo,
                          VexEndness   host_endness_IN,
                          Bool         sigill_diag_IN )
 {

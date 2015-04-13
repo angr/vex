@@ -2886,11 +2886,11 @@ Bool dis_neon_vext ( UInt theInstr, IRTemp condT )
    HChar reg_t = Q ? 'q' : 'd';
 
    if (Q) {
-      putQReg(dreg, triop(Iop_ExtractV128, getQReg(nreg),
-               getQReg(mreg), mkU8(imm4)), condT);
+      putQReg(dreg, triop(Iop_SliceV128, /*hiV128*/getQReg(mreg),
+                          /*loV128*/getQReg(nreg), mkU8(imm4)), condT);
    } else {
-      putDRegI64(dreg, triop(Iop_Extract64, getDRegI64(nreg),
-                 getDRegI64(mreg), mkU8(imm4)), condT);
+      putDRegI64(dreg, triop(Iop_Slice64, /*hiI64*/getDRegI64(mreg),
+                             /*loI64*/getDRegI64(nreg), mkU8(imm4)), condT);
    }
    DIP("vext.8 %c%d, %c%d, %c%d, #%d\n", reg_t, dreg, reg_t, nreg,
                                          reg_t, mreg, imm4);
@@ -4812,7 +4812,8 @@ Bool dis_neon_data_3same ( UInt theInstr, IRTemp condT )
                   /* VRECPS */
                   if ((theInstr >> 20) & 1)
                      return False;
-                  assign(res, binop(Q ? Iop_Recps32Fx4 : Iop_Recps32Fx2,
+                  assign(res, binop(Q ? Iop_RecipStep32Fx4
+                                      : Iop_RecipStep32Fx2,
                                     mkexpr(arg_n),
                                     mkexpr(arg_m)));
                   DIP("vrecps.f32 %c%u, %c%u, %c%u\n", Q ? 'q' : 'd', dreg,
@@ -4821,7 +4822,8 @@ Bool dis_neon_data_3same ( UInt theInstr, IRTemp condT )
                   /* VRSQRTS  */
                   if ((theInstr >> 20) & 1)
                      return False;
-                  assign(res, binop(Q ? Iop_Rsqrts32Fx4 : Iop_Rsqrts32Fx2,
+                  assign(res, binop(Q ? Iop_RSqrtStep32Fx4
+                                      : Iop_RSqrtStep32Fx2,
                                     mkexpr(arg_n),
                                     mkexpr(arg_m)));
                   DIP("vrsqrts.f32 %c%u, %c%u, %c%u\n", Q ? 'q' : 'd', dreg,
@@ -6279,19 +6281,19 @@ Bool dis_neon_data_2reg_and_shift ( UInt theInstr, IRTemp condT )
             if (A & 1) {
                switch (size) {
                   case 0:
-                     op = Q ? Iop_QShlN8x16 : Iop_QShlN8x8;
+                     op = Q ? Iop_QShlNsatUU8x16 : Iop_QShlNsatUU8x8;
                      op_rev = Q ? Iop_ShrN8x16 : Iop_ShrN8x8;
                      break;
                   case 1:
-                     op = Q ? Iop_QShlN16x8 : Iop_QShlN16x4;
+                     op = Q ? Iop_QShlNsatUU16x8 : Iop_QShlNsatUU16x4;
                      op_rev = Q ? Iop_ShrN16x8 : Iop_ShrN16x4;
                      break;
                   case 2:
-                     op = Q ? Iop_QShlN32x4 : Iop_QShlN32x2;
+                     op = Q ? Iop_QShlNsatUU32x4 : Iop_QShlNsatUU32x2;
                      op_rev = Q ? Iop_ShrN32x4 : Iop_ShrN32x2;
                      break;
                   case 3:
-                     op = Q ? Iop_QShlN64x2 : Iop_QShlN64x1;
+                     op = Q ? Iop_QShlNsatUU64x2 : Iop_QShlNsatUU64x1;
                      op_rev = Q ? Iop_ShrN64x2 : Iop_Shr64;
                      break;
                   default:
@@ -6303,19 +6305,19 @@ Bool dis_neon_data_2reg_and_shift ( UInt theInstr, IRTemp condT )
             } else {
                switch (size) {
                   case 0:
-                     op = Q ? Iop_QShlN8Sx16 : Iop_QShlN8Sx8;
+                     op = Q ? Iop_QShlNsatSU8x16 : Iop_QShlNsatSU8x8;
                      op_rev = Q ? Iop_ShrN8x16 : Iop_ShrN8x8;
                      break;
                   case 1:
-                     op = Q ? Iop_QShlN16Sx8 : Iop_QShlN16Sx4;
+                     op = Q ? Iop_QShlNsatSU16x8 : Iop_QShlNsatSU16x4;
                      op_rev = Q ? Iop_ShrN16x8 : Iop_ShrN16x4;
                      break;
                   case 2:
-                     op = Q ? Iop_QShlN32Sx4 : Iop_QShlN32Sx2;
+                     op = Q ? Iop_QShlNsatSU32x4 : Iop_QShlNsatSU32x2;
                      op_rev = Q ? Iop_ShrN32x4 : Iop_ShrN32x2;
                      break;
                   case 3:
-                     op = Q ? Iop_QShlN64Sx2 : Iop_QShlN64Sx1;
+                     op = Q ? Iop_QShlNsatSU64x2 : Iop_QShlNsatSU64x1;
                      op_rev = Q ? Iop_ShrN64x2 : Iop_Shr64;
                      break;
                   default:
@@ -6330,19 +6332,19 @@ Bool dis_neon_data_2reg_and_shift ( UInt theInstr, IRTemp condT )
                return False;
             switch (size) {
                case 0:
-                  op = Q ? Iop_QSalN8x16 : Iop_QSalN8x8;
+                  op = Q ? Iop_QShlNsatSS8x16 : Iop_QShlNsatSS8x8;
                   op_rev = Q ? Iop_SarN8x16 : Iop_SarN8x8;
                   break;
                case 1:
-                  op = Q ? Iop_QSalN16x8 : Iop_QSalN16x4;
+                  op = Q ? Iop_QShlNsatSS16x8 : Iop_QShlNsatSS16x4;
                   op_rev = Q ? Iop_SarN16x8 : Iop_SarN16x4;
                   break;
                case 2:
-                  op = Q ? Iop_QSalN32x4 : Iop_QSalN32x2;
+                  op = Q ? Iop_QShlNsatSS32x4 : Iop_QShlNsatSS32x2;
                   op_rev = Q ? Iop_SarN32x4 : Iop_SarN32x2;
                   break;
                case 3:
-                  op = Q ? Iop_QSalN64x2 : Iop_QSalN64x1;
+                  op = Q ? Iop_QShlNsatSS64x2 : Iop_QShlNsatSS64x1;
                   op_rev = Q ? Iop_SarN64x2 : Iop_Sar64;
                   break;
                default:
@@ -7511,11 +7513,11 @@ Bool dis_neon_data_2reg_misc ( UInt theInstr, IRTemp condT )
             if (size != 2)
                return False;
             if (Q) {
-               op = F ? Iop_Recip32Fx4 : Iop_Recip32x4;
+               op = F ? Iop_RecipEst32Fx4 : Iop_RecipEst32Ux4;
                putQReg(dreg, unop(op, getQReg(mreg)), condT);
                DIP("vrecpe.%c32 q%u, q%u\n", F ? 'f' : 'u', dreg, mreg);
             } else {
-               op = F ? Iop_Recip32Fx2 : Iop_Recip32x2;
+               op = F ? Iop_RecipEst32Fx2 : Iop_RecipEst32Ux2;
                putDRegI64(dreg, unop(op, getDRegI64(mreg)), condT);
                DIP("vrecpe.%c32 d%u, d%u\n", F ? 'f' : 'u', dreg, mreg);
             }
@@ -7528,10 +7530,10 @@ Bool dis_neon_data_2reg_misc ( UInt theInstr, IRTemp condT )
                return False;
             if (F) {
                /* fp */
-               op = Q ? Iop_Rsqrte32Fx4 : Iop_Rsqrte32Fx2;
+               op = Q ? Iop_RSqrtEst32Fx4 : Iop_RSqrtEst32Fx2;
             } else {
                /* unsigned int */
-               op = Q ? Iop_Rsqrte32x4 : Iop_Rsqrte32x2;
+               op = Q ? Iop_RSqrtEst32Ux4 : Iop_RSqrtEst32Ux2;
             }
             if (Q) {
                putQReg(dreg, unop(op, getQReg(mreg)), condT);
@@ -13549,6 +13551,28 @@ static Bool decode_CP10_CP11_instruction (
                         condT);
             DIP("fdivd%s d%u, d%u, d%u\n", nCC(conq), dD, dN, dM);
             goto decode_success_vfp;
+         case BITS4(1,0,1,0): /* VNFMS: -(d - n * m) (fused) */
+            /* XXXROUNDINGFIXME look up ARM reference for fused
+               multiply-add rounding */
+            putDReg(dD, triop(Iop_AddF64, rm,
+                              unop(Iop_NegF64, getDReg(dD)),
+                              triop(Iop_MulF64, rm,
+                                                getDReg(dN),
+                                                getDReg(dM))),
+                        condT);
+            DIP("vfnmsd%s d%u, d%u, d%u\n", nCC(conq), dD, dN, dM);
+            goto decode_success_vfp;
+         case BITS4(1,0,1,1): /* VNFMA: -(d + n * m) (fused) */
+            /* XXXROUNDINGFIXME look up ARM reference for fused
+               multiply-add rounding */
+            putDReg(dD, triop(Iop_AddF64, rm,
+                              unop(Iop_NegF64, getDReg(dD)),
+                              triop(Iop_MulF64, rm,
+                                                unop(Iop_NegF64, getDReg(dN)),
+                                                getDReg(dM))),
+                        condT);
+            DIP("vfnmad%s d%u, d%u, d%u\n", nCC(conq), dD, dN, dM);
+            goto decode_success_vfp;
          case BITS4(1,1,0,0): /* VFMA: d + n * m (fused) */
             /* XXXROUNDINGFIXME look up ARM reference for fused
                multiply-add rounding */
@@ -14034,6 +14058,28 @@ static Bool decode_CP10_CP11_instruction (
                         condT);
             DIP("fdivs%s s%u, s%u, s%u\n", nCC(conq), fD, fN, fM);
             goto decode_success_vfp;
+         case BITS4(1,0,1,0): /* VNFMS: -(d - n * m) (fused) */
+            /* XXXROUNDINGFIXME look up ARM reference for fused
+               multiply-add rounding */
+            putFReg(fD, triop(Iop_AddF32, rm,
+                              unop(Iop_NegF32, getFReg(fD)),
+                              triop(Iop_MulF32, rm,
+                                                getFReg(fN),
+                                                getFReg(fM))),
+                        condT);
+            DIP("vfnmss%s s%u, s%u, s%u\n", nCC(conq), fD, fN, fM);
+            goto decode_success_vfp;
+         case BITS4(1,0,1,1): /* VNFMA: -(d + n * m) (fused) */
+            /* XXXROUNDINGFIXME look up ARM reference for fused
+               multiply-add rounding */
+            putFReg(fD, triop(Iop_AddF32, rm,
+                              unop(Iop_NegF32, getFReg(fD)),
+                              triop(Iop_MulF32, rm,
+                                                unop(Iop_NegF32, getFReg(fN)),
+                                                getFReg(fM))),
+                        condT);
+            DIP("vfnmas%s s%u, s%u, s%u\n", nCC(conq), fD, fN, fM);
+            goto decode_success_vfp;
          case BITS4(1,1,0,0): /* VFMA: d + n * m (fused) */
             /* XXXROUNDINGFIXME look up ARM reference for fused
                multiply-add rounding */
@@ -14411,7 +14457,7 @@ static Bool decode_CP10_CP11_instruction (
    here, since they are all in NV space.
 */
 static Bool decode_NV_instruction ( /*MOD*/DisResult* dres,
-                                    VexArchInfo* archinfo,
+                                    const VexArchInfo* archinfo,
                                     UInt insn )
 {
 #  define INSN(_bMax,_bMin)  SLICE_UInt(insn, (_bMax), (_bMin))
@@ -14563,12 +14609,12 @@ static Bool decode_NV_instruction ( /*MOD*/DisResult* dres,
 
 static
 DisResult disInstr_ARM_WRK (
-             Bool         (*resteerOkFn) ( /*opaque*/void*, Addr64 ),
+             Bool         (*resteerOkFn) ( /*opaque*/void*, Addr ),
              Bool         resteerCisOk,
              void*        callback_opaque,
-             UChar*       guest_instr,
-             VexArchInfo* archinfo,
-             VexAbiInfo*  abiinfo,
+             const UChar* guest_instr,
+             const VexArchInfo* archinfo,
+             const VexAbiInfo*  abiinfo,
              Bool         sigill_diag
           )
 {
@@ -14615,7 +14661,7 @@ DisResult disInstr_ARM_WRK (
 
    /* Spot "Special" instructions (see comment at top of file). */
    {
-      UChar* code = (UChar*)guest_instr;
+      const UChar* code = guest_instr;
       /* Spot the 16-byte preamble: 
 
          e1a0c1ec  mov r12, r12, ROR #3
@@ -15527,10 +15573,10 @@ DisResult disInstr_ARM_WRK (
       if (condT == IRTemp_INVALID) {
          /* unconditional transfer to 'dst'.  See if we can simply
             continue tracing at the destination. */
-         if (resteerOkFn( callback_opaque, (Addr64)dst )) {
+         if (resteerOkFn( callback_opaque, dst )) {
             /* yes */
             dres.whatNext   = Dis_ResteerU;
-            dres.continueAt = (Addr64)dst;
+            dres.continueAt = dst;
          } else {
             /* no; terminate the SB at this point. */
             llPutIReg(15, mkU32(dst));
@@ -15550,7 +15596,7 @@ DisResult disInstr_ARM_WRK (
              && resteerCisOk
              && vex_control.guest_chase_cond
              && dst < guest_R15_curr_instr_notENC
-             && resteerOkFn( callback_opaque, (Addr64)(Addr32)dst) ) {
+             && resteerOkFn( callback_opaque, dst) ) {
             /* Speculation: assume this backward branch is taken.  So
                we need to emit a side-exit to the insn following this
                one, on the negation of the condition, and continue at
@@ -15561,7 +15607,7 @@ DisResult disInstr_ARM_WRK (
                                IRConst_U32(guest_R15_curr_instr_notENC+4),
                                OFFB_R15T ));
             dres.whatNext   = Dis_ResteerC;
-            dres.continueAt = (Addr64)(Addr32)dst;
+            dres.continueAt = (Addr32)dst;
             comment = "(assumed taken)";
          }
          else
@@ -15570,8 +15616,7 @@ DisResult disInstr_ARM_WRK (
              && vex_control.guest_chase_cond
              && dst >= guest_R15_curr_instr_notENC
              && resteerOkFn( callback_opaque, 
-                             (Addr64)(Addr32)
-                                     (guest_R15_curr_instr_notENC+4)) ) {
+                             guest_R15_curr_instr_notENC+4) ) {
             /* Speculation: assume this forward branch is not taken.
                So we need to emit a side-exit to dst (the dest) and
                continue disassembling at the insn immediately
@@ -15581,8 +15626,7 @@ DisResult disInstr_ARM_WRK (
                                IRConst_U32(dst),
                                OFFB_R15T ));
             dres.whatNext   = Dis_ResteerC;
-            dres.continueAt = (Addr64)(Addr32)
-                                      (guest_R15_curr_instr_notENC+4);
+            dres.continueAt = guest_R15_curr_instr_notENC+4;
             comment = "(assumed not taken)";
          }
          else {
@@ -17299,9 +17343,10 @@ DisResult disInstr_ARM_WRK (
       now. */
    vassert(0 == (guest_R15_curr_instr_notENC & 3));
    llPutIReg( 15, mkU32(guest_R15_curr_instr_notENC) );
+   dres.len         = 0;
    dres.whatNext    = Dis_StopHere;
    dres.jk_StopHere = Ijk_NoDecode;
-   dres.len         = 0;
+   dres.continueAt  = 0;
    return dres;
 
   decode_success:
@@ -17394,12 +17439,12 @@ static const UChar it_length_table[256]; /* fwds */
 
 static   
 DisResult disInstr_THUMB_WRK (
-             Bool         (*resteerOkFn) ( /*opaque*/void*, Addr64 ),
+             Bool         (*resteerOkFn) ( /*opaque*/void*, Addr ),
              Bool         resteerCisOk,
              void*        callback_opaque,
-             UChar*       guest_instr,
-             VexArchInfo* archinfo,
-             VexAbiInfo*  abiinfo,
+             const UChar* guest_instr,
+             const VexArchInfo* archinfo,
+             const VexAbiInfo*  abiinfo,
              Bool         sigill_diag
           )
 {
@@ -17456,7 +17501,7 @@ DisResult disInstr_THUMB_WRK (
    /* ----------------------------------------------------------- */
    /* Spot "Special" instructions (see comment at top of file). */
    {
-      UChar* code = (UChar*)guest_instr;
+      const UChar* code = guest_instr;
       /* Spot the 16-byte preamble: 
 
          ea4f 0cfc  mov.w   ip, ip, ror #3
@@ -21868,9 +21913,10 @@ DisResult disInstr_THUMB_WRK (
       now. */
    vassert(0 == (guest_R15_curr_instr_notENC & 1));
    llPutIReg( 15, mkU32(guest_R15_curr_instr_notENC | 1) );
+   dres.len         = 0;
    dres.whatNext    = Dis_StopHere;
    dres.jk_StopHere = Ijk_NoDecode;
-   dres.len         = 0;
+   dres.continueAt  = 0;
    return dres;
 
   decode_success:
@@ -21989,15 +22035,15 @@ static const UChar it_length_table[256]
    is located in host memory at &guest_code[delta]. */
 
 DisResult disInstr_ARM ( IRSB*        irsb_IN,
-                         Bool         (*resteerOkFn) ( void*, Addr64 ),
+                         Bool         (*resteerOkFn) ( void*, Addr ),
                          Bool         resteerCisOk,
                          void*        callback_opaque,
-                         UChar*       guest_code_IN,
+                         const UChar* guest_code_IN,
                          Long         delta_ENCODED,
-                         Addr64       guest_IP_ENCODED,
+                         Addr         guest_IP_ENCODED,
                          VexArch      guest_arch,
-                         VexArchInfo* archinfo,
-                         VexAbiInfo*  abiinfo,
+                         const VexArchInfo* archinfo,
+                         const VexAbiInfo*  abiinfo,
                          VexEndness   host_endness_IN,
                          Bool         sigill_diag_IN )
 {

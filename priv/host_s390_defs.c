@@ -44,15 +44,6 @@
 #include "guest_s390_defs.h"    /* S390X_GUEST_OFFSET */
 #include <stdarg.h>
 
-/* KLUDGE: We need to know the hwcaps of the host when generating
-   code. But that info is not passed to emit_S390Instr. Only mode64 is
-   being passed. So, ideally, we want this passed as an argument, too.
-   Until then, we use a global variable. This variable is set as a side
-   effect of iselSB_S390. This is safe because instructions are selected
-   before they are emitted. */
-UInt s390_host_hwcaps;
-
-
 /*------------------------------------------------------------*/
 /*--- Forward declarations                                 ---*/
 /*------------------------------------------------------------*/
@@ -66,6 +57,32 @@ static UInt s390_tchain_load64_len(void);
 /*------------------------------------------------------------*/
 /*--- Registers                                            ---*/
 /*------------------------------------------------------------*/
+
+/* A mapping from register number to register index */
+static Int gpr_index[16];  // GPR regno -> register index
+static Int fpr_index[16];  // FPR regno -> register index
+
+HReg
+s390_hreg_gpr(UInt regno)
+{
+   Int ix = gpr_index[regno];
+   vassert(ix >= 0);
+   return mkHReg(/*virtual*/False, HRcInt64, regno, ix);
+}
+
+HReg
+s390_hreg_fpr(UInt regno)
+{
+   Int ix = fpr_index[regno];
+   vassert(ix >= 0);
+   return mkHReg(/*virtual*/False, HRcFlt64, regno, ix);
+}
+
+static __inline__ UInt
+hregNumber(HReg reg)
+{
+   return hregEncoding(reg);
+}
 
 /* Decompile the given register into a static buffer and return it */
 const HChar *
@@ -111,74 +128,11 @@ s390_hreg_as_string(HReg reg)
 }
 
 
-/* Tell the register allocator which registers can be allocated. */
-static void
-s390_hreg_get_allocable(Int *nregs, HReg **arr)
-{
-   UInt i;
-
-   /* Total number of allocable registers (all classes) */
-   *nregs =  16 /* GPRs */
-      -  1 /* r0 */
-      -  1 /* r12 scratch register for translation chaining support */
-      -  1 /* r13 guest state pointer */
-      -  1 /* r14 link register */
-      -  1 /* r15 stack pointer */
-      + 16 /* FPRs */
-      ;
-
-   *arr = LibVEX_Alloc(*nregs * sizeof(HReg));
-
-   i = 0;
-
-   /* GPR0 is not available because it is interpreted as 0, when used
-      as a base or index register. */
-   (*arr)[i++] = mkHReg(1,  HRcInt64, False);
-   (*arr)[i++] = mkHReg(2,  HRcInt64, False);
-   (*arr)[i++] = mkHReg(3,  HRcInt64, False);
-   (*arr)[i++] = mkHReg(4,  HRcInt64, False);
-   (*arr)[i++] = mkHReg(5,  HRcInt64, False);
-   (*arr)[i++] = mkHReg(6,  HRcInt64, False);
-   (*arr)[i++] = mkHReg(7,  HRcInt64, False);
-   (*arr)[i++] = mkHReg(8,  HRcInt64, False);
-   (*arr)[i++] = mkHReg(9,  HRcInt64, False);
-   /* GPR10 and GPR11 are used for instructions that use register pairs.
-      Otherwise, they are available to the allocator */
-   (*arr)[i++] = mkHReg(10, HRcInt64, False);
-   (*arr)[i++] = mkHReg(11, HRcInt64, False);
-   /* GPR12 is not available because it us used as a scratch register
-      in translation chaining. */
-   /* GPR13 is not available because it is used as guest state pointer */
-   /* GPR14 is not available because it is used as link register */
-   /* GPR15 is not available because it is used as stack pointer */
-
-   /* Add the available real (non-virtual) FPRs */
-   (*arr)[i++] = mkHReg(0,  HRcFlt64, False);
-   (*arr)[i++] = mkHReg(1,  HRcFlt64, False);
-   (*arr)[i++] = mkHReg(2,  HRcFlt64, False);
-   (*arr)[i++] = mkHReg(3,  HRcFlt64, False);
-   (*arr)[i++] = mkHReg(4,  HRcFlt64, False);
-   (*arr)[i++] = mkHReg(5,  HRcFlt64, False);
-   (*arr)[i++] = mkHReg(6,  HRcFlt64, False);
-   (*arr)[i++] = mkHReg(7,  HRcFlt64, False);
-   (*arr)[i++] = mkHReg(8,  HRcFlt64, False);
-   (*arr)[i++] = mkHReg(9,  HRcFlt64, False);
-   (*arr)[i++] = mkHReg(10, HRcFlt64, False);
-   (*arr)[i++] = mkHReg(11, HRcFlt64, False);
-   (*arr)[i++] = mkHReg(12, HRcFlt64, False);
-   (*arr)[i++] = mkHReg(13, HRcFlt64, False);
-   (*arr)[i++] = mkHReg(14, HRcFlt64, False);
-   (*arr)[i++] = mkHReg(15, HRcFlt64, False);
-   /* FPR12 - FPR15 are also used as register pairs for 128-bit
-      floating point operations */
-}
-
-
 /* Return the real register that holds the guest state pointer */
 HReg
 s390_hreg_guest_state_pointer(void)
 {
-   return mkHReg(S390_REGNO_GUEST_STATE_POINTER, HRcInt64, False);
+   return s390_hreg_gpr(S390_REGNO_GUEST_STATE_POINTER);
 }
 
 
@@ -186,7 +140,8 @@ s390_hreg_guest_state_pointer(void)
 static __inline__ Bool
 fits_signed_20bit(Int value)
 {
-   return ((value << 12) >> 12) == value;
+   UInt uval = value;
+   return ((Int)(uval << 12) >> 12) == value;
 }
 
 
@@ -205,14 +160,14 @@ fits_unsigned_12bit(Int value)
 s390_amode *
 s390_amode_b12(Int d, HReg b)
 {
-   s390_amode *am = LibVEX_Alloc(sizeof(s390_amode));
+   s390_amode *am = LibVEX_Alloc_inline(sizeof(s390_amode));
 
    vassert(fits_unsigned_12bit(d));
 
    am->tag = S390_AMODE_B12;
    am->d = d;
    am->b = b;
-   am->x = mkHReg(0, HRcInt64, False);  /* hregNumber(am->x) == 0 */
+   am->x = s390_hreg_gpr(0);  /* hregNumber(am->x) == 0 */
 
    return am;
 }
@@ -222,14 +177,14 @@ s390_amode_b12(Int d, HReg b)
 s390_amode *
 s390_amode_b20(Int d, HReg b)
 {
-   s390_amode *am = LibVEX_Alloc(sizeof(s390_amode));
+   s390_amode *am = LibVEX_Alloc_inline(sizeof(s390_amode));
 
    vassert(fits_signed_20bit(d));
 
    am->tag = S390_AMODE_B20;
    am->d = d;
    am->b = b;
-   am->x = mkHReg(0, HRcInt64, False);  /* hregNumber(am->x) == 0 */
+   am->x = s390_hreg_gpr(0);  /* hregNumber(am->x) == 0 */
 
    return am;
 }
@@ -239,7 +194,7 @@ s390_amode_b20(Int d, HReg b)
 s390_amode *
 s390_amode_bx12(Int d, HReg b, HReg x)
 {
-   s390_amode *am = LibVEX_Alloc(sizeof(s390_amode));
+   s390_amode *am = LibVEX_Alloc_inline(sizeof(s390_amode));
 
    vassert(fits_unsigned_12bit(d));
    vassert(hregNumber(b) != 0);
@@ -258,7 +213,7 @@ s390_amode_bx12(Int d, HReg b, HReg x)
 s390_amode *
 s390_amode_bx20(Int d, HReg b, HReg x)
 {
-   s390_amode *am = LibVEX_Alloc(sizeof(s390_amode));
+   s390_amode *am = LibVEX_Alloc_inline(sizeof(s390_amode));
 
    vassert(fits_signed_20bit(d));
    vassert(hregNumber(b) != 0);
@@ -400,13 +355,13 @@ s390_amode_map_regs(HRegRemap *m, s390_amode *am)
 
 
 void
-ppS390AMode(s390_amode *am)
+ppS390AMode(const s390_amode *am)
 {
    vex_printf("%s", s390_amode_as_string(am));
 }
 
 void
-ppS390Instr(s390_insn *insn, Bool mode64)
+ppS390Instr(const s390_insn *insn, Bool mode64)
 {
    vex_printf("%s", s390_insn_as_string(insn));
 }
@@ -421,18 +376,70 @@ ppHRegS390(HReg reg)
 /*--- Helpers for register allocation                      ---*/
 /*------------------------------------------------------------*/
 
-/* Called once per translation. */
-void
-getAllocableRegs_S390(Int *nregs, HReg **arr, Bool mode64)
+/* Initialise and return the "register universe", i.e. a list of
+   all hardware registers. Called once. */
+const RRegUniverse *
+getRRegUniverse_S390(void)
 {
-   s390_hreg_get_allocable(nregs, arr);
-}
+   static RRegUniverse all_regs;
+   static Bool initialised = False;
+   RRegUniverse *ru = &all_regs;
+   
+   if (LIKELY(initialised))
+      return ru;
 
+   RRegUniverse__init(ru);
+
+   /* Assign invalid values to the gpr/fpr_index */
+   for (UInt i = 0; i < sizeof gpr_index / sizeof gpr_index[0]; ++i)
+      gpr_index[i] = -1;
+   for (UInt i = 0; i < sizeof fpr_index / sizeof fpr_index[0]; ++i)
+      fpr_index[i] = -1;
+
+   /* Add the registers that are available to the register allocator.
+      GPRs:  registers 1..11 are available
+      FPRs:  registers 0..15 are available
+             FPR12 - FPR15 are also used as register pairs for 128-bit
+             floating point operations
+   */
+   UInt regno;
+   for (regno = 1; regno <= 11; ++regno) {
+      gpr_index[regno] = ru->size;
+      ru->regs[ru->size++] = s390_hreg_gpr(regno);
+   }
+   for (regno = 0; regno <= 15; ++regno) {
+      fpr_index[regno] = ru->size;
+      ru->regs[ru->size++] = s390_hreg_fpr(regno);
+   }
+   ru->allocable = ru->size;
+
+   /* Add the registers that are not available for allocation.
+      r0  -- cannot be used as a base or index register
+      r12 -- scratch register for translation chaining support
+      r13 -- guest state pointer
+      r14 -- link register
+      r15 -- stack pointer
+   */
+   UInt other[] = { 0, 12, 13, 14, 15 };
+   for (UInt i = 0; i < sizeof other / sizeof other[0]; ++i) {
+      gpr_index[other[i]] = ru->size;
+      ru->regs[ru->size++] = s390_hreg_gpr(other[i]);
+   }
+
+   /* Sanity checking */
+   for (UInt i = 0; i < sizeof gpr_index / sizeof gpr_index[0]; ++i)
+      vassert(gpr_index[i] >= 0);
+   for (UInt i = 0; i < sizeof fpr_index / sizeof fpr_index[0]; ++i)
+      vassert(fpr_index[i] >= 0);
+                 
+   initialised = True;
+   return ru;
+}
 
 /* Tell the register allocator how the given instruction uses the registers
    it refers to. */
 void
-getRegUsage_S390Instr(HRegUsage *u, s390_insn *insn, Bool mode64)
+getRegUsage_S390Instr(HRegUsage *u, const s390_insn *insn, Bool mode64)
 {
    s390_insn_get_reg_usage(u, insn);
 }
@@ -450,7 +457,7 @@ mapRegs_S390Instr(HRegRemap *m, s390_insn *insn, Bool mode64)
    assign the source and destination to *src and *dst.  If in doubt say No.
    Used by the register allocator to do move coalescing. */
 Bool
-isMove_S390Instr(s390_insn *insn, HReg *src, HReg *dst)
+isMove_S390Instr(const s390_insn *insn, HReg *src, HReg *dst)
 {
    return s390_insn_is_reg_reg_move(insn, src, dst);
 }
@@ -649,19 +656,18 @@ s390_insn_get_reg_usage(HRegUsage *u, const s390_insn *insn)
          volatile registers are: r0 - r5. Valgrind's register allocator
          does not know about r0, so we can leave that out */
       for (i = 1; i <= 5; ++i) {
-         addHRegUse(u, HRmWrite, mkHReg(i, HRcInt64, False));
+         addHRegUse(u, HRmWrite, s390_hreg_gpr(i));
       }
 
       /* Ditto for floating point registers. f0 - f7 are volatile */
       for (i = 0; i <= 7; ++i) {
-         addHRegUse(u, HRmWrite, mkHReg(i, HRcFlt64, False));
+         addHRegUse(u, HRmWrite, s390_hreg_fpr(i));
       }
 
       /* The registers that are used for passing arguments will be read.
          Not all of them may, but in general we need to assume that. */
       for (i = 0; i < insn->variant.helper_call.details->num_args; ++i) {
-         addHRegUse(u, HRmRead, mkHReg(s390_gprno_from_arg_index(i),
-                                       HRcInt64, False));
+         addHRegUse(u, HRmRead, s390_hreg_gpr(s390_gprno_from_arg_index(i)));
       }
 
       /* s390_insn_helper_call_emit also reads / writes the link register
@@ -1525,8 +1531,6 @@ s390_emit_A(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_AY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "ay", r1, dh2, dl2, x2, b2);
 
@@ -1537,8 +1541,6 @@ s390_emit_AY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_AG(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "ag", r1, dh2, dl2, x2, b2);
 
@@ -1583,8 +1585,6 @@ s390_emit_AH(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_AHY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "ahy", r1, dh2, dl2, x2, b2);
 
@@ -1669,8 +1669,6 @@ s390_emit_N(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_NY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "ny", r1, dh2, dl2, x2, b2);
 
@@ -1681,8 +1679,6 @@ s390_emit_NY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_NG(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "ng", r1, dh2, dl2, x2, b2);
 
@@ -1797,8 +1793,6 @@ s390_emit_C(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_CY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "cy", r1, dh2, dl2, x2, b2);
 
@@ -1809,8 +1803,6 @@ s390_emit_CY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_CG(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "cg", r1, dh2, dl2, x2, b2);
 
@@ -1855,8 +1847,6 @@ s390_emit_CS(UChar *p, UChar r1, UChar r3, UChar b2, UShort d2)
 static UChar *
 s390_emit_CSY(UChar *p, UChar r1, UChar r3, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC4(MNM, GPR, GPR, SDXB), "csy", r1, r3, dh2, dl2, 0, b2);
 
@@ -1867,8 +1857,6 @@ s390_emit_CSY(UChar *p, UChar r1, UChar r3, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_CSG(UChar *p, UChar r1, UChar r3, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC4(MNM, GPR, GPR, SDXB), "csg", r1, r3, dh2, dl2, 0, b2);
 
@@ -1889,8 +1877,6 @@ s390_emit_CDS(UChar *p, UChar r1, UChar r3, UChar b2, UShort d2)
 static UChar *
 s390_emit_CDSY(UChar *p, UChar r1, UChar r3, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC4(MNM, GPR, GPR, SDXB), "cdsy", r1, r3, dh2, dl2, 0, b2);
 
@@ -1901,8 +1887,6 @@ s390_emit_CDSY(UChar *p, UChar r1, UChar r3, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_CDSG(UChar *p, UChar r1, UChar r3, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC4(MNM, GPR, GPR, SDXB), "cdsg", r1, r3, dh2, dl2, 0, b2);
 
@@ -1943,8 +1927,6 @@ s390_emit_CL(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_CLY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "cly", r1, dh2, dl2, x2, b2);
 
@@ -1955,8 +1937,6 @@ s390_emit_CLY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_CLG(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "clg", r1, dh2, dl2, x2, b2);
 
@@ -2031,8 +2011,6 @@ s390_emit_DLGR(UChar *p, UChar r1, UChar r2)
 static UChar *
 s390_emit_DL(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "dl", r1, dh2, dl2, x2, b2);
 
@@ -2043,8 +2021,6 @@ s390_emit_DL(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_DLG(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "dlg", r1, dh2, dl2, x2, b2);
 
@@ -2065,8 +2041,6 @@ s390_emit_DSGR(UChar *p, UChar r1, UChar r2)
 static UChar *
 s390_emit_DSG(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "dsg", r1, dh2, dl2, x2, b2);
 
@@ -2107,8 +2081,6 @@ s390_emit_X(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_XY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "xy", r1, dh2, dl2, x2, b2);
 
@@ -2119,8 +2091,6 @@ s390_emit_XY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_XG(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "xg", r1, dh2, dl2, x2, b2);
 
@@ -2187,8 +2157,6 @@ s390_emit_IC(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_ICY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "icy", r1, dh2, dl2, x2, b2);
 
@@ -2313,8 +2281,6 @@ s390_emit_L(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_LY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "ly", r1, dh2, dl2, x2, b2);
 
@@ -2325,8 +2291,6 @@ s390_emit_LY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_LG(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "lg", r1, dh2, dl2, x2, b2);
 
@@ -2337,8 +2301,6 @@ s390_emit_LG(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_LGF(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "lgf", r1, dh2, dl2, x2, b2);
 
@@ -2429,8 +2391,6 @@ s390_emit_LGBR(UChar *p, UChar r1, UChar r2)
 static UChar *
 s390_emit_LB(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "lb", r1, dh2, dl2, x2, b2);
 
@@ -2441,8 +2401,6 @@ s390_emit_LB(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_LGB(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "lgb", r1, dh2, dl2, x2, b2);
 
@@ -2507,8 +2465,6 @@ s390_emit_LH(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_LHY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "lhy", r1, dh2, dl2, x2, b2);
 
@@ -2519,8 +2475,6 @@ s390_emit_LHY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_LGH(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "lgh", r1, dh2, dl2, x2, b2);
 
@@ -2561,8 +2515,6 @@ s390_emit_LLGFR(UChar *p, UChar r1, UChar r2)
 static UChar *
 s390_emit_LLGF(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "llgf", r1, dh2, dl2, x2, b2);
 
@@ -2609,8 +2561,6 @@ s390_emit_LLC(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_LLGC(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "llgc", r1, dh2, dl2, x2, b2);
 
@@ -2657,8 +2607,6 @@ s390_emit_LLH(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_LLGH(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "llgh", r1, dh2, dl2, x2, b2);
 
@@ -2785,8 +2733,6 @@ s390_emit_MLGR(UChar *p, UChar r1, UChar r2)
 static UChar *
 s390_emit_ML(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "ml", r1, dh2, dl2, x2, b2);
 
@@ -2797,8 +2743,6 @@ s390_emit_ML(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_MLG(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "mlg", r1, dh2, dl2, x2, b2);
 
@@ -2839,8 +2783,6 @@ s390_emit_MS(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_MSY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "msy", r1, dh2, dl2, x2, b2);
 
@@ -2851,8 +2793,6 @@ s390_emit_MSY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_MSG(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "msg", r1, dh2, dl2, x2, b2);
 
@@ -2907,6 +2847,8 @@ s390_emit_MVI(UChar *p, UChar i2, UChar b1, UShort d1)
 static UChar *
 s390_emit_MVHHI(UChar *p, UChar b1, UShort d1, UShort i2)
 {
+   vassert(s390_host_has_gie);
+
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, UDXB, INT), "mvhhi", d1, 0, b1, i2);
 
@@ -2917,6 +2859,8 @@ s390_emit_MVHHI(UChar *p, UChar b1, UShort d1, UShort i2)
 static UChar *
 s390_emit_MVHI(UChar *p, UChar b1, UShort d1, UShort i2)
 {
+   vassert(s390_host_has_gie);
+
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, UDXB, INT), "mvhi", d1, 0, b1, i2);
 
@@ -2927,6 +2871,8 @@ s390_emit_MVHI(UChar *p, UChar b1, UShort d1, UShort i2)
 static UChar *
 s390_emit_MVGHI(UChar *p, UChar b1, UShort d1, UShort i2)
 {
+   vassert(s390_host_has_gie);
+
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, UDXB, INT), "mvghi", d1, 0, b1, i2);
 
@@ -2967,8 +2913,6 @@ s390_emit_O(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_OY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "oy", r1, dh2, dl2, x2, b2);
 
@@ -2979,8 +2923,6 @@ s390_emit_OY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_OG(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "og", r1, dh2, dl2, x2, b2);
 
@@ -3035,8 +2977,6 @@ s390_emit_SLL(UChar *p, UChar r1, UChar b2, UShort d2)
 static UChar *
 s390_emit_SLLG(UChar *p, UChar r1, UChar r3, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC4(MNM, GPR, GPR, SDXB), "sllg", r1, r3, dh2, dl2, 0, b2);
 
@@ -3057,8 +2997,6 @@ s390_emit_SRA(UChar *p, UChar r1, UChar b2, UShort d2)
 static UChar *
 s390_emit_SRAG(UChar *p, UChar r1, UChar r3, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC4(MNM, GPR, GPR, SDXB), "srag", r1, r3, dh2, dl2, 0, b2);
 
@@ -3079,8 +3017,6 @@ s390_emit_SRL(UChar *p, UChar r1, UChar b2, UShort d2)
 static UChar *
 s390_emit_SRLG(UChar *p, UChar r1, UChar r3, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC4(MNM, GPR, GPR, SDXB), "srlg", r1, r3, dh2, dl2, 0, b2);
 
@@ -3101,8 +3037,6 @@ s390_emit_ST(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_STY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "sty", r1, dh2, dl2, x2, b2);
 
@@ -3113,8 +3047,6 @@ s390_emit_STY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_STG(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "stg", r1, dh2, dl2, x2, b2);
 
@@ -3135,8 +3067,6 @@ s390_emit_STC(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_STCY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "stcy", r1, dh2, dl2, x2, b2);
 
@@ -3157,8 +3087,6 @@ s390_emit_STH(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_STHY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "sthy", r1, dh2, dl2, x2, b2);
 
@@ -3199,8 +3127,6 @@ s390_emit_S(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_SY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "sy", r1, dh2, dl2, x2, b2);
 
@@ -3211,8 +3137,6 @@ s390_emit_SY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_SG(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "sg", r1, dh2, dl2, x2, b2);
 
@@ -3233,8 +3157,6 @@ s390_emit_SH(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_SHY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, GPR, SDXB), "shy", r1, dh2, dl2, x2, b2);
 
@@ -3297,8 +3219,6 @@ s390_emit_LD(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_LEY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, FPR, SDXB), "ley", r1, dh2, dl2, x2, b2);
 
@@ -3309,8 +3229,6 @@ s390_emit_LEY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_LDY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, FPR, SDXB), "ldy", r1, dh2, dl2, x2, b2);
 
@@ -3405,8 +3323,6 @@ s390_emit_STD(UChar *p, UChar r1, UChar x2, UChar b2, UShort d2)
 static UChar *
 s390_emit_STEY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, FPR, SDXB), "stey", r1, dh2, dl2, x2, b2);
 
@@ -3417,8 +3333,6 @@ s390_emit_STEY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_STDY(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC3(MNM, FPR, SDXB), "stdy", r1, dh2, dl2, x2, b2);
 
@@ -4787,8 +4701,6 @@ s390_emit_LOCGR(UChar *p, UChar m3, UChar r1, UChar r2)
 static UChar *
 s390_emit_LOC(UChar *p, UChar r1, UChar m3, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC4(MNM, GPR, UINT, SDXB), "loc", r1, m3, dh2, dl2, 0, b2);
 
@@ -4799,8 +4711,6 @@ s390_emit_LOC(UChar *p, UChar r1, UChar m3, UChar b2, UShort dl2, UChar dh2)
 static UChar *
 s390_emit_LOCG(UChar *p, UChar r1, UChar m3, UChar b2, UShort dl2, UChar dh2)
 {
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
       s390_disasm(ENC4(MNM, GPR, UINT, SDXB), "locg", r1, m3, dh2, dl2, 0, b2);
 
@@ -4822,36 +4732,36 @@ s390_emit_LOCG(UChar *p, UChar r1, UChar m3, UChar b2, UShort dl2, UChar dh2)
 static __inline__ Bool
 uint_fits_signed_16bit(UInt val)
 {
-   Int v = val & 0xFFFFu;
+   UInt v = val & 0xFFFFu;
 
    /* sign extend */
-   v = (v << 16) >> 16;
+   v = (Int)(v << 16) >> 16;
 
-   return val == (UInt)v;
+   return val == v;
 }
 
 
 static __inline__ Bool
 ulong_fits_signed_16bit(ULong val)
 {
-   Long v = val & 0xFFFFu;
+   ULong v = val & 0xFFFFu;
 
    /* sign extend */
-   v = (v << 48) >> 48;
+   v = (Long)(v << 48) >> 48;
 
-   return val == (ULong)v;
+   return val == v;
 }
 
 
 static __inline__ Bool
 ulong_fits_signed_32bit(ULong val)
 {
-   Long v = val & 0xFFFFFFFFu;
+   ULong v = val & 0xFFFFFFFFu;
 
    /* sign extend */
-   v = (v << 32) >> 32;
+   v = (Long)(v << 32) >> 32;
 
-   return val == (ULong)v;
+   return val == v;
 }
 
 
@@ -5002,22 +4912,6 @@ s390_emit_XILFw(UChar *p, UChar r1, UInt i2)
 }
 
 
-/* r1[32:63] = sign_extend(mem[op2addr][0:7]) */
-static UChar *
-s390_emit_LBw(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
-{
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
-   if (s390_host_has_ldisp) {
-      return s390_emit_LB(p, r1, x2, b2, dl2, dh2);
-   }
-
-   p = s390_emit_IC(p, r1, x2, b2, dl2);    /* r1[56:63] = mem[op2addr][0:7] */
-   p = s390_emit_SLL(p, r1, R0, 24);        /* r1 = r1 << 24  */
-   return s390_emit_SRA(p, r1, R0, 24);     /* r1 = r1 >>a 24 */
-}
-
-
 /*  r1[32:63] = sign_extend(r2[56:63]) */
 static UChar *
 s390_emit_LBRw(UChar *p, UChar r1, UChar r2)
@@ -5029,22 +4923,6 @@ s390_emit_LBRw(UChar *p, UChar r1, UChar r2)
    p = s390_emit_LR(p, r1, r2);               /* r1 = r2 */
    p = s390_emit_SLL(p, r1, R0, 24);          /* r1 = r1 << 24  */
    return s390_emit_SRA(p, r1, R0, 24);       /* r1 = r1 >>a 24 */
-}
-
-
-/* r1[0:63] = sign_extend(mem[op2addr][0:7]) */
-static UChar *
-s390_emit_LGBw(UChar *p, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
-{
-   vassert(s390_host_has_ldisp || dh2 == 0);
-
-   if (s390_host_has_ldisp) {
-      return s390_emit_LGB(p, r1, x2, b2, dl2, dh2);
-   }
-
-   p = s390_emit_IC(p, r1, x2, b2, dl2);             /* r1[56:63] = mem[op2addr][0:7] */
-   p = s390_emit_SLLG(p, r1, r1, R0, DISP20(56));    /* r1 = r1 << 56  */
-   return s390_emit_SRAG(p, r1, r1, R0, DISP20(56)); /* r1 = r1 >>a 56 */
 }
 
 
@@ -5307,17 +5185,8 @@ s390_emit_LGDRw(UChar *p, UChar r1, UChar r2)
    /* Store the FPR at memory[sp - 8]. This is safe because SP grows towards
       smaller addresses and is 8-byte aligned. Then load the GPR from that
       memory location/ */
-   if (s390_host_has_ldisp) {
-      p = s390_emit_STDY(p, r2, R0, S390_REGNO_STACK_POINTER, DISP20(-8));
-      return s390_emit_LG(p, r1, R0, S390_REGNO_STACK_POINTER, DISP20(-8));
-   }
-
-   /* No long displacement. Need to adjust SP explicitly as to avoid negative
-      displacements. */
-   p = s390_emit_AGHI(p, S390_REGNO_STACK_POINTER, -8);
-   p = s390_emit_STD(p, r2, R0, S390_REGNO_STACK_POINTER, 0);
-   p = s390_emit_LG(p, r1, R0, S390_REGNO_STACK_POINTER, DISP20(0));
-   return s390_emit_AGHI(p, S390_REGNO_STACK_POINTER, 8);
+   p = s390_emit_STDY(p, r2, R0, S390_REGNO_STACK_POINTER, DISP20(-8));
+   return s390_emit_LG(p, r1, R0, S390_REGNO_STACK_POINTER, DISP20(-8));
 }
 
 
@@ -5331,17 +5200,8 @@ s390_emit_LDGRw(UChar *p, UChar r1, UChar r2)
    /* Store the GPR at memory[sp - 8]. This is safe because SP grows towards
       smaller addresses and is 8-byte aligned. Then load the FPR from that
       memory location/ */
-   if (s390_host_has_ldisp) {
-      p = s390_emit_STG(p, r2, R0, S390_REGNO_STACK_POINTER, DISP20(-8));
-      return s390_emit_LDY(p, r1, R0, S390_REGNO_STACK_POINTER, DISP20(-8));
-   }
-
-   /* No long displacement. Need to adjust SP explicitly as to avoid negative
-      displacements. */
-   p = s390_emit_AGHI(p, S390_REGNO_STACK_POINTER, -8);
-   p = s390_emit_STG(p, r2, R0, S390_REGNO_STACK_POINTER, DISP20(0));
-   p = s390_emit_LD(p, r1, R0, S390_REGNO_STACK_POINTER, 0);
-   return s390_emit_AGHI(p, S390_REGNO_STACK_POINTER, 8);
+   p = s390_emit_STG(p, r2, R0, S390_REGNO_STACK_POINTER, DISP20(-8));
+   return s390_emit_LDY(p, r1, R0, S390_REGNO_STACK_POINTER, DISP20(-8));
 }
 
 
@@ -5352,7 +5212,7 @@ s390_emit_LDGRw(UChar *p, UChar r1, UChar r2)
 s390_insn *
 s390_insn_load(UChar size, HReg dst, s390_amode *src)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    insn->tag  = S390_INSN_LOAD;
    insn->size = size;
@@ -5368,7 +5228,7 @@ s390_insn_load(UChar size, HReg dst, s390_amode *src)
 s390_insn *
 s390_insn_store(UChar size, s390_amode *dst, HReg src)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    insn->tag  = S390_INSN_STORE;
    insn->size = size;
@@ -5384,7 +5244,7 @@ s390_insn_store(UChar size, s390_amode *dst, HReg src)
 s390_insn *
 s390_insn_move(UChar size, HReg dst, HReg src)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    insn->tag  = S390_INSN_MOVE;
    insn->size = size;
@@ -5400,7 +5260,7 @@ s390_insn_move(UChar size, HReg dst, HReg src)
 s390_insn *
 s390_insn_memcpy(UChar size, s390_amode *dst, s390_amode *src)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    /* This insn will be mapped to MVC which requires base register
       plus 12-bit displacement */
@@ -5421,7 +5281,7 @@ s390_insn_memcpy(UChar size, s390_amode *dst, s390_amode *src)
 s390_insn *
 s390_insn_cond_move(UChar size, s390_cc_t cond, HReg dst, s390_opnd_RMI src)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    insn->tag  = S390_INSN_COND_MOVE;
    insn->size = size;
@@ -5438,7 +5298,7 @@ s390_insn_cond_move(UChar size, s390_cc_t cond, HReg dst, s390_opnd_RMI src)
 s390_insn *
 s390_insn_load_immediate(UChar size, HReg dst, ULong value)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    insn->tag  = S390_INSN_LOAD_IMMEDIATE;
    insn->size = size;
@@ -5452,7 +5312,7 @@ s390_insn_load_immediate(UChar size, HReg dst, ULong value)
 s390_insn *
 s390_insn_alu(UChar size, s390_alu_t tag, HReg dst, s390_opnd_RMI op2)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    insn->tag  = S390_INSN_ALU;
    insn->size = size;
@@ -5468,7 +5328,7 @@ s390_insn *
 s390_insn_mul(UChar size, HReg dst_hi, HReg dst_lo, s390_opnd_RMI op2,
               Bool signed_multiply)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(! hregIsVirtual(dst_hi));
    vassert(! hregIsVirtual(dst_lo));
@@ -5487,7 +5347,7 @@ s390_insn *
 s390_insn_div(UChar size, HReg op1_hi, HReg op1_lo, s390_opnd_RMI op2,
               Bool signed_divide)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 4 || size == 8);
    vassert(! hregIsVirtual(op1_hi));
@@ -5506,7 +5366,7 @@ s390_insn_div(UChar size, HReg op1_hi, HReg op1_lo, s390_opnd_RMI op2,
 s390_insn *
 s390_insn_divs(UChar size, HReg rem, HReg op1, s390_opnd_RMI op2)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 8);
    vassert(! hregIsVirtual(op1));
@@ -5525,7 +5385,7 @@ s390_insn_divs(UChar size, HReg rem, HReg op1, s390_opnd_RMI op2)
 s390_insn *
 s390_insn_clz(UChar size, HReg num_bits, HReg clobber, s390_opnd_RMI src)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 8);
    vassert(! hregIsVirtual(num_bits));
@@ -5544,7 +5404,7 @@ s390_insn_clz(UChar size, HReg num_bits, HReg clobber, s390_opnd_RMI src)
 s390_insn *
 s390_insn_unop(UChar size, s390_unop_t tag, HReg dst, s390_opnd_RMI opnd)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    insn->tag  = S390_INSN_UNOP;
    insn->size = size;
@@ -5559,7 +5419,7 @@ s390_insn_unop(UChar size, s390_unop_t tag, HReg dst, s390_opnd_RMI opnd)
 s390_insn *
 s390_insn_test(UChar size, s390_opnd_RMI src)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 4 || size == 8);
 
@@ -5574,7 +5434,7 @@ s390_insn_test(UChar size, s390_opnd_RMI src)
 s390_insn *
 s390_insn_cc2bool(HReg dst, s390_cc_t cond)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    insn->tag  = S390_INSN_CC2BOOL;
    insn->size = 0;   /* does not matter */
@@ -5588,10 +5448,11 @@ s390_insn_cc2bool(HReg dst, s390_cc_t cond)
 s390_insn *
 s390_insn_cas(UChar size, HReg op1, s390_amode *op2, HReg op3, HReg old_mem)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 4 || size == 8);
    vassert(hregNumber(op2->x) == 0);
+   vassert(op2->tag == S390_AMODE_B12 || op2->tag == S390_AMODE_B20);
 
    insn->tag  = S390_INSN_CAS;
    insn->size = size;
@@ -5609,12 +5470,13 @@ s390_insn_cdas(UChar size, HReg op1_high, HReg op1_low, s390_amode *op2,
                HReg op3_high, HReg op3_low, HReg old_mem_high, HReg old_mem_low,
                HReg scratch)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
-   s390_cdas *cdas = LibVEX_Alloc(sizeof(s390_cdas));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
+   s390_cdas *cdas = LibVEX_Alloc_inline(sizeof(s390_cdas));
 
    vassert(size == 4 || size == 8);
    vassert(hregNumber(op2->x) == 0);
    vassert(hregNumber(scratch) == 1);  /* r0,r1 used as scratch reg pair */
+   vassert(op2->tag == S390_AMODE_B12 || op2->tag == S390_AMODE_B20);
 
    insn->tag  = S390_INSN_CDAS;
    insn->size = size;
@@ -5637,7 +5499,7 @@ s390_insn *
 s390_insn_compare(UChar size, HReg src1, s390_opnd_RMI src2,
                   Bool signed_comparison)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 4 || size == 8);
 
@@ -5655,8 +5517,8 @@ s390_insn *
 s390_insn_helper_call(s390_cc_t cond, Addr64 target, UInt num_args,
                       const HChar *name, RetLoc rloc)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
-   s390_helper_call *helper_call = LibVEX_Alloc(sizeof(s390_helper_call));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
+   s390_helper_call *helper_call = LibVEX_Alloc_inline(sizeof(s390_helper_call));
 
    insn->tag  = S390_INSN_HELPER_CALL;
    insn->size = 0;  /* does not matter */
@@ -5678,7 +5540,7 @@ s390_insn *
 s390_insn_bfp_triop(UChar size, s390_bfp_triop_t tag, HReg dst, HReg op2,
                     HReg op3)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 4 || size == 8);
 
@@ -5696,7 +5558,7 @@ s390_insn_bfp_triop(UChar size, s390_bfp_triop_t tag, HReg dst, HReg op2,
 s390_insn *
 s390_insn_bfp_binop(UChar size, s390_bfp_binop_t tag, HReg dst, HReg op2)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 4 || size == 8);
 
@@ -5715,7 +5577,7 @@ s390_insn_bfp_binop(UChar size, s390_bfp_binop_t tag, HReg dst, HReg op2)
 s390_insn *
 s390_insn_bfp_unop(UChar size, s390_bfp_unop_t tag, HReg dst, HReg op)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 4 || size == 8);
 
@@ -5734,7 +5596,7 @@ s390_insn_bfp_unop(UChar size, s390_bfp_unop_t tag, HReg dst, HReg op)
 s390_insn *
 s390_insn_bfp_compare(UChar size, HReg dst, HReg op1, HReg op2)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 4 || size == 8);
 
@@ -5754,7 +5616,7 @@ s390_insn *
 s390_insn_bfp_convert(UChar size, s390_bfp_conv_t tag, HReg dst, HReg op,
                       s390_bfp_round_t rounding_mode)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 4 || size == 8);
 
@@ -5790,7 +5652,7 @@ s390_insn *
 s390_insn_bfp128_binop(UChar size, s390_bfp_binop_t tag, HReg dst_hi,
                        HReg dst_lo, HReg op2_hi, HReg op2_lo)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 16);
    vassert(is_valid_fp128_regpair(dst_hi, dst_lo));
@@ -5812,7 +5674,7 @@ s390_insn *
 s390_insn_bfp128_unop(UChar size, s390_bfp_unop_t tag, HReg dst_hi,
                       HReg dst_lo, HReg op_hi, HReg op_lo)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 16);
    vassert(is_valid_fp128_regpair(dst_hi, dst_lo));
@@ -5834,7 +5696,7 @@ s390_insn *
 s390_insn_bfp128_compare(UChar size, HReg dst, HReg op1_hi, HReg op1_lo,
                          HReg op2_hi, HReg op2_lo)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 16);
    vassert(is_valid_fp128_regpair(op1_hi, op1_lo));
@@ -5857,7 +5719,7 @@ s390_insn_bfp128_convert(UChar size, s390_bfp_conv_t tag, HReg dst_hi,
                          HReg dst_lo, HReg op_hi, HReg op_lo,
                          s390_bfp_round_t rounding_mode)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    if (size == 16) {
       /* From smaller size to 16 bytes */
@@ -5908,8 +5770,8 @@ s390_insn *
 s390_insn_dfp_binop(UChar size, s390_dfp_binop_t tag, HReg dst, HReg op2,
                     HReg op3, s390_dfp_round_t rounding_mode)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
-   s390_dfp_binop *dfp_binop = LibVEX_Alloc(sizeof(s390_dfp_binop));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
+   s390_dfp_binop *dfp_binop = LibVEX_Alloc_inline(sizeof(s390_dfp_binop));
 
    vassert(size == 8);
 
@@ -5933,7 +5795,7 @@ s390_insn_dfp_binop(UChar size, s390_dfp_binop_t tag, HReg dst, HReg op2,
 s390_insn *
 s390_insn_dfp_unop(UChar size, s390_dfp_unop_t tag, HReg dst, HReg op)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 8);
 
@@ -5953,7 +5815,7 @@ s390_insn *
 s390_insn_dfp_intop(UChar size, s390_dfp_intop_t tag, HReg dst, HReg op2,
                     HReg op3)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 8);
 
@@ -5974,7 +5836,7 @@ s390_insn *
 s390_insn_dfp_compare(UChar size, s390_dfp_cmp_t tag, HReg dst,
                       HReg op1, HReg op2)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 8);
 
@@ -5995,7 +5857,7 @@ s390_insn *
 s390_insn_dfp_convert(UChar size, s390_dfp_conv_t tag, HReg dst, HReg op,
                       s390_dfp_round_t rounding_mode)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 4 || size == 8);
 
@@ -6016,7 +5878,7 @@ s390_insn *
 s390_insn_dfp_reround(UChar size, HReg dst, HReg op2, HReg op3,
                       s390_dfp_round_t rounding_mode)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 8);
 
@@ -6037,8 +5899,8 @@ s390_insn *
 s390_insn_fp_convert(UChar size, s390_fp_conv_t tag, HReg dst, HReg op,
                      HReg r1, s390_dfp_round_t rounding_mode)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
-   s390_fp_convert *fp_convert = LibVEX_Alloc(sizeof(s390_fp_convert));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
+   s390_fp_convert *fp_convert = LibVEX_Alloc_inline(sizeof(s390_fp_convert));
 
    vassert(size == 4 || size == 8);
 
@@ -6063,8 +5925,8 @@ s390_insn_fp128_convert(UChar size, s390_fp_conv_t tag, HReg dst_hi,
                         HReg dst_lo, HReg op_hi, HReg op_lo, HReg r1,
                         s390_dfp_round_t rounding_mode)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
-   s390_fp_convert *fp_convert = LibVEX_Alloc(sizeof(s390_fp_convert));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
+   s390_fp_convert *fp_convert = LibVEX_Alloc_inline(sizeof(s390_fp_convert));
 
    vassert(size == 16);
 
@@ -6089,8 +5951,8 @@ s390_insn_dfp128_binop(UChar size, s390_dfp_binop_t tag, HReg dst_hi,
                        HReg dst_lo, HReg op2_hi, HReg op2_lo, HReg op3_hi,
                        HReg op3_lo, s390_dfp_round_t rounding_mode)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
-   s390_dfp_binop *dfp_binop = LibVEX_Alloc(sizeof(s390_dfp_binop));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
+   s390_dfp_binop *dfp_binop = LibVEX_Alloc_inline(sizeof(s390_dfp_binop));
 
    vassert(size == 16);
    vassert(is_valid_fp128_regpair(dst_hi, dst_lo));
@@ -6118,7 +5980,7 @@ s390_insn *
 s390_insn_dfp128_unop(UChar size, s390_dfp_unop_t tag, HReg dst,
                       HReg op_hi, HReg op_lo)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    /* destination is an 8 byte integer value */
    vassert(size == 8);
@@ -6140,7 +6002,7 @@ s390_insn *
 s390_insn_dfp128_intop(UChar size, s390_dfp_intop_t tag, HReg dst_hi,
                        HReg dst_lo, HReg op2, HReg op3_hi, HReg op3_lo)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 16);
    vassert(is_valid_fp128_regpair(dst_hi, dst_lo));
@@ -6163,7 +6025,7 @@ s390_insn *
 s390_insn_dfp128_compare(UChar size, s390_dfp_cmp_t tag, HReg dst, HReg op1_hi,
                          HReg op1_lo, HReg op2_hi, HReg op2_lo)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 16);
    vassert(is_valid_fp128_regpair(op1_hi, op1_lo));
@@ -6187,7 +6049,7 @@ s390_insn_dfp128_convert(UChar size, s390_dfp_conv_t tag, HReg dst_hi,
                          HReg dst_lo, HReg op_hi, HReg op_lo,
                          s390_dfp_round_t rounding_mode)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    if (size == 16) {
       /* From smaller size to 16 bytes */
@@ -6239,7 +6101,7 @@ s390_insn_dfp128_reround(UChar size, HReg dst_hi, HReg dst_lo, HReg op2,
                          HReg op3_hi, HReg op3_lo,
                          s390_dfp_round_t rounding_mode)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 16);
    vassert(is_valid_fp128_regpair(dst_hi, dst_lo));
@@ -6261,7 +6123,7 @@ s390_insn_dfp128_reround(UChar size, HReg dst_hi, HReg dst_lo, HReg op2,
 s390_insn *
 s390_insn_mfence(void)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    insn->tag  = S390_INSN_MFENCE;
    insn->size = 0;   /* not needed */
@@ -6273,7 +6135,7 @@ s390_insn_mfence(void)
 s390_insn *
 s390_insn_mimm(UChar size, s390_amode *dst, ULong value)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    /* This insn will be mapped to insns that require base register
       plus 12-bit displacement */
@@ -6291,13 +6153,15 @@ s390_insn_mimm(UChar size, s390_amode *dst, ULong value)
 s390_insn *
 s390_insn_madd(UChar size, s390_amode *dst, UChar delta, ULong value)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(size == 4 || size == 8);
 
    /* This insn will be mapped to an ASI or AGSI so we can only allow base
       register plus 12-bit / 20-bit displacement. */
    vassert(dst->tag == S390_AMODE_B12 || dst->tag == S390_AMODE_B20);
+   /* ASI and AGSI require the GIE facility */
+   vassert(s390_host_has_gie);
 
    insn->tag  = S390_INSN_MADD;
    insn->size = size;
@@ -6314,7 +6178,7 @@ s390_insn_set_fpc_bfprm(UChar size, HReg mode)
 {
    vassert(size == 4);
 
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    insn->tag  = S390_INSN_SET_FPC_BFPRM;
    insn->size = size;
@@ -6329,7 +6193,7 @@ s390_insn_set_fpc_dfprm(UChar size, HReg mode)
 {
    vassert(size == 4);
 
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    insn->tag  = S390_INSN_SET_FPC_DFPRM;
    insn->size = size;
@@ -6343,7 +6207,9 @@ s390_insn *
 s390_insn_xdirect(s390_cc_t cond, Addr64 dst, s390_amode *guest_IA,
                   Bool to_fast_entry)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
+
+   vassert(guest_IA->tag == S390_AMODE_B12);
 
    insn->tag  = S390_INSN_XDIRECT;
    insn->size = 0;   /* does not matter */
@@ -6360,7 +6226,9 @@ s390_insn_xdirect(s390_cc_t cond, Addr64 dst, s390_amode *guest_IA,
 s390_insn *
 s390_insn_xindir(s390_cc_t cond, HReg dst, s390_amode *guest_IA)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
+
+   vassert(guest_IA->tag == S390_AMODE_B12);
 
    insn->tag  = S390_INSN_XINDIR;
    insn->size = 0;   /* does not matter */
@@ -6377,7 +6245,9 @@ s390_insn *
 s390_insn_xassisted(s390_cc_t cond, HReg dst, s390_amode *guest_IA,
                     IRJumpKind kind)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
+
+   vassert(guest_IA->tag == S390_AMODE_B12);
 
    insn->tag  = S390_INSN_XASSISTED;
    insn->size = 0;   /* does not matter */
@@ -6394,7 +6264,7 @@ s390_insn_xassisted(s390_cc_t cond, HReg dst, s390_amode *guest_IA,
 s390_insn *
 s390_insn_evcheck(s390_amode *counter, s390_amode *fail_addr)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    vassert(counter->tag   == S390_AMODE_B12);
    vassert(fail_addr->tag == S390_AMODE_B12);
@@ -6412,7 +6282,7 @@ s390_insn_evcheck(s390_amode *counter, s390_amode *fail_addr)
 s390_insn *
 s390_insn_profinc(void)
 {
-   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_insn *insn = LibVEX_Alloc_inline(sizeof(s390_insn));
 
    insn->tag  = S390_INSN_PROFINC;
    insn->size = 0;   /* does not matter */
@@ -6593,7 +6463,7 @@ s390_sprintf(HChar *buf, const HChar *fmt, ...)
 const HChar *
 s390_insn_as_string(const s390_insn *insn)
 {
-   static HChar buf[300];
+   static HChar buf[300];  // large enough
    const HChar *op;
    HChar *p;
 
@@ -7880,13 +7750,13 @@ s390_widen_emit(UChar *buf, const s390_insn *insn, UInt from_size,
       case 1:
          if (insn->size == 4 || insn->size == 2) {
             if (sign_extend)
-               return s390_emit_LBw(buf, r1, x, b, DISP20(d));
+               return s390_emit_LB(buf, r1, x, b, DISP20(d));
             else
                return s390_emit_LLCw(buf, r1, x, b, DISP20(d));
          }
          if (insn->size == 8) {
             if (sign_extend)
-               return s390_emit_LGBw(buf, r1, x, b, DISP20(d));
+               return s390_emit_LGB(buf, r1, x, b, DISP20(d));
             else
                return s390_emit_LLGC(buf, r1, x, b, DISP20(d));
          }
@@ -8185,9 +8055,11 @@ s390_insn_cas_emit(UChar *buf, const s390_insn *insn)
    b  = hregNumber(am->b);
    d  = am->d;
 
+   vassert(am->tag == S390_AMODE_B12 || am->tag == S390_AMODE_B20);
+
    switch (insn->size) {
    case 4:
-      /* r1 must no be overwritten. So copy it to R0 and let CS clobber it */
+      /* r1 must not be overwritten. So copy it to R0 and let CS clobber it */
       buf = s390_emit_LR(buf, R0, r1);
       if (am->tag == S390_AMODE_B12)
          buf = s390_emit_CS(buf, R0, r3, b, d);
@@ -8197,7 +8069,7 @@ s390_insn_cas_emit(UChar *buf, const s390_insn *insn)
       return s390_emit_LR(buf, old, R0);
 
    case 8:
-      /* r1 must no be overwritten. So copy it to R0 and let CS clobber it */
+      /* r1 must not be overwritten. So copy it to R0 and let CS clobber it */
       buf = s390_emit_LGR(buf, R0, r1);
       buf = s390_emit_CSG(buf, R0, r3, b, DISP20(d));
       /* Now copy R0 which has the old memory value to OLD */
@@ -8233,6 +8105,7 @@ s390_insn_cdas_emit(UChar *buf, const s390_insn *insn)
    d  = am->d;
 
    vassert(scratch == 1);
+   vassert(am->tag == S390_AMODE_B12 || am->tag == S390_AMODE_B20);
 
    switch (insn->size) {
    case 4:
@@ -8727,7 +8600,6 @@ s390_insn_helper_call_emit(UChar *buf, const s390_insn *insn)
    s390_cc_t cond;
    ULong target;
    UChar *ptmp = buf;
-   UChar *bufIN = buf;
    s390_helper_call *helper_call = insn->variant.helper_call.details;
 
    cond = helper_call->cond;
@@ -8741,7 +8613,7 @@ s390_insn_helper_call_emit(UChar *buf, const s390_insn *insn)
          register(s) in the case where the call doesn't happen.  If
          this ever becomes necessary, maybe copy code from the ARM
          equivalent.  Until that day, just give up. */
-      return bufIN; /* To denote failure. */
+      return buf; /* To denote failure. */
    }
 
    if (cond != S390_CC_ALWAYS) {
@@ -9601,8 +9473,8 @@ s390_tchain_patch_load64(UChar *code, ULong imm64)
    chainXDirect_S390 and unchainXDirect_S390 below. */
 static UChar *
 s390_insn_xdirect_emit(UChar *buf, const s390_insn *insn,
-                       void *disp_cp_chain_me_to_slowEP,
-                       void *disp_cp_chain_me_to_fastEP)
+                       const void *disp_cp_chain_me_to_slowEP,
+                       const void *disp_cp_chain_me_to_fastEP)
 {
    /* We're generating chain-me requests here, so we need to be
       sure this is actually allowed -- no-redir translations can't
@@ -9641,7 +9513,7 @@ s390_insn_xdirect_emit(UChar *buf, const s390_insn *insn,
    buf = s390_emit_STG(buf, R0, 0, b, DISP20(d));
 
    /* Load the chosen entry point into the scratch reg */
-   void *disp_cp_chain_me;
+   const void *disp_cp_chain_me;
 
    disp_cp_chain_me =
       insn->variant.xdirect.to_fast_entry ? disp_cp_chain_me_to_fastEP 
@@ -9652,7 +9524,7 @@ s390_insn_xdirect_emit(UChar *buf, const s390_insn *insn,
    buf = s390_emit_BASR(buf, 1, R0);
 
    /* --- FIRST PATCHABLE BYTE follows (must not modify %r1) --- */
-   ULong addr = Ptr_to_ULong(disp_cp_chain_me);
+   Addr64 addr = (Addr)disp_cp_chain_me;
    buf = s390_tchain_load64(buf, S390_REGNO_TCHAIN_SCRATCH, addr);
 
    /* goto *tchain_scratch */
@@ -9681,7 +9553,8 @@ s390_xdirect_patchable_len(void)
 
 
 static UChar *
-s390_insn_xindir_emit(UChar *buf, const s390_insn *insn, void *disp_cp_xindir)
+s390_insn_xindir_emit(UChar *buf, const s390_insn *insn,
+                      const void *disp_cp_xindir)
 {
    /* We're generating transfers that could lead indirectly to a
       chain-me, so we need to be sure this is actually allowed --
@@ -9723,7 +9596,7 @@ s390_insn_xindir_emit(UChar *buf, const s390_insn *insn, void *disp_cp_xindir)
 
    /* load tchain_scratch, #disp_indir */
    buf = s390_tchain_load64(buf, S390_REGNO_TCHAIN_SCRATCH,
-                            Ptr_to_ULong(disp_cp_xindir));
+                            (Addr)disp_cp_xindir);
    /* goto *tchain_direct */
    buf = s390_emit_BCR(buf, S390_CC_ALWAYS, S390_REGNO_TCHAIN_SCRATCH);
 
@@ -9741,7 +9614,7 @@ s390_insn_xindir_emit(UChar *buf, const s390_insn *insn, void *disp_cp_xindir)
 
 static UChar *
 s390_insn_xassisted_emit(UChar *buf, const s390_insn *insn,
-                         void *disp_cp_xassisted)
+                         const void *disp_cp_xassisted)
 {
    /* Use ptmp for backpatching conditional jumps. */
    UChar *ptmp = buf;
@@ -9804,7 +9677,7 @@ s390_insn_xassisted_emit(UChar *buf, const s390_insn *insn,
 
    /* load tchain_scratch, #disp_assisted */
    buf = s390_tchain_load64(buf, S390_REGNO_TCHAIN_SCRATCH,
-                            Ptr_to_ULong(disp_cp_xassisted));
+                            (Addr)disp_cp_xassisted);
 
    /* goto *tchain_direct */
    buf = s390_emit_BCR(buf, S390_CC_ALWAYS, S390_REGNO_TCHAIN_SCRATCH);
@@ -9868,7 +9741,7 @@ s390_insn_evcheck_emit(UChar *buf, const s390_insn *insn,
    
    /* Make sure the size of the generated code is identical to the size
       returned by evCheckSzB_S390 */
-   vassert(evCheckSzB_S390(endness_host) == code_end - code_begin);
+   vassert(evCheckSzB_S390() == code_end - code_begin);
 
    return buf;
 }
@@ -9896,11 +9769,12 @@ s390_insn_profinc_emit(UChar *buf,
 
 
 Int
-emit_S390Instr(Bool *is_profinc, UChar *buf, Int nbuf, s390_insn *insn,
+emit_S390Instr(Bool *is_profinc, UChar *buf, Int nbuf, const s390_insn *insn,
                Bool mode64, VexEndness endness_host,
-               void *disp_cp_chain_me_to_slowEP,
-               void *disp_cp_chain_me_to_fastEP, void *disp_cp_xindir,
-               void *disp_cp_xassisted)
+               const void *disp_cp_chain_me_to_slowEP,
+               const void *disp_cp_chain_me_to_fastEP,
+               const void *disp_cp_xindir,
+               const void *disp_cp_xassisted)
 {
    UChar *end;
 
@@ -10089,7 +9963,7 @@ emit_S390Instr(Bool *is_profinc, UChar *buf, Int nbuf, s390_insn *insn,
 /* Return the number of bytes emitted for an S390_INSN_EVCHECK.
    See s390_insn_evcheck_emit */
 Int
-evCheckSzB_S390(VexEndness endness_host)
+evCheckSzB_S390(void)
 {
    return s390_host_has_gie ? 18 : 24;
 }
@@ -10099,14 +9973,14 @@ evCheckSzB_S390(VexEndness endness_host)
    generated by s390_insn_profinc_emit. */
 VexInvalRange
 patchProfInc_S390(VexEndness endness_host,
-                  void *code_to_patch, ULong *location_of_counter)
+                  void *code_to_patch, const ULong *location_of_counter)
 {
    vassert(sizeof(ULong *) == 8);
 
    s390_tchain_verify_load64(code_to_patch, S390_REGNO_TCHAIN_SCRATCH, 0);
 
    UChar *p = s390_tchain_patch_load64(code_to_patch,
-                                       Ptr_to_ULong(location_of_counter));
+                                       (Addr)location_of_counter);
 
    UInt len = p - (UChar *)code_to_patch;
    VexInvalRange vir = { (HWord)code_to_patch, len };
@@ -10119,8 +9993,8 @@ patchProfInc_S390(VexEndness endness_host,
 VexInvalRange
 chainXDirect_S390(VexEndness endness_host,
                   void *place_to_chain,
-                  void *disp_cp_chain_me_EXPECTED,
-                  void *place_to_jump_to)
+                  const void *disp_cp_chain_me_EXPECTED,
+                  const void *place_to_jump_to)
 {
    vassert(endness_host == VexEndnessBE);
 
@@ -10131,7 +10005,7 @@ chainXDirect_S390(VexEndness endness_host,
    */
    const UChar *next;
    next = s390_tchain_verify_load64(place_to_chain, S390_REGNO_TCHAIN_SCRATCH,
-                                    Ptr_to_ULong(disp_cp_chain_me_EXPECTED));
+                                    (Addr)disp_cp_chain_me_EXPECTED);
    vassert(s390_insn_is_BR(next, S390_REGNO_TCHAIN_SCRATCH));
 
    /* And what we want to change it to is either:
@@ -10159,7 +10033,8 @@ chainXDirect_S390(VexEndness endness_host,
 
    /* This is the delta we need to put into a BRCL insn. Note, that the
       offset in BRCL is in half-words. Hence division by 2. */
-   Long delta = (Long)((UChar *)place_to_jump_to - (UChar *)place_to_chain) / 2;
+   Long delta =
+      (Long)((const UChar *)place_to_jump_to - (const UChar *)place_to_chain) / 2;
    Bool shortOK = delta >= -1000*1000*1000 && delta < 1000*1000*1000;
 
    static UInt shortCTR = 0; /* DO NOT MAKE NON-STATIC */
@@ -10191,7 +10066,7 @@ chainXDirect_S390(VexEndness endness_host,
           load  tchain_scratch, #place_to_jump_to
           goto *tchain_scratch
       */
-      ULong addr = Ptr_to_ULong(place_to_jump_to);
+      Addr64 addr = (Addr)place_to_jump_to;
       p = s390_tchain_load64(p, S390_REGNO_TCHAIN_SCRATCH, addr);
       /* There is not need to emit a BCR here, as it is already there. */
    }
@@ -10207,8 +10082,8 @@ chainXDirect_S390(VexEndness endness_host,
 VexInvalRange
 unchainXDirect_S390(VexEndness endness_host,
                     void *place_to_unchain,
-                    void *place_to_jump_to_EXPECTED,
-                    void *disp_cp_chain_me)
+                    const void *place_to_jump_to_EXPECTED,
+                    const void *disp_cp_chain_me)
 {
    vassert(endness_host == VexEndnessBE);
 
@@ -10243,7 +10118,7 @@ unchainXDirect_S390(VexEndness endness_host,
       const UChar *next;
 
       next = s390_tchain_verify_load64(p, S390_REGNO_TCHAIN_SCRATCH,
-                                       Ptr_to_ULong(place_to_jump_to_EXPECTED));
+                                       (Addr)place_to_jump_to_EXPECTED);
       /* Check for BR *tchain_scratch */
       vassert(s390_insn_is_BR(next, S390_REGNO_TCHAIN_SCRATCH));
    }
@@ -10262,7 +10137,7 @@ unchainXDirect_S390(VexEndness endness_host,
       address (see s390_insn_xdirect_emit).  */
    p = s390_emit_BASR(p - S390_BASR_LEN, 1, R0);
 
-   ULong addr = Ptr_to_ULong(disp_cp_chain_me);
+   Addr64 addr = (Addr)disp_cp_chain_me;
    p = s390_tchain_load64(p, S390_REGNO_TCHAIN_SCRATCH, addr);
 
    /* Emit the BCR in case the short form was used. In case of the long

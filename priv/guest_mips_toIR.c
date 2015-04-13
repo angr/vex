@@ -59,7 +59,7 @@ static VexEndness host_endness;
 static IREndness guest_endness;
 
 /* Pointer to the guest code area. */
-static UChar *guest_code;
+static const UChar *guest_code;
 
 /* CONST: The guest address for the instruction currently being
    translated. */
@@ -427,7 +427,7 @@ static UInt accumulatorGuestRegOffset(UInt acNo)
 
 /* Do a endian load of a 32-bit word, regardless of the endianness of the
    underlying host. */
-static inline UInt getUInt(UChar * p)
+static inline UInt getUInt(const UChar * p)
 {
    UInt w = 0;
    if (guest_endness == Iend_LE) {
@@ -720,7 +720,7 @@ static UInt get_dspImm(UInt mipsins)
    return (0x03ff0000 & mipsins) >> 16;
 }
 
-static Bool branch_or_jump(UChar * addr)
+static Bool branch_or_jump(const UChar * addr)
 {
    UInt fmt;
    UInt cins = getUInt(addr);
@@ -778,10 +778,16 @@ static Bool branch_or_jump(UChar * addr)
       return True;
    }
 
+   /* Cavium Specific instructions. */
+   if (opcode == 0x32 || opcode == 0x3A || opcode == 0x36 || opcode == 0x3E) {
+       /* BBIT0, BBIT1, BBIT032, BBIT132 */
+      return True;
+   }
+
    return False;
 }
 
-static Bool is_Branch_or_Jump_and_Link(UChar * addr)
+static Bool is_Branch_or_Jump_and_Link(const UChar * addr)
 {
    UInt cins = getUInt(addr);
 
@@ -812,7 +818,7 @@ static Bool is_Branch_or_Jump_and_Link(UChar * addr)
    return False;
 }
 
-static Bool is_Ret(UChar * addr)
+static Bool is_Ret(const UChar * addr)
 {
     UInt cins = getUInt(addr);
 
@@ -828,7 +834,7 @@ static Bool is_Ret(UChar * addr)
     return False;
 }
 
-static Bool branch_or_link_likely(UChar * addr)
+static Bool branch_or_link_likely(const UChar * addr)
 {
    UInt cins = getUInt(addr);
    UInt opcode = get_opcode(cins);
@@ -2068,7 +2074,7 @@ static Bool dis_instr_CCondFmt ( UInt cins )
 /*---        Branch Instructions for mips64           ---*/
 /*********************************************************/
 static Bool dis_instr_branch ( UInt theInstr, DisResult * dres,
-                               Bool(*resteerOkFn) (void *, Addr64),
+                               Bool(*resteerOkFn) (void *, Addr),
                                void *callback_opaque, IRStmt ** set )
 {
    UInt jmpKind = 0;
@@ -2115,7 +2121,7 @@ static Bool dis_instr_branch ( UInt theInstr, DisResult * dres,
                eCond = binop(mkSzOp(ty, Iop_CmpNE8), mkexpr(tmpLt),
                              mkexpr(tmpReg0));
 
-               jmpKind = Ijk_Call;
+               jmpKind = Ijk_Boring;
                break;
             }
 
@@ -2130,7 +2136,7 @@ static Bool dis_instr_branch ( UInt theInstr, DisResult * dres,
                eCond = binop(mkSzOp(ty, Iop_CmpEQ8), mkexpr(tmpLt),
                                     mkexpr(tmpReg0));
 
-               jmpKind = Ijk_Call;
+               jmpKind = Ijk_Boring;
                break;
             }
 
@@ -2243,7 +2249,10 @@ static Bool dis_instr_CVM ( UInt theInstr )
    UChar  regRs    = get_rs(theInstr);
    UChar  regRt    = get_rt(theInstr);
    UChar  regRd    = get_rd(theInstr);
-   UInt   imm      = get_imm(theInstr);
+   /* MIPS trap instructions extract code from theInstr[15:6].
+      Cavium OCTEON instructions SNEI, SEQI extract immediate operands
+      from the same bit field [15:6]. */
+   UInt   imm      = get_code(theInstr);
    UChar  lenM1    = get_msb(theInstr);
    UChar  p        = get_lsb(theInstr);
    IRType ty       = mode64? Ity_I64 : Ity_I32;
@@ -2259,7 +2268,7 @@ static Bool dis_instr_CVM ( UInt theInstr )
          switch(opc2) {
             case 0x03: {  /* DMUL rd, rs, rt */
                DIP("dmul r%d, r%d, r%d", regRd, regRs, regRt);
-               IRType t0 = newTemp(Ity_I128);
+               IRTemp t0 = newTemp(Ity_I128);
                assign(t0, binop(Iop_MullU64, getIReg(regRs), getIReg(regRt)));
                putIReg(regRd, unop(Iop_128to64, mkexpr(t0)));
                break;
@@ -12012,12 +12021,12 @@ static UInt disDSPInstr_MIPS_WRK ( UInt cins )
    here. */
 
 static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
-                                                                    Addr64),
+                                                                    Addr),
                                      Bool         resteerCisOk,
                                      void*        callback_opaque,
                                      Long         delta64,
-                                     VexArchInfo* archinfo,
-                                     VexAbiInfo*  abiinfo,
+                                     const VexArchInfo* archinfo,
+                                     const VexAbiInfo*  abiinfo,
                                      Bool         sigill_diag )
 {
    IRTemp t0, t1 = 0, t2, t3, t4, t5, t6, t7;
@@ -12029,8 +12038,8 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
 
    DisResult dres;
 
-   static IRExpr *lastn = NULL;  /* last jump addr */
-   static IRStmt *bstmt = NULL;  /* branch (Exit) stmt */
+   IRExpr *lastn = mips_lastn;  /* last jump addr */
+   IRStmt *bstmt = mips_bstmt;  /* branch (Exit) stmt */
 
    /* The running delta */
    Int delta = (Int) delta64;
@@ -12050,7 +12059,7 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
 
    delay_slot_branch = likely_delay_slot = delay_slot_jump = False;
 
-   UChar *code = (UChar *) (guest_code + delta);
+   const UChar *code = guest_code + delta;
    cins = getUInt(code);
    DIP("\t0x%lx:\t0x%08x\t", (long)guest_PC_curr_instr, cins);
 
@@ -13372,8 +13381,8 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
                      DIP("ceil.l.d %d, %d", fd, fs);
                      if (fp_mode64) {
                         calculateFCSR(fs, 0, CEILLD, False, 1);
-                        putFReg(fd, binop(Iop_RoundF64toInt, mkU32(0x2),
-                                          getFReg(fs)));
+                        putDReg(fd, binop(Iop_RoundF64toInt, mkU32(0x2),
+                                          getDReg(fs)));
                      } else {
                         ILLEGAL_INSTRUCTON;
                      }
@@ -13985,7 +13994,6 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
       /* t3 = addr mod 7 */
       t3 = newTemp(Ity_I64);
       assign(t3, binop(Iop_And64, mkexpr(t1), mkU64(0x7)));
-
 
       if (guest_endness == Iend_LE) {
           /* Calculate X_byte position. */
@@ -17077,6 +17085,89 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
       store(mkexpr(t1), getIReg(rt));
       break;
 
+   case 0x32:  /* Branch on Bit Clear - BBIT0; Cavium OCTEON */
+      /* Cavium Specific instructions. */
+      if (VEX_MIPS_COMP_ID(archinfo->hwcaps) == VEX_PRID_COMP_CAVIUM) {
+         DIP("bbit0 r%d, 0x%x, %x", rs, rt, imm);
+         t0 = newTemp(Ity_I32);
+         t1 = newTemp(Ity_I32);
+         assign(t0, mkU32(0x1));
+         assign(t1, binop(Iop_Shl32, mkexpr(t0), mkU8(rt)));
+         dis_branch(False, binop(Iop_CmpEQ32,
+                                 binop(Iop_And32,
+                                       mkexpr(t1),
+                                       mkNarrowTo32(ty, getIReg(rs))),
+                                 mkU32(0x0)),
+                    imm, &bstmt);
+         break;
+      } else {
+         goto decode_failure;
+      }
+
+   case 0x36:  /* Branch on Bit Clear Plus 32 - BBIT032; Cavium OCTEON */
+      /* Cavium Specific instructions. */
+      if (VEX_MIPS_COMP_ID(archinfo->hwcaps) == VEX_PRID_COMP_CAVIUM) {
+         DIP("bbit032 r%d, 0x%x, %x", rs, rt, imm);
+         t0 = newTemp(Ity_I64);
+         t1 = newTemp(Ity_I8);  /* Shift. */
+         t2 = newTemp(Ity_I64);
+         assign(t0, mkU64(0x1));
+         assign(t1, binop(Iop_Add8, mkU8(rt), mkU8(32)));
+         assign(t2, binop(Iop_Shl64, mkexpr(t0), mkexpr(t1)));
+         dis_branch(False, binop(Iop_CmpEQ64,
+                                 binop(Iop_And64,
+                                       mkexpr(t2),
+                                       getIReg(rs)),
+                                 mkU64(0x0)),
+                    imm, &bstmt);
+         break;
+      } else {
+         goto decode_failure;
+      }
+
+   case 0x3A:  /* Branch on Bit Set - BBIT1; Cavium OCTEON */
+      /* Cavium Specific instructions. */
+      if (VEX_MIPS_COMP_ID(archinfo->hwcaps) == VEX_PRID_COMP_CAVIUM) {
+         DIP("bbit1 r%d, 0x%x, %x", rs, rt, imm);
+         t0 = newTemp(Ity_I32);
+         t1 = newTemp(Ity_I32);
+         assign(t0, mkU32(0x1));
+         assign(t1, binop(Iop_Shl32, mkexpr(t0), mkU8(rt)));
+         dis_branch(False, binop(Iop_CmpNE32,
+                                 binop(Iop_And32,
+                                       mkexpr(t1),
+                                       mkNarrowTo32(ty, getIReg(rs))),
+                                 mkU32(0x0)),
+                    imm, &bstmt);
+         break;
+      } else {
+         goto decode_failure;
+      }
+
+   case 0x3E:  /* Branch on Bit Set Plus 32 - BBIT132; Cavium OCTEON */
+      /* Cavium Specific instructions. */
+      if (VEX_MIPS_COMP_ID(archinfo->hwcaps) == VEX_PRID_COMP_CAVIUM) {
+         DIP("bbit132 r%d, 0x%x, %x", rs, rt, imm);
+         t0 = newTemp(Ity_I64);
+         t1 = newTemp(Ity_I8);  /* Shift. */
+         t2 = newTemp(Ity_I64);
+         assign(t0, mkU64(0x1));
+         assign(t1, binop(Iop_Add8, mkU8(rt), mkU8(32)));
+         assign(t2, binop(Iop_Shl64, mkexpr(t0), mkexpr(t1)));
+         dis_branch(False, binop(Iop_CmpNE64,
+                                 binop(Iop_And64,
+                                       mkexpr(t2),
+                                       getIReg(rs)),
+                                 mkU64(0x0)),
+                    imm, &bstmt);
+         break;
+      } else {
+         goto decode_failure;
+      }
+
+   default:
+      goto decode_failure;
+
    decode_failure_dsp:
       vex_printf("Error occured while trying to decode MIPS32 DSP "
                  "instruction.\nYour platform probably doesn't support "
@@ -17107,6 +17198,9 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
       }
       dres.whatNext = Dis_StopHere;
       dres.len = 0;
+
+      mips_lastn = lastn;
+      mips_bstmt = bstmt;
       return dres;
    }  /* switch (opc) for the main (primary) opcode switch. */
 
@@ -17131,6 +17225,7 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
    }
 
    if (likely_delay_slot) {
+      vassert(!delay_slot_jump);
       dres.jk_StopHere = Ijk_Boring;
       dres.whatNext = Dis_StopHere;
       putPC(lastn);
@@ -17185,6 +17280,8 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
 
    DIP("\n");
 
+   mips_lastn = lastn;
+   mips_bstmt = bstmt;
    return dres;
 
 }
@@ -17196,15 +17293,15 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
 /* Disassemble a single instruction into IR.  The instruction
    is located in host memory at &guest_code[delta]. */
 DisResult disInstr_MIPS( IRSB*        irsb_IN,
-                         Bool         (*resteerOkFn) ( void *, Addr64 ),
+                         Bool         (*resteerOkFn) ( void *, Addr ),
                          Bool         resteerCisOk,
                          void*        callback_opaque,
-                         UChar*       guest_code_IN,
+                         const UChar* guest_code_IN,
                          Long         delta,
-                         Addr64       guest_IP,
+                         Addr         guest_IP,
                          VexArch      guest_arch,
-                         VexArchInfo* archinfo,
-                         VexAbiInfo*  abiinfo,
+                         const VexArchInfo* archinfo,
+                         const VexAbiInfo*  abiinfo,
                          VexEndness   host_endness_IN,
                          Bool         sigill_diag_IN )
 {

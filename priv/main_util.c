@@ -39,12 +39,12 @@
 #include "main_globals.h"
 #include "main_util.h"
 
-
-
 #include "e4c_lite.h"
 E4C_DEFINE_EXCEPTION(VEXError, "VEX Error!", RuntimeException);
 
-
+#include <stdio.h>
+#include <execinfo.h>
+#include <string.h>
 
 /*---------------------------------------------------------*/
 /*--- Storage                                           ---*/
@@ -57,9 +57,10 @@ E4C_DEFINE_EXCEPTION(VEXError, "VEX Error!", RuntimeException);
    MByte/sec.  Once the size increases enough to fall out of the cache
    into memory, the rate falls by about a factor of 3. 
 */
+
 #define N_TEMPORARY_BYTES 5000000
 
-static HChar  temporary[N_TEMPORARY_BYTES] __attribute__((aligned(8)));
+static HChar  temporary[N_TEMPORARY_BYTES] __attribute__((aligned(REQ_ALIGN)));
 static HChar* temporary_first = &temporary[0];
 static HChar* temporary_curr  = &temporary[0];
 static HChar* temporary_last  = &temporary[N_TEMPORARY_BYTES-1];
@@ -68,10 +69,15 @@ static ULong  temporary_bytes_allocd_TOT = 0;
 
 #define N_PERMANENT_BYTES 10000
 
-static HChar  permanent[N_PERMANENT_BYTES] __attribute__((aligned(8)));
+static HChar  permanent[N_PERMANENT_BYTES] __attribute__((aligned(REQ_ALIGN)));
 static HChar* permanent_first = &permanent[0];
 static HChar* permanent_curr  = &permanent[0];
 static HChar* permanent_last  = &permanent[N_PERMANENT_BYTES-1];
+
+HChar* private_LibVEX_alloc_first = &temporary[0];
+HChar* private_LibVEX_alloc_curr  = &temporary[0];
+HChar* private_LibVEX_alloc_last  = &temporary[N_TEMPORARY_BYTES-1];
+
 
 static VexAllocMode mode = VexAllocModeTEMP;
 
@@ -155,12 +161,6 @@ VexAllocMode vexGetAllocMode ( void )
    return mode;
 }
 
-/* Visible to library client, unfortunately. */
-
-HChar* private_LibVEX_alloc_first = &temporary[0];
-HChar* private_LibVEX_alloc_curr  = &temporary[0];
-HChar* private_LibVEX_alloc_last  = &temporary[N_TEMPORARY_BYTES-1];
-
 __attribute__((noreturn))
 void private_LibVEX_alloc_OOM(void)
 {
@@ -211,6 +211,10 @@ void LibVEX_ShowAllocStats ( void )
               (Long)(permanent_curr - permanent_first) );
 }
 
+void *LibVEX_Alloc ( SizeT nbytes )
+{
+   return LibVEX_Alloc_inline(nbytes);
+}
 
 /*---------------------------------------------------------*/
 /*--- Bombing out                                       ---*/
@@ -222,16 +226,48 @@ void vex_assert_fail ( const HChar* expr,
 {
    vex_printf( "\nvex: %s:%d (%s): Assertion `%s' failed.\n",
                file, line, fn, expr );
+   print_backtrace();
    throw(VEXError, "exception in VEX (see console)");
    (*vex_failure_exit)();
 }
 
+/* To be used in assert-like (i.e. should never ever happen) situations */
 __attribute__ ((noreturn))
 void vpanic ( const HChar* str )
 {
    vex_printf("\nvex: the `impossible' happened:\n   %s\n", str);
+   print_backtrace();
    throw(VEXError, str);
    (*vex_failure_exit)();
+}
+
+void print_backtrace() {
+   void *bt_data[256];
+   int bt_size;
+   char **bt_strings;
+   char* prefix_end;
+   int prefix_len;
+   int i;
+
+   vex_printf("Traceback:\n");
+   bt_size = backtrace(bt_data, 256);
+   bt_strings = backtrace_symbols(bt_data, bt_size);
+   prefix_end = strchr(bt_strings[0], '(');
+   if (prefix_end == NULL) {
+      // Can't handle this weird stuff. Just let libc do the printing.
+      backtrace_symbols_fd(bt_data, bt_size, 1);
+   } else {
+      //prefix_end++;
+      prefix_len = prefix_end - bt_strings[0];
+      for (i = 2; i < bt_size; i++) {
+         // Skip the first two entries - print_backtrace and the failure function that called it
+         if (strncmp(bt_strings[0], bt_strings[i], prefix_len) != 0) {
+             // Stop when we get to a backtrace entry in a different file
+             break;
+         }
+         vex_printf("%s\n", bt_strings[i]);
+      }
+   }
 }
 
 
@@ -243,9 +279,9 @@ void vpanic ( const HChar* str )
    New code for vex_util.c should go above this point. */
 #include <stdarg.h>
 
-Int vex_strlen ( const HChar* str )
+SizeT vex_strlen ( const HChar* str )
 {
-   Int i = 0;
+   SizeT i = 0;
    while (str[i] != 0) i++;
    return i;
 }
@@ -262,9 +298,9 @@ Bool vex_streq ( const HChar* s1, const HChar* s2 )
    }
 }
 
-void vex_bzero ( void* sV, UInt n )
+void vex_bzero ( void* sV, SizeT n )
 {
-   UInt i;
+   SizeT i;
    UChar* s = (UChar*)sV;
    /* No laughing, please.  Just don't call this too often.  Thank you
       for your attention. */
@@ -340,9 +376,10 @@ UInt vprintf_wrk ( void(*sink)(HChar),
       while (0)
 
    const HChar* saved_format;
-   Bool   longlong, ljustify;
+   Bool   longlong, ljustify, is_sizet;
    HChar  padchar;
-   Int    fwidth, nout, len1, len2, len3;
+   Int    fwidth, nout, len1, len3;
+   SizeT  len2;
    HChar  intbuf[100];  /* big enough for a 64-bit # in base 2 */
 
    nout = 0;
@@ -360,7 +397,7 @@ UInt vprintf_wrk ( void(*sink)(HChar),
       }
 
       saved_format = format;
-      longlong = False;
+      longlong = is_sizet = False;
       ljustify = False;
       padchar = ' ';
       fwidth = 0;
@@ -376,6 +413,7 @@ UInt vprintf_wrk ( void(*sink)(HChar),
       }
       if (*format == '*') {
          fwidth = va_arg(ap, Int);
+         vassert(fwidth >= 0);
          format++;
       } else {
          while (*format >= '0' && *format <= '9') {
@@ -387,8 +425,11 @@ UInt vprintf_wrk ( void(*sink)(HChar),
          format++;
          if (*format == 'l') {
             format++;
-           longlong = True;
+            longlong = True;
          }
+      } else if (*format == 'z') {
+         format++;
+         is_sizet = True;
       }
 
       switch (*format) {
@@ -417,6 +458,7 @@ UInt vprintf_wrk ( void(*sink)(HChar),
          }
          case 'd': {
             Long l;
+            vassert(is_sizet == False); // %zd is obscure; we don't allow it
             if (longlong) {
                l = va_arg(ap, Long);
             } else {
@@ -437,7 +479,9 @@ UInt vprintf_wrk ( void(*sink)(HChar),
             Int   base = *format == 'u' ? 10 : 16;
             Bool  hexcaps = True; /* *format == 'X'; */
             ULong l;
-            if (longlong) {
+            if (is_sizet) {
+               l = (ULong)va_arg(ap, SizeT);
+            } else if (longlong) {
                l = va_arg(ap, ULong);
             } else {
                l = (ULong)va_arg(ap, UInt);
@@ -453,7 +497,7 @@ UInt vprintf_wrk ( void(*sink)(HChar),
          case 'p': 
          case 'P': {
             Bool hexcaps = toBool(*format == 'P');
-            ULong l = Ptr_to_ULong( va_arg(ap, void*) );
+            ULong l = (Addr)va_arg(ap, void*);
             convert_int(intbuf, l, 16/*base*/, False/*unsigned*/, hexcaps);
             len1 = len3 = 0;
             len2 = vex_strlen(intbuf)+2;
@@ -507,11 +551,9 @@ static void add_to_myprintf_buf ( HChar c )
    }
 }
 
-UInt vex_printf ( const HChar* format, ... )
+static UInt vex_vprintf ( const HChar* format, va_list vargs )
 {
    UInt ret;
-   va_list vargs;
-   va_start(vargs,format);
    
    n_myprintf_buf = 0;
    myprintf_buf[n_myprintf_buf] = 0;      
@@ -521,11 +563,34 @@ UInt vex_printf ( const HChar* format, ... )
       (*vex_log_bytes)( myprintf_buf, n_myprintf_buf );
    }
 
+   return ret;
+}
+
+UInt vex_printf ( const HChar* format, ... )
+{
+   UInt ret;
+   va_list vargs;
+   va_start(vargs, format);
+   ret = vprintf(format, vargs);
    va_end(vargs);
 
    return ret;
 }
 
+/* Use this function to communicate to users that a (legitimate) situation
+   occured that we cannot handle (yet). */
+__attribute__ ((noreturn))
+void vfatal ( const HChar* format, ... )
+{
+   va_list vargs;
+   va_start(vargs, format);
+   vprintf( format, vargs );
+   va_end(vargs);
+   print_backtrace();
+   throw(VEXError, "Unsupported Operation in VEX (see console)");
+
+   (*vex_failure_exit)();
+}
 
 /* A general replacement for sprintf(). */
 

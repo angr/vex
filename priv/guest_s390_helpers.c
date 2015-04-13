@@ -152,7 +152,9 @@ LibVEX_GuestS390X_initialise(VexGuestS390XState *state)
    .. maxoff requires precise memory exceptions.  If in doubt return
    True (but this generates significantly slower code).  */
 Bool
-guest_s390x_state_requires_precise_mem_exns(Int minoff, Int maxoff)
+guest_s390x_state_requires_precise_mem_exns (
+   Int minoff, Int maxoff, VexRegisterUpdates pxControl
+)
 {
    Int lr_min = S390X_GUEST_OFFSET(guest_LR);
    Int lr_max = lr_min + 8 - 1;
@@ -165,7 +167,7 @@ guest_s390x_state_requires_precise_mem_exns(Int minoff, Int maxoff)
 
    if (maxoff < sp_min || minoff > sp_max) {
       /* No overlap with SP */
-      if (vex_control.iropt_register_updates == VexRegUpdSpAtMemAccess)
+      if (pxControl == VexRegUpdSpAtMemAccess)
          return False; // We only need to check stack pointer.
    } else {
       return True;
@@ -1564,7 +1566,7 @@ s390_calculate_cc(ULong cc_op, ULong cc_dep1, ULong cc_dep2, ULong cc_ndep)
 
    case S390_CC_OP_TEST_UNDER_MASK_16: {
       /* Create a TMLL insn with the mask as given by cc_dep2 */
-      UInt insn  = (0xA701 << 16) | cc_dep2;
+      UInt insn  = (0xA701u << 16) | cc_dep2;
       UInt value = cc_dep1;
 
       __asm__ volatile (
@@ -1811,7 +1813,7 @@ s390_calculate_cond(ULong mask, ULong op, ULong dep1, ULong dep2, ULong ndep)
 
 
 static inline Bool
-isC64(IRExpr *expr)
+isC64(const IRExpr *expr)
 {
    return expr->tag == Iex_Const && expr->Iex.Const.con->tag == Ico_U64;
 }
@@ -1958,7 +1960,10 @@ guest_s390x_spechelper(const HChar *function_name, IRExpr **args,
             return unop(Iop_1Uto32, binop(Iop_CmpNE64, cc_dep1, mkU64(0)));
          }
          if (cond == 4 || cond == 4 + 1) {
-            return unop(Iop_1Uto32, binop(Iop_CmpLT64S, cc_dep1, mkU64(0)));
+             /* Special case cc_dep < 0. Only check the MSB to avoid bogus
+               memcheck complaints due to gcc magic. Fixes 343802
+             */
+            return unop(Iop_64to32, binop(Iop_Shr64, cc_dep1, mkU8(63)));
          }
          if (cond == 8 + 4 || cond == 8 + 4 + 1) {
             return unop(Iop_1Uto32, binop(Iop_CmpLE64S, cc_dep1, mkU64(0)));

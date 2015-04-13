@@ -39,46 +39,49 @@ extern UInt arm_hwcaps;
 
 /* --------- Registers. --------- */
 
-/* The usual HReg abstraction.
-   There are 16 general purpose regs.
-*/
+#define ST_IN static inline
+ST_IN HReg hregARM_R4  ( void ) { return mkHReg(False, HRcInt32,  4,  0);  }
+ST_IN HReg hregARM_R5  ( void ) { return mkHReg(False, HRcInt32,  5,  1);  }
+ST_IN HReg hregARM_R6  ( void ) { return mkHReg(False, HRcInt32,  6,  2);  }
+ST_IN HReg hregARM_R7  ( void ) { return mkHReg(False, HRcInt32,  7,  3);  }
+ST_IN HReg hregARM_R10 ( void ) { return mkHReg(False, HRcInt32,  10, 4);  }
+ST_IN HReg hregARM_R11 ( void ) { return mkHReg(False, HRcInt32,  11, 5);  }
+
+ST_IN HReg hregARM_R0  ( void ) { return mkHReg(False, HRcInt32,  0,  6);  }
+ST_IN HReg hregARM_R1  ( void ) { return mkHReg(False, HRcInt32,  1,  7);  }
+ST_IN HReg hregARM_R2  ( void ) { return mkHReg(False, HRcInt32,  2,  8);  }
+ST_IN HReg hregARM_R3  ( void ) { return mkHReg(False, HRcInt32,  3,  9);  }
+ST_IN HReg hregARM_R9  ( void ) { return mkHReg(False, HRcInt32,  9,  10); }
+
+ST_IN HReg hregARM_D8  ( void ) { return mkHReg(False, HRcFlt64,  8,  11); }
+ST_IN HReg hregARM_D9  ( void ) { return mkHReg(False, HRcFlt64,  9,  12); }
+ST_IN HReg hregARM_D10 ( void ) { return mkHReg(False, HRcFlt64,  10, 13); }
+ST_IN HReg hregARM_D11 ( void ) { return mkHReg(False, HRcFlt64,  11, 14); }
+ST_IN HReg hregARM_D12 ( void ) { return mkHReg(False, HRcFlt64,  12, 15); }
+
+ST_IN HReg hregARM_S26 ( void ) { return mkHReg(False, HRcFlt32,  26, 16); }
+ST_IN HReg hregARM_S27 ( void ) { return mkHReg(False, HRcFlt32,  27, 17); }
+ST_IN HReg hregARM_S28 ( void ) { return mkHReg(False, HRcFlt32,  28, 18); }
+ST_IN HReg hregARM_S29 ( void ) { return mkHReg(False, HRcFlt32,  29, 19); }
+ST_IN HReg hregARM_S30 ( void ) { return mkHReg(False, HRcFlt32,  30, 20); }
+
+ST_IN HReg hregARM_Q8  ( void ) { return mkHReg(False, HRcVec128, 8,  21); }
+ST_IN HReg hregARM_Q9  ( void ) { return mkHReg(False, HRcVec128, 9,  22); }
+ST_IN HReg hregARM_Q10 ( void ) { return mkHReg(False, HRcVec128, 10, 23); }
+ST_IN HReg hregARM_Q11 ( void ) { return mkHReg(False, HRcVec128, 11, 24); }
+ST_IN HReg hregARM_Q12 ( void ) { return mkHReg(False, HRcVec128, 12, 25); }
+
+ST_IN HReg hregARM_R8  ( void ) { return mkHReg(False, HRcInt32,  8,  26); }
+ST_IN HReg hregARM_R12 ( void ) { return mkHReg(False, HRcInt32,  12, 27); }
+ST_IN HReg hregARM_R13 ( void ) { return mkHReg(False, HRcInt32,  13, 28); }
+ST_IN HReg hregARM_R14 ( void ) { return mkHReg(False, HRcInt32,  14, 29); }
+ST_IN HReg hregARM_R15 ( void ) { return mkHReg(False, HRcInt32,  15, 30); }
+ST_IN HReg hregARM_Q13 ( void ) { return mkHReg(False, HRcVec128, 13, 31); }
+ST_IN HReg hregARM_Q14 ( void ) { return mkHReg(False, HRcVec128, 14, 32); }
+ST_IN HReg hregARM_Q15 ( void ) { return mkHReg(False, HRcVec128, 15, 33); }
+#undef ST_IN
 
 extern void ppHRegARM ( HReg );
-
-extern HReg hregARM_R0  ( void );
-extern HReg hregARM_R1  ( void );
-extern HReg hregARM_R2  ( void );
-extern HReg hregARM_R3  ( void );
-extern HReg hregARM_R4  ( void );
-extern HReg hregARM_R5  ( void );
-extern HReg hregARM_R6  ( void );
-extern HReg hregARM_R7  ( void );
-extern HReg hregARM_R8  ( void );
-extern HReg hregARM_R9  ( void );
-extern HReg hregARM_R10 ( void );
-extern HReg hregARM_R11 ( void );
-extern HReg hregARM_R12 ( void );
-extern HReg hregARM_R13 ( void );
-extern HReg hregARM_R14 ( void );
-extern HReg hregARM_R15 ( void );
-extern HReg hregARM_D8  ( void );
-extern HReg hregARM_D9  ( void );
-extern HReg hregARM_D10 ( void );
-extern HReg hregARM_D11 ( void );
-extern HReg hregARM_D12 ( void );
-extern HReg hregARM_S26 ( void );
-extern HReg hregARM_S27 ( void );
-extern HReg hregARM_S28 ( void );
-extern HReg hregARM_S29 ( void );
-extern HReg hregARM_S30 ( void );
-extern HReg hregARM_Q8  ( void );
-extern HReg hregARM_Q9  ( void );
-extern HReg hregARM_Q10 ( void );
-extern HReg hregARM_Q11 ( void );
-extern HReg hregARM_Q12 ( void );
-extern HReg hregARM_Q13 ( void );
-extern HReg hregARM_Q14 ( void );
-extern HReg hregARM_Q15 ( void );
 
 /* Number of registers used arg passing in function calls */
 #define ARM_N_ARGREGS 4   /* r0, r1, r2, r3 */
@@ -724,7 +727,7 @@ typedef
             condition (which could be ARMcc_AL). */
          struct {
             ARMCondCode cond;
-            HWord       target;
+            Addr32      target;
             Int         nArgRegs; /* # regs carrying args: 0 .. 4 */
             RetLoc      rloc;     /* where the return value will be */
          } Call;
@@ -976,7 +979,7 @@ extern ARMInstr* ARMInstr_XIndir   ( HReg dstGA, ARMAMode1* amR15T,
 extern ARMInstr* ARMInstr_XAssisted ( HReg dstGA, ARMAMode1* amR15T,
                                       ARMCondCode cond, IRJumpKind jk );
 extern ARMInstr* ARMInstr_CMov     ( ARMCondCode, HReg dst, ARMRI84* src );
-extern ARMInstr* ARMInstr_Call     ( ARMCondCode, HWord, Int nArgRegs,
+extern ARMInstr* ARMInstr_Call     ( ARMCondCode, Addr32, Int nArgRegs,
                                      RetLoc rloc );
 extern ARMInstr* ARMInstr_Mul      ( ARMMulOp op );
 extern ARMInstr* ARMInstr_LdrEX    ( Int szB );
@@ -1016,59 +1019,60 @@ extern ARMInstr* ARMInstr_EvCheck  ( ARMAMode1* amCounter,
                                      ARMAMode1* amFailAddr );
 extern ARMInstr* ARMInstr_ProfInc  ( void );
 
-extern void ppARMInstr ( ARMInstr* );
+extern void ppARMInstr ( const ARMInstr* );
 
 
 /* Some functions that insulate the register allocator from details
    of the underlying instruction set. */
-extern void getRegUsage_ARMInstr ( HRegUsage*, ARMInstr*, Bool );
+extern void getRegUsage_ARMInstr ( HRegUsage*, const ARMInstr*, Bool );
 extern void mapRegs_ARMInstr     ( HRegRemap*, ARMInstr*, Bool );
-extern Bool isMove_ARMInstr      ( ARMInstr*, HReg*, HReg* );
+extern Bool isMove_ARMInstr      ( const ARMInstr*, HReg*, HReg* );
 extern Int  emit_ARMInstr        ( /*MB_MOD*/Bool* is_profInc,
-                                   UChar* buf, Int nbuf, ARMInstr* i, 
+                                   UChar* buf, Int nbuf, const ARMInstr* i, 
                                    Bool mode64,
                                    VexEndness endness_host,
-                                   void* disp_cp_chain_me_to_slowEP,
-                                   void* disp_cp_chain_me_to_fastEP,
-                                   void* disp_cp_xindir,
-                                   void* disp_cp_xassisted );
+                                   const void* disp_cp_chain_me_to_slowEP,
+                                   const void* disp_cp_chain_me_to_fastEP,
+                                   const void* disp_cp_xindir,
+                                   const void* disp_cp_xassisted );
 
 extern void genSpill_ARM  ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
                             HReg rreg, Int offset, Bool );
 extern void genReload_ARM ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
                             HReg rreg, Int offset, Bool );
 
-extern void getAllocableRegs_ARM ( Int*, HReg** );
-extern HInstrArray* iselSB_ARM   ( IRSB*, 
+extern const RRegUniverse* getRRegUniverse_ARM ( void );
+
+extern HInstrArray* iselSB_ARM   ( const IRSB*, 
                                    VexArch,
-                                   VexArchInfo*,
-                                   VexAbiInfo*,
+                                   const VexArchInfo*,
+                                   const VexAbiInfo*,
                                    Int offs_Host_EvC_Counter,
                                    Int offs_Host_EvC_FailAddr,
                                    Bool chainingAllowed,
                                    Bool addProfInc,
-                                   Addr64 max_ga );
+                                   Addr max_ga );
 
 /* How big is an event check?  This is kind of a kludge because it
    depends on the offsets of host_EvC_FAILADDR and
    host_EvC_COUNTER. */
-extern Int evCheckSzB_ARM ( VexEndness endness_host );
+extern Int evCheckSzB_ARM (void);
 
 /* Perform a chaining and unchaining of an XDirect jump. */
 extern VexInvalRange chainXDirect_ARM ( VexEndness endness_host,
                                         void* place_to_chain,
-                                        void* disp_cp_chain_me_EXPECTED,
-                                        void* place_to_jump_to );
+                                        const void* disp_cp_chain_me_EXPECTED,
+                                        const void* place_to_jump_to );
 
 extern VexInvalRange unchainXDirect_ARM ( VexEndness endness_host,
                                           void* place_to_unchain,
-                                          void* place_to_jump_to_EXPECTED,
-                                          void* disp_cp_chain_me );
+                                          const void* place_to_jump_to_EXPECTED,
+                                          const void* disp_cp_chain_me );
 
 /* Patch the counter location into an existing ProfInc point. */
 extern VexInvalRange patchProfInc_ARM ( VexEndness endness_host,
                                         void*  place_to_patch,
-                                        ULong* location_of_counter );
+                                        const ULong* location_of_counter );
 
 
 #endif /* ndef __VEX_HOST_ARM_DEFS_H */

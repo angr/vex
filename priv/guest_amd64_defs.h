@@ -51,15 +51,15 @@
    bb_to_IR.h. */
 extern
 DisResult disInstr_AMD64 ( IRSB*        irbb,
-                           Bool         (*resteerOkFn) ( void*, Addr64 ),
+                           Bool         (*resteerOkFn) ( void*, Addr ),
                            Bool         resteerCisOk,
                            void*        callback_opaque,
-                           UChar*       guest_code,
+                           const UChar* guest_code,
                            Long         delta,
-                           Addr64       guest_IP,
+                           Addr         guest_IP,
                            VexArch      guest_arch,
-                           VexArchInfo* archinfo,
-                           VexAbiInfo*  abiinfo,
+                           const VexArchInfo* archinfo,
+                           const VexAbiInfo*  abiinfo,
                            VexEndness   host_endness,
                            Bool         sigill_diag );
 
@@ -74,7 +74,8 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
    precise memory exceptions.  This is logically part of the guest
    state description. */
 extern 
-Bool guest_amd64_state_requires_precise_mem_exns ( Int, Int );
+Bool guest_amd64_state_requires_precise_mem_exns ( Int, Int,
+                                                   VexRegisterUpdates );
 
 extern
 VexGuestLayout amd64guest_layout;
@@ -159,9 +160,9 @@ extern ULong amd64g_calculate_pdep  ( ULong, ULong );
 
 /* --- DIRTY HELPERS --- */
 
-extern ULong amd64g_dirtyhelper_loadF80le  ( ULong/*addr*/ );
+extern ULong amd64g_dirtyhelper_loadF80le  ( Addr/*addr*/ );
 
-extern void  amd64g_dirtyhelper_storeF80le ( ULong/*addr*/, ULong/*data*/ );
+extern void  amd64g_dirtyhelper_storeF80le ( Addr/*addr*/, ULong/*data*/ );
 
 extern void  amd64g_dirtyhelper_CPUID_baseline ( VexGuestAMD64State* st );
 extern void  amd64g_dirtyhelper_CPUID_sse3_and_cx16 ( VexGuestAMD64State* st );
@@ -170,8 +171,10 @@ extern void  amd64g_dirtyhelper_CPUID_avx_and_cx16 ( VexGuestAMD64State* st );
 
 extern void  amd64g_dirtyhelper_FINIT ( VexGuestAMD64State* );
 
-extern void      amd64g_dirtyhelper_FXSAVE  ( VexGuestAMD64State*, HWord );
-extern VexEmNote amd64g_dirtyhelper_FXRSTOR ( VexGuestAMD64State*, HWord );
+extern void      amd64g_dirtyhelper_FXSAVE_ALL_EXCEPT_XMM
+                    ( VexGuestAMD64State*, HWord );
+extern VexEmNote amd64g_dirtyhelper_FXRSTOR_ALL_EXCEPT_XMM
+                    ( VexGuestAMD64State*, HWord );
 
 extern ULong amd64g_dirtyhelper_RDTSC ( void );
 extern void  amd64g_dirtyhelper_RDTSCP ( VexGuestAMD64State* st );
@@ -546,7 +549,7 @@ typedef
       AMD64CondP      = 10, /* parity even        */
       AMD64CondNP     = 11, /* not parity even    */
 
-      AMD64CondL      = 12, /* jump less          */
+      AMD64CondL      = 12, /* less               */
       AMD64CondNL     = 13, /* not less           */
 
       AMD64CondLE     = 14, /* less or equal      */
