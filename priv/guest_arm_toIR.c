@@ -2427,7 +2427,6 @@ IRExpr* mk_EA_reg_plusminus_shifted_reg ( UInt rN, UInt bU, UInt rM,
       case 1: /* LSR */
          if (imm5 == 0) {
             index = mkU32(0);
-            vassert(0); // ATC
          } else {
             index = binop(Iop_Shr32, getIRegA(rM), mkU8(imm5));
          }
@@ -2439,7 +2438,6 @@ IRExpr* mk_EA_reg_plusminus_shifted_reg ( UInt rN, UInt bU, UInt rM,
             is the same as if it had been 31 ? */
          if (imm5 == 0) {
             index = binop(Iop_Sar32, getIRegA(rM), mkU8(31));
-            vassert(0); // ATC
          } else {
             index = binop(Iop_Sar32, getIRegA(rM), mkU8(imm5));
          }
