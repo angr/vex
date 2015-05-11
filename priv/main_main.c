@@ -788,9 +788,10 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       /* doesn't necessarily have to be true, but if it isn't it means
          we are simulating one flavour of an architecture a different
          flavour of the same architecture, which is pretty strange. */
-      vassert(vta->archinfo_guest.hwcaps == vta->archinfo_host.hwcaps);
+      // vassert(vta->archinfo_guest.hwcaps == vta->archinfo_host.hwcaps);
       /* ditto */
-      vassert(vta->archinfo_guest.endness == vta->archinfo_host.endness);
+      //vassert(vta->archinfo_guest.endness == vta->archinfo_host.endness);
+      ;
    }
 
    vexAllocSanityCheck();
