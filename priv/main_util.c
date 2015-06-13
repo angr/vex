@@ -42,9 +42,11 @@
 #include "e4c_lite.h"
 E4C_DEFINE_EXCEPTION(VEXError, "VEX Error!", RuntimeException);
 
+#ifdef LINUX_BACKTRACES
 #include <stdio.h>
 #include <execinfo.h>
 #include <string.h>
+#endif
 
 /*---------------------------------------------------------*/
 /*--- Storage                                           ---*/
@@ -242,6 +244,7 @@ void vpanic ( const HChar* str )
 }
 
 void print_backtrace() {
+#ifdef LINUX_BACKTRACES
    void *bt_data[256];
    int bt_size;
    char **bt_strings;
@@ -268,6 +271,7 @@ void print_backtrace() {
          vex_printf("%s\n", bt_strings[i]);
       }
    }
+#endif
 }
 
 
