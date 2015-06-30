@@ -40,7 +40,6 @@
 #include "main_globals.h"
 #include "guest_generic_bb_to_IR.h"
 #include "guest_mips_defs.h"
-#include "host_mips_defs.h"
 
 /*------------------------------------------------------------*/
 /*---                      Globals                         ---*/
@@ -63,11 +62,7 @@ static const UChar *guest_code;
 
 /* CONST: The guest address for the instruction currently being
    translated. */
-#if defined(VGP_mips32_linux)
-static Addr32 guest_PC_curr_instr;
-#else
 static Addr64 guest_PC_curr_instr;
-#endif
 
 /* MOD: The IRSB* into which we're generating code. */
 static IRSB *irsb;
@@ -78,6 +73,8 @@ static Bool mode64 = False;
 
 /* CPU has FPU and 32 dbl. prec. FP registers. */
 static Bool fp_mode64 = False;
+
+static size_t OFFB_PC = 0;
 
 /* Define 1.0 in single and double precision. */
 #define ONE_SINGLE 0x3F800000
@@ -246,12 +243,6 @@ static UInt integerGuestRegOffset(UInt iregNo)
       }
    return ret;
 }
-
-#if defined(VGP_mips32_linux)
-#define OFFB_PC     offsetof(VexGuestMIPS32State, guest_PC)
-#else
-#define OFFB_PC     offsetof(VexGuestMIPS64State, guest_PC)
-#endif
 
 /* ---------------- Floating point registers ---------------- */
 
@@ -13658,11 +13649,6 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
       case 0x9: {  /* Store Doubleword Indexed from Floating Point - SDXC1 */
          DIP("sdc1 f%d, %d(%d)", ft, imm, rs);
          if (fp_mode64) {
-            t0 = newTemp(ty);
-            assign(t0, binop(mode64 ? Iop_Add64 : Iop_Add32, getIReg(rs),
-                             getIReg(rt)));
-            store(mkexpr(t0), getFReg(fs));
-         } else {
             t0 = newTemp(Ity_I32);
             assign(t0, binop(Iop_Add32, getIReg(rs), getIReg(rt)));
 
@@ -17310,20 +17296,16 @@ DisResult disInstr_MIPS( IRSB*        irsb_IN,
    vassert(guest_arch == VexArchMIPS32 || guest_arch == VexArchMIPS64);
 
    mode64 = guest_arch != VexArchMIPS32;
-#if (__mips_fpr==64)
    fp_mode64 = ((VEX_MIPS_REV(archinfo->hwcaps) == VEX_PRID_CPU_32FPR)
                 || guest_arch == VexArchMIPS64);
-#endif
 
    guest_code = guest_code_IN;
    irsb = irsb_IN;
    host_endness = host_endness_IN;
    guest_endness = archinfo->endness == VexEndnessLE ? Iend_LE : Iend_BE;
-#if defined(VGP_mips32_linux)
-   guest_PC_curr_instr = (Addr32)guest_IP;
-#elif defined(VGP_mips64_linux)
    guest_PC_curr_instr = (Addr64)guest_IP;
-#endif
+
+   OFFB_PC = mode64 ? offsetof(VexGuestMIPS64State, guest_PC) : offsetof(VexGuestMIPS32State, guest_PC);
 
    dres = disInstr_MIPS_WRK(resteerOkFn, resteerCisOk, callback_opaque,
                             delta, archinfo, abiinfo, sigill_diag_IN);
