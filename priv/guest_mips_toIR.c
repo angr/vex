@@ -13777,57 +13777,43 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
       DIP("lwl r%d, %d(r%d)", rt, imm, rs);
       if (mode64) {
          /* t1 = addr */
-         t1 = newTemp(Ity_I64);
+         t1 = newTemp(Ity_I64);         // CHANGES WERE HERE 1
          if (guest_endness == Iend_LE) {
              assign(t1, binop(Iop_Add64, getIReg(rs), mkU64(extend_s_16to64(imm))));
-             /* t2 = word addr */
-             /* t4 = addr mod 4 */
-             LWX_SWX_PATTERN64;
-
-             /* t3 = word content - shifted */
-             t3 = newTemp(Ity_I32);
-             assign(t3, binop(Iop_Shl32, mkNarrowTo32(ty, load(Ity_I64,
-                              mkexpr(t2))), narrowTo(Ity_I8, binop(Iop_Shl32,
-                        binop(Iop_Sub32, mkU32(0x03), mkexpr(t4)), mkU8(3)))));
-
-             /* rt content - adjusted */
-             t5 = newTemp(Ity_I32);
-             assign(t5, binop(Iop_And32,
-                              mkNarrowTo32(ty, getIReg(rt)),
-                              binop(Iop_Shr32,
-                                    mkU32(0x00FFFFFF),
-                                          narrowTo(Ity_I8, binop(Iop_Mul32,
-                                                                 mkU32(0x08),
-                                                                 mkexpr(t4))))));
-
-             putIReg(rt, mkWidenFrom32(ty, binop(Iop_Or32, mkexpr(t5),
-                                                 mkexpr(t3)), True));
          } else {
-             assign(t1, binop(Iop_Xor64, mkU64(0x3),
-                    binop(Iop_Add64, getIReg(rs), mkU64(extend_s_16to64(imm)))));
-             /* t2 = word addr */
-             /* t4 = addr mod 4 */
-             LWX_SWX_PATTERN64;
-
-             /* t3 = word content - shifted */
-             t3 = newTemp(Ity_I32);
-             assign(t3, binop(Iop_Shl32, unop(Iop_64HIto32, load(Ity_I64,
-                              mkexpr(t2))), narrowTo(Ity_I8, binop(Iop_Shl32,
-                        binop(Iop_Sub32, mkU32(0x03), mkexpr(t4)), mkU8(3)))));
-
-             /* rt content - adjusted */
-             t5 = newTemp(Ity_I32);
-             assign(t5, binop(Iop_And32,
-                              mkNarrowTo32(ty, getIReg(rt)),
-                              binop(Iop_Shr32,
-                                    mkU32(0x00FFFFFF),
-                                          narrowTo(Ity_I8, binop(Iop_Mul32,
-                                                                 mkU32(0x08),
-                                                                 mkexpr(t4))))));
-
-             putIReg(rt, mkWidenFrom32(ty, binop(Iop_Or32, mkexpr(t5),
-                                                 mkexpr(t3)), True));
+             assign(t1, binop(Iop_Xor64,
+                              mkU64(0x03),
+                              binop(Iop_Add64,
+                                    getIReg(rs),
+                                    mkU64(extend_s_16to64(imm)))));
          }
+         /* t2 = word addr */
+         /* t4 = addr mod 4 */
+         LWX_SWX_PATTERN64;
+
+         /* t3 = word content - shifted */
+         t3 = newTemp(Ity_I32);
+         assign(t3, binop(Iop_Shl32,
+                          load(Ity_I32, mkexpr(t2)),
+                          narrowTo(Ity_I8,
+                                   binop(Iop_Shl32,
+                                         binop(Iop_Sub32,
+                                               mkU32(0x03),
+                                               mkexpr(t4)),
+                                         mkU8(3)))));
+
+         /* rt content - adjusted */
+         t5 = newTemp(Ity_I32);
+         assign(t5, binop(Iop_And32,
+                          mkNarrowTo32(ty, getIReg(rt)),
+                          binop(Iop_Shr32,
+                                mkU32(0x00FFFFFF),
+                                      narrowTo(Ity_I8, binop(Iop_Mul32,
+                                                             mkU32(0x08),
+                                                             mkexpr(t4))))));
+
+         putIReg(rt, mkWidenFrom32(ty, binop(Iop_Or32, mkexpr(t5),
+                                             mkexpr(t3)), True));
       } else {
          /* t1 = addr */
          t1 = newTemp(Ity_I32);
@@ -13866,47 +13852,34 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
       DIP("lwr r%d, %d(r%d)", rt, imm, rs);
       if (mode64) {
          /* t1 = addr */
-         t1 = newTemp(Ity_I64);
+         t1 = newTemp(Ity_I64);     // changes were here 2
          if (guest_endness == Iend_LE) {
              assign(t1, binop(Iop_Add64, getIReg(rs), mkU64(extend_s_16to64(imm))));
-             /* t2 = word addr */
-             /* t4 = addr mod 8 */
-             LWX_SWX_PATTERN64;
-
-             /* t3 = word content - shifted */
-             t3 = newTemp(Ity_I32);
-             assign(t3, binop(Iop_Shr32, mkNarrowTo32(ty, load(Ity_I64,mkexpr(t2))),
-                        narrowTo(Ity_I8, binop(Iop_Shl32, mkexpr(t4), mkU8(3)))));
-
-             /* rt content  - adjusted */
-             t5 = newTemp(Ity_I32);
-             assign(t5, binop(Iop_And32, mkNarrowTo32(ty, getIReg(rt)),
-                    unop(Iop_Not32, binop(Iop_Shr32, mkU32(0xFFFFFFFF),
-                    narrowTo(Ity_I8, binop(Iop_Shl32, mkexpr(t4), mkU8(0x3)))))));
-
-             putIReg(rt, mkWidenFrom32(ty, binop(Iop_Or32, mkexpr(t5),
-                                           mkexpr(t3)), True));
          } else {
-             assign(t1, binop(Iop_Xor64, mkU64(0x3), binop(Iop_Add64, getIReg(rs),
-                              mkU64(extend_s_16to64(imm)))));
-             /* t2 = word addr */
-             /* t4 = addr mod 4 */
-             LWX_SWX_PATTERN64;
-
-             /* t3 = word content - shifted */
-             t3 = newTemp(Ity_I32);
-             assign(t3, binop(Iop_Shr32, unop(Iop_64HIto32, load(Ity_I64,mkexpr(t2))),
-                        narrowTo(Ity_I8, binop(Iop_Shl32, mkexpr(t4), mkU8(3)))));
-
-             /* rt content  - adjusted */
-             t5 = newTemp(Ity_I32);
-             assign(t5, binop(Iop_And32, mkNarrowTo32(ty, getIReg(rt)),
-                    unop(Iop_Not32, binop(Iop_Shr32, mkU32(0xFFFFFFFF),
-                    narrowTo(Ity_I8, binop(Iop_Shl32, mkexpr(t4), mkU8(0x3)))))));
-
-             putIReg(rt, mkWidenFrom32(ty, binop(Iop_Or32, mkexpr(t5),
-                                           mkexpr(t3)), True));
+             assign(t1, binop(Iop_Xor64,
+                              mkU64(0x3),
+                              binop(Iop_Add64,
+                                    getIReg(rs),
+                                    mkU64(extend_s_16to64(imm)))));
          }
+         /* t2 = word addr */
+         /* t4 = addr mod 4 */
+         LWX_SWX_PATTERN64;
+
+         /* t3 = word content - shifted */
+         assign(t3, binop(Iop_Shr32,
+                          load(Ity_I32, mkexpr(t2)),
+                          narrowTo(Ity_I8,
+                                   binop(Iop_Shl32, mkexpr(t4), mkU8(0x03)))));
+
+         /* rt content  - adjusted */
+         t5 = newTemp(Ity_I32);
+         assign(t5, binop(Iop_And32, mkNarrowTo32(ty, getIReg(rt)),
+                unop(Iop_Not32, binop(Iop_Shr32, mkU32(0xFFFFFFFF),
+                narrowTo(Ity_I8, binop(Iop_Shl32, mkexpr(t4), mkU8(0x3)))))));
+
+         putIReg(rt, mkWidenFrom32(ty, binop(Iop_Or32, mkexpr(t5),
+                                       mkexpr(t3)), True));
 
       } else {
          /* t1 = addr */
