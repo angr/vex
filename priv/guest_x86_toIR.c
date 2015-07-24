@@ -14636,6 +14636,15 @@ DisResult disInstr_X86_WRK (
       break;
    }
 
+   /* -------------------------- CLI/STI ------------------- */
+   /* We treat them as NOP */
+   case 0xFA: { /* CLI */
+      break;
+   }
+   case 0xFB: { /* STI */
+      break;
+   }
+
    /* ------------------------ Escapes to 2-byte opcodes -- */
 
    case 0x0F: {
