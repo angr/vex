@@ -289,6 +289,7 @@ static void* fnptr_to_fnentry( const VexAbiInfo* vbi, void* f )
 #define OFFB_NRADDR_GPR2 offsetofPPCGuestState(guest_NRADDR_GPR2)
 #define OFFB_TFHAR       offsetofPPCGuestState(guest_TFHAR)
 #define OFFB_TEXASR      offsetofPPCGuestState(guest_TEXASR)
+#define OFFB_TEXASRU     offsetofPPCGuestState(guest_TEXASRU)
 #define OFFB_TFIAR       offsetofPPCGuestState(guest_TFIAR)
 
 
@@ -439,6 +440,7 @@ typedef enum {
     PPC_GST_TFHAR,  // Transactional Failure Handler Address Register
     PPC_GST_TFIAR,  // Transactional Failure Instruction Address Register
     PPC_GST_TEXASR, // Transactional EXception And Summary Register
+    PPC_GST_TEXASRU, // Transactional EXception And Summary Register Upper
     PPC_GST_MAX
 } PPC_GST;
 
@@ -1725,7 +1727,7 @@ static IRExpr* addr_align( IRExpr* addr, UChar align )
    restart of the current insn. */
 static void gen_SIGBUS_if_misaligned ( IRTemp addr, UChar align )
 {
-   vassert(align == 4 || align == 8 || align == 16);
+   vassert(align == 2 || align == 4 || align == 8 || align == 16);
    if (mode64) {
       vassert(typeOfIRTemp(irsb->tyenv, addr) == Ity_I64);
       stmt(
@@ -2735,6 +2737,9 @@ static IRExpr* /* :: Ity_I32/64 */ getGST ( PPC_GST reg )
    case PPC_GST_TEXASR:
       return IRExpr_Get( OFFB_TEXASR, ty );
 
+   case PPC_GST_TEXASRU:
+      return IRExpr_Get( OFFB_TEXASRU, ty );
+
    case PPC_GST_TFIAR:
       return IRExpr_Get( OFFB_TFIAR, ty );
 
@@ -2903,6 +2908,12 @@ static void putGST ( PPC_GST reg, IRExpr* src )
       vassert( ty_src == Ity_I64 );
       stmt( IRStmt_Put( OFFB_TEXASR, src ) );
       break;
+
+   case PPC_GST_TEXASRU:
+      vassert( ty_src == Ity_I32 );
+      stmt( IRStmt_Put( OFFB_TEXASRU, src ) );
+      break;
+
    case PPC_GST_TFIAR:
       vassert( ty_src == Ity_I64 );
       stmt( IRStmt_Put( OFFB_TFIAR, src ) );
@@ -3333,9 +3344,10 @@ static ULong generate_TMreason( UInt failure_code,
 static void storeTMfailure( Addr64 err_address, ULong tm_reason,
                             Addr64 handler_address )
 {
-   putGST( PPC_GST_TFIAR,  mkU64( err_address ) );
-   putGST( PPC_GST_TEXASR, mkU64( tm_reason ) );
-   putGST( PPC_GST_TFHAR,  mkU64( handler_address ) );
+   putGST( PPC_GST_TFIAR,   mkU64( err_address ) );
+   putGST( PPC_GST_TEXASR,  mkU64( tm_reason ) );
+   putGST( PPC_GST_TEXASRU, mkU32( 0 ) );
+   putGST( PPC_GST_TFHAR,   mkU64( handler_address ) );
 }
 
 /*------------------------------------------------------------*/
@@ -5121,10 +5133,17 @@ static Bool dis_int_load ( UInt theInstr )
        */
       // trap if EA misaligned on 16 byte address
       if (mode64) {
-         assign(high, load(ty, mkexpr( EA ) ) );
-         assign(low, load(ty, binop( Iop_Add64,
-                                     mkexpr( EA ),
-                                     mkU64( 8 ) ) ) );
+         if (host_endness == VexEndnessBE) {
+            assign(high, load(ty, mkexpr( EA ) ) );
+            assign(low, load(ty, binop( Iop_Add64,
+                                        mkexpr( EA ),
+                                        mkU64( 8 ) ) ) );
+	 } else {
+            assign(low, load(ty, mkexpr( EA ) ) );
+            assign(high, load(ty, binop( Iop_Add64,
+                                         mkexpr( EA ),
+                                         mkU64( 8 ) ) ) );
+	 }
       } else {
          assign(high, load(ty, binop( Iop_Add32,
                                       mkexpr( EA ),
@@ -5332,11 +5351,20 @@ static Bool dis_int_store ( UInt theInstr, const VexAbiInfo* vbi )
          DIP("stq r%u,%d(r%u)\n", rS_addr, simm16, rA_addr);
 
          if (mode64) {
-            /* upper 64-bits */
-            assign( EA_hi, ea_rAor0_simm( rA_addr, simm16 ) );
+            if (host_endness == VexEndnessBE) {
 
-            /* lower 64-bits */
-            assign( EA_lo, ea_rAor0_simm( rA_addr, simm16+8 ) );
+               /* upper 64-bits */
+               assign( EA_hi, ea_rAor0_simm( rA_addr, simm16 ) );
+
+               /* lower 64-bits */
+               assign( EA_lo, ea_rAor0_simm( rA_addr, simm16+8 ) );
+	    } else {
+               /* upper 64-bits */
+               assign( EA_hi, ea_rAor0_simm( rA_addr, simm16+8 ) );
+
+               /* lower 64-bits */
+               assign( EA_lo, ea_rAor0_simm( rA_addr, simm16 ) );
+	    }
          } else {
             /* upper half of upper 64-bits */
             assign( EA_hi, ea_rAor0_simm( rA_addr, simm16+4 ) );
@@ -6289,6 +6317,41 @@ static Bool dis_memsync ( UInt theInstr )
          break;
       }
 
+      case 0x034: { // lbarx (Load Word and Reserve Indexed)
+         IRTemp res;
+         /* According to the PowerPC ISA version 2.05, b0 (called EH
+            in the documentation) is merely a hint bit to the
+            hardware, I think as to whether or not contention is
+            likely.  So we can just ignore it. */
+         DIP("lbarx r%u,r%u,r%u,EH=%u\n", rD_addr, rA_addr, rB_addr, (UInt)b0);
+
+         // and actually do the load
+         res = newTemp(Ity_I8);
+         stmt( stmt_load(res, mkexpr(EA), NULL/*this is a load*/) );
+
+         putIReg( rD_addr, mkWidenFrom8(ty, mkexpr(res), False) );
+         break;
+     }
+
+      case 0x074: { // lharx (Load Word and Reserve Indexed)
+         IRTemp res;
+         /* According to the PowerPC ISA version 2.05, b0 (called EH
+            in the documentation) is merely a hint bit to the
+            hardware, I think as to whether or not contention is
+            likely.  So we can just ignore it. */
+         DIP("lharx r%u,r%u,r%u,EH=%u\n", rD_addr, rA_addr, rB_addr, (UInt)b0);
+
+         // trap if misaligned
+         gen_SIGBUS_if_misaligned( EA, 2 );
+
+         // and actually do the load
+         res = newTemp(Ity_I16);
+         stmt( stmt_load(res, mkexpr(EA), NULL/*this is a load*/) );
+
+         putIReg( rD_addr, mkWidenFrom16(ty, mkexpr(res), False) );
+         break;
+      }
+
       case 0x096: { 
          // stwcx. (Store Word Conditional Indexed, PPC32 p532)
          // Note this has to handle stwcx. in both 32- and 64-bit modes,
@@ -6318,6 +6381,71 @@ static Bool dis_memsync ( UInt theInstr )
 
          /* Note:
             If resaddr != lwarx_resaddr, CR0[EQ] is undefined, and
+            whether rS is stored is dependent on that value. */
+         /* So I guess we can just ignore this case? */
+         break;
+      }
+
+      case 0x2B6: {
+         // stbcx. (Store Byte Conditional Indexed)
+         // Note this has to handle stbcx. in both 32- and 64-bit modes,
+         // so isn't quite as straightforward as it might otherwise be.
+         IRTemp rS = newTemp(Ity_I8);
+         IRTemp resSC;
+         if (b0 != 1) {
+            vex_printf("dis_memsync(ppc)(stbcx.,b0)\n");
+            return False;
+         }
+         DIP("stbcx. r%u,r%u,r%u\n", rS_addr, rA_addr, rB_addr);
+
+         // Get the data to be stored, and narrow to 32 bits if necessary
+         assign( rS, mkNarrowTo8(ty, getIReg(rS_addr)) );
+
+         // Do the store, and get success/failure bit into resSC
+         resSC = newTemp(Ity_I1);
+         stmt( stmt_load( resSC, mkexpr(EA), mkexpr(rS)) );
+
+         // Set CR0[LT GT EQ S0] = 0b000 || XER[SO]  on failure
+         // Set CR0[LT GT EQ S0] = 0b001 || XER[SO]  on success
+         putCR321(0, binop(Iop_Shl8, unop(Iop_1Uto8, mkexpr(resSC)), mkU8(1)));
+         putCR0(0, getXER_SO());
+
+         /* Note:
+            If resaddr != lbarx_resaddr, CR0[EQ] is undefined, and
+            whether rS is stored is dependent on that value. */
+         /* So I guess we can just ignore this case? */
+         break;
+      }
+
+      case 0x2D6: {
+         // sthcx. (Store Word Conditional Indexed, PPC32 p532)
+         // Note this has to handle sthcx. in both 32- and 64-bit modes,
+         // so isn't quite as straightforward as it might otherwise be.
+         IRTemp rS = newTemp(Ity_I16);
+         IRTemp resSC;
+         if (b0 != 1) {
+            vex_printf("dis_memsync(ppc)(stwcx.,b0)\n");
+            return False;
+         }
+         DIP("sthcx. r%u,r%u,r%u\n", rS_addr, rA_addr, rB_addr);
+
+         // trap if misaligned
+         gen_SIGBUS_if_misaligned( EA, 2 );
+
+         // Get the data to be stored, and narrow to 16 bits if necessary
+         assign( rS, mkNarrowTo16(ty, getIReg(rS_addr)) );
+
+         // Do the store, and get success/failure bit into resSC
+         resSC = newTemp(Ity_I1);
+         stmt( stmt_load( resSC, mkexpr(EA), mkexpr(rS)) );
+
+         // Set CR0[LT GT EQ S0] = 0b000 || XER[SO]  on failure
+         // Set CR0[LT GT EQ S0] = 0b001 || XER[SO]  on success
+         putCR321(0, binop(Iop_Shl8, unop(Iop_1Uto8, mkexpr(resSC)), mkU8(1)));
+         putCR0(0, getXER_SO());
+
+         /* Note:
+            If resaddr != lharx_resaddr, CR0[EQ] is undefined, and
             whether rS is stored is dependent on that value. */
          /* So I guess we can just ignore this case? */
          break;
@@ -6432,11 +6560,19 @@ static Bool dis_memsync ( UInt theInstr )
 
          // and actually do the load
          if (mode64) {
-            stmt( stmt_load( res_hi,
-                             mkexpr(EA), NULL/*this is a load*/) );
-            stmt( stmt_load( res_lo,
-                             binop(Iop_Add64, mkexpr(EA), mkU64(8) ),
-                             NULL/*this is a load*/) );
+            if (host_endness == VexEndnessBE) {
+               stmt( stmt_load( res_hi,
+                                mkexpr(EA), NULL/*this is a load*/) );
+               stmt( stmt_load( res_lo,
+                                binop(Iop_Add64, mkexpr(EA), mkU64(8) ),
+                                NULL/*this is a load*/) );
+	    } else {
+               stmt( stmt_load( res_lo,
+                                mkexpr(EA), NULL/*this is a load*/) );
+               stmt( stmt_load( res_hi,
+                                binop(Iop_Add64, mkexpr(EA), mkU64(8) ),
+                                NULL/*this is a load*/) );
+            }
          } else {
             stmt( stmt_load( res_hi,
                              binop( Iop_Add32, mkexpr(EA), mkU32(4) ),
@@ -6472,8 +6608,15 @@ static Bool dis_memsync ( UInt theInstr )
          resSC = newTemp(Ity_I1);
 
          if (mode64) {
-            stmt( stmt_load( resSC, mkexpr(EA), mkexpr(rS_hi) ) );
-            store( binop( Iop_Add64, mkexpr(EA), mkU64(8) ), mkexpr(rS_lo) );
+            if (host_endness == VexEndnessBE) {
+               stmt( stmt_load( resSC, mkexpr(EA), mkexpr(rS_hi) ) );
+               store( binop( Iop_Add64, mkexpr(EA), mkU64(8) ),
+                      mkexpr(rS_lo) );
+	    } else {
+               stmt( stmt_load( resSC, mkexpr(EA), mkexpr(rS_lo) ) );
+               store( binop( Iop_Add64, mkexpr(EA), mkU64(8) ),
+                      mkexpr(rS_hi) );
+	    }
          } else {
             stmt( stmt_load( resSC, binop( Iop_Add32,
                                            mkexpr(EA),
@@ -6981,6 +7124,10 @@ static Bool dis_proc_ctl ( const VexAbiInfo* vbi, UInt theInstr )
          DIP("mfspr r%u (TEXASR)\n", rD_addr);
          putIReg( rD_addr, getGST( PPC_GST_TEXASR) );
          break;
+      case 0x83:  // 131
+         DIP("mfspr r%u (TEXASRU)\n", rD_addr);
+         putIReg( rD_addr, getGST( PPC_GST_TEXASRU) );
+         break;
       case 0x100: 
          DIP("mfvrsave r%u\n", rD_addr);
          putIReg( rD_addr, mkWidenFrom32(ty, getGST( PPC_GST_VRSAVE ),
@@ -7312,10 +7459,10 @@ static Bool dis_cache_manage ( UInt         theInstr,
       }
    }
 
-   if (opc1 != 0x1F || b21to25 != 0 || b0 != 0) {
-      if (0) vex_printf("dis_cache_manage %d %d %d\n", 
-                        (Int)opc1, (Int)b21to25, (Int)b0);
-      vex_printf("dis_cache_manage(ppc)(opc1|b21to25|b0)\n");
+   if (opc1 != 0x1F || b0 != 0) {
+      if (0) vex_printf("dis_cache_manage %d %d\n", 
+                        (Int)opc1, (Int)b0);
+      vex_printf("dis_cache_manage(ppc)(opc1|b0)\n");
       return False;
    }
 
@@ -15247,7 +15394,12 @@ dis_vx_load ( UInt theInstr )
    {
       IRExpr * exp;
       DIP("lxsiwzx %d,r%u,r%u\n", (UInt)XT, rA_addr, rB_addr);
-      exp = unop( Iop_64HIto32, load( Ity_I64, mkexpr( EA ) ) );
+
+      if (host_endness == VexEndnessLE)
+         exp = unop( Iop_64to32, load( Ity_I64, mkexpr( EA ) ) );
+      else
+         exp = unop( Iop_64HIto32, load( Ity_I64, mkexpr( EA ) ) );
+
       putVSReg( XT, binop( Iop_64HLtoV128,
                            unop( Iop_32Uto64, exp),
                            mkU64(0) ) );
@@ -15257,7 +15409,12 @@ dis_vx_load ( UInt theInstr )
    {
       IRExpr * exp;
       DIP("lxsiwax %d,r%u,r%u\n", (UInt)XT, rA_addr, rB_addr);
-      exp = unop( Iop_64HIto32, load( Ity_I64, mkexpr( EA ) ) );
+
+      if (host_endness == VexEndnessLE)
+         exp = unop( Iop_64to32, load( Ity_I64, mkexpr( EA ) ) );
+      else
+         exp = unop( Iop_64HIto32, load( Ity_I64, mkexpr( EA ) ) );
+
       putVSReg( XT, binop( Iop_64HLtoV128,
                            unop( Iop_32Sto64, exp),
                            mkU64(0) ) );
@@ -17859,7 +18016,7 @@ static Bool dis_av_quad ( UInt theInstr )
                       res,
                       binop( Iop_ShlV128,
                              mkexpr( perm_bit ),
-                             mkU8( i ) ) );
+                             mkU8( i + 64 ) ) );
          vB_expr = binop( Iop_ShrV128, vB_expr, mkU8( 8 ) );
       }
       putVReg( vRT_addr, res);
@@ -19010,16 +19167,14 @@ DisResult disInstr_PPC_WRK (
                goto decode_success;
          case 0x82:   // dcmpo, DFP comparison ordered instruction
          case 0x282:  // dcmpu, DFP comparison unordered instruction
-            if (!allow_DFP)
-               goto decode_failure;
+            if (!allow_DFP) goto decode_noDFP;
             if (dis_dfp_compare( theInstr ) )
                goto decode_success;
             goto decode_failure;
          case 0x102: // dctdp  - DFP convert to DFP long
          case 0x302: // drsp   - DFP round to dfp short
          case 0x122: // dctfix - DFP convert to fixed
-            if (!allow_DFP)
-               goto decode_failure;
+            if (!allow_DFP) goto decode_noDFP;
             if (dis_dfp_fmt_conv( theInstr ))
                goto decode_success;
             goto decode_failure;
@@ -19030,22 +19185,19 @@ DisResult disInstr_PPC_WRK (
                goto decode_success;
             goto decode_failure;
          case 0x2A2: // dtstsf - DFP number of significant digits
-            if (!allow_DFP)
-               goto decode_failure;
+            if (!allow_DFP) goto decode_noDFP;
             if (dis_dfp_significant_digits(theInstr))
                goto decode_success;
             goto decode_failure;
          case 0x142: // ddedpd   DFP Decode DPD to BCD
          case 0x342: // denbcd   DFP Encode BCD to DPD
-            if (!allow_DFP)
-               goto decode_failure;
+            if (!allow_DFP) goto decode_noDFP;
             if (dis_dfp_bcd(theInstr))
                goto decode_success;
             goto decode_failure;
          case 0x162:  // dxex - Extract exponent 
          case 0x362:  // diex - Insert exponent
-            if (!allow_DFP)
-               goto decode_failure;
+            if (!allow_DFP) goto decode_noDFP;
             if (dis_dfp_extract_insert( theInstr ) )
                goto decode_success;
             goto decode_failure;
@@ -19065,15 +19217,13 @@ DisResult disInstr_PPC_WRK (
       switch (opc2) {
       case 0x42: // dscli, DFP shift left
       case 0x62: // dscri, DFP shift right
-         if (!allow_DFP)
-            goto decode_failure;
+         if (!allow_DFP) goto decode_noDFP;
          if (dis_dfp_shift( theInstr ))
             goto decode_success;
          goto decode_failure;
       case 0xc2:  // dtstdc, DFP test data class
       case 0xe2:  // dtstdg, DFP test data group
-         if (!allow_DFP)
-            goto decode_failure;
+         if (!allow_DFP) goto decode_noDFP;
          if (dis_dfp_class_test( theInstr ))
             goto decode_success;
          goto decode_failure;
@@ -19084,21 +19234,18 @@ DisResult disInstr_PPC_WRK (
       case 0x3:   // dqua  - DFP Quantize
       case 0x23:  // drrnd - DFP Reround
       case 0x43:  // dquai - DFP Quantize immediate
-         if (!allow_DFP)
-            goto decode_failure;
+         if (!allow_DFP) goto decode_noDFP;
          if (dis_dfp_quantize_sig_rrnd( theInstr ) )
             goto decode_success;
          goto decode_failure;
       case 0xA2: // dtstex - DFP Test exponent
-         if (!allow_DFP)
-            goto decode_failure;
+         if (!allow_DFP) goto decode_noDFP;
          if (dis_dfp_exponent_test( theInstr ) )
             goto decode_success;
          goto decode_failure;
       case 0x63: // drintx - Round to an integer value
       case 0xE3: // drintn - Round to an integer value
-         if (!allow_DFP)
-            goto decode_failure;
+         if (!allow_DFP) goto decode_noDFP;
          if (dis_dfp_round( theInstr ) ) {
             goto decode_success;
          }
@@ -19332,16 +19479,14 @@ DisResult disInstr_PPC_WRK (
          goto decode_failure;
       case 0x162:  // dxexq - DFP Extract exponent
       case 0x362:  // diexq - DFP Insert exponent
-         if (!allow_DFP)
-            goto decode_failure;
+         if (!allow_DFP) goto decode_noDFP;
          if (dis_dfp_extract_insertq( theInstr ))
             goto decode_success;
          goto decode_failure;
 
       case 0x82:   // dcmpoq, DFP comparison ordered instruction
       case 0x282:  // dcmpuq, DFP comparison unordered instruction
-         if (!allow_DFP)
-            goto decode_failure;
+         if (!allow_DFP) goto decode_noDFP;
          if (dis_dfp_compare( theInstr ) )
             goto decode_success;
          goto decode_failure;
@@ -19350,23 +19495,20 @@ DisResult disInstr_PPC_WRK (
       case 0x302: // drdpq   - DFP round to dfp Long
       case 0x122: // dctfixq - DFP convert to fixed quad
       case 0x322: // dcffixq - DFP convert from fixed quad
-         if (!allow_DFP)
-            goto decode_failure;
+         if (!allow_DFP) goto decode_noDFP;
          if (dis_dfp_fmt_convq( theInstr ))
             goto decode_success;
          goto decode_failure;
 
       case 0x2A2: // dtstsfq - DFP number of significant digits
-         if (!allow_DFP)
-            goto decode_failure;
+         if (!allow_DFP) goto decode_noDFP;
          if (dis_dfp_significant_digits(theInstr))
             goto decode_success;
          goto decode_failure;
 
       case 0x142: // ddedpdq   DFP Decode DPD to BCD
       case 0x342: // denbcdq   DFP Encode BCD to DPD
-         if (!allow_DFP)
-            goto decode_failure;
+         if (!allow_DFP) goto decode_noDFP;
          if (dis_dfp_bcdq(theInstr))
             goto decode_success;
          goto decode_failure;
@@ -19441,15 +19583,13 @@ DisResult disInstr_PPC_WRK (
       switch (opc2) {
       case 0x42: // dscli, DFP shift left
       case 0x62: // dscri, DFP shift right
-         if (!allow_DFP)
-            goto decode_failure;
+         if (!allow_DFP) goto decode_noDFP;
          if (dis_dfp_shiftq( theInstr ))
             goto decode_success;
          goto decode_failure;
       case 0xc2:  // dtstdc, DFP test data class
       case 0xe2:  // dtstdg, DFP test data group
-         if (!allow_DFP)
-            goto decode_failure;
+         if (!allow_DFP) goto decode_noDFP;
          if (dis_dfp_class_test( theInstr ))
             goto decode_success;
          goto decode_failure;
@@ -19462,8 +19602,7 @@ DisResult disInstr_PPC_WRK (
       case 0x3:   // dquaq  - DFP Quantize Quad
       case 0x23:  // drrndq - DFP Reround Quad
       case 0x43:  // dquaiq - DFP Quantize immediate Quad
-         if (!allow_DFP)
-            goto decode_failure;
+         if (!allow_DFP) goto decode_noDFP;
          if (dis_dfp_quantize_sig_rrndq( theInstr ))
             goto decode_success;
          goto decode_failure;
@@ -19473,8 +19612,7 @@ DisResult disInstr_PPC_WRK (
          goto decode_failure;
       case 0x63:  // drintxq - DFP Round to an integer value
       case 0xE3:  // drintnq - DFP Round to an integer value
-         if (!allow_DFP)
-            goto decode_failure;
+         if (!allow_DFP) goto decode_noDFP;
          if (dis_dfp_roundq( theInstr ))
             goto decode_success;
          goto decode_failure;
@@ -19667,6 +19805,12 @@ DisResult disInstr_PPC_WRK (
       }
 
       /* Memory Synchronization Instructions */
+      case 0x034: case 0x074:             // lbarx, lharx
+      case 0x2B6: case 0x2D6:             // stbcx, sthcx
+         if (!allow_isa_2_07) goto decode_noP8;
+         if (dis_memsync( theInstr )) goto decode_success;
+         goto decode_failure;
+
       case 0x356: case 0x014: case 0x096: // eieio, lwarx, stwcx.
       case 0x256:                         // sync
          if (dis_memsync( theInstr )) goto decode_success;
@@ -20098,36 +20242,55 @@ DisResult disInstr_PPC_WRK (
 
    decode_noF:
       vassert(!allow_F);
-      vex_printf("disInstr(ppc): declined to decode an FP insn.\n");
-      goto decode_failure;
+      vex_printf("disInstr(ppc): found the Floating Point instruction 0x%x that\n"
+		 "can't be handled by Valgrind on this host.  This instruction\n"
+		 "requires a host that supports Floating Point instructions.\n",
+		 theInstr);
+      goto not_supported;
    decode_noV:
       vassert(!allow_V);
-      vex_printf("disInstr(ppc): declined to decode an AltiVec insn.\n");
-      goto decode_failure;
+      vex_printf("disInstr(ppc): found an AltiVec or an e500 instruction 0x%x\n"
+		 "that can't be handled by Valgrind.  If this instruction is an\n"
+		 "Altivec instruction, Valgrind must be run on a host that supports"
+		 "AltiVec instructions.  If the application was compiled for e500, then\n"
+		 "unfortunately Valgrind does not yet support e500 instructions.\n",
+		 theInstr);
+      goto not_supported;
    decode_noVX:
       vassert(!allow_VX);
-      vex_printf("disInstr(ppc): declined to decode a Power ISA 2.06 insn.\n");
-      goto decode_failure;
+      vex_printf("disInstr(ppc): found the instruction 0x%x that is defined in the\n"
+		 "Power ISA 2.06 ABI but can't be handled by Valgrind on this host.\n"
+		 "This instruction \nrequires a host that supports the ISA 2.06 ABI.\n",
+		 theInstr);
+      goto not_supported;
    decode_noFX:
       vassert(!allow_FX);
-      vex_printf("disInstr(ppc): "
-                 "declined to decode a GeneralPurpose-Optional insn.\n");
-      goto decode_failure;
+      vex_printf("disInstr(ppc): found the General Purpose-Optional instruction 0x%x\n"
+		 "that can't be handled by Valgrind on this host. This instruction\n"
+		 "requires a host that supports the General Purpose-Optional instructions.\n",
+		 theInstr);
+      goto not_supported;
    decode_noGX:
       vassert(!allow_GX);
-      vex_printf("disInstr(ppc): "
-                 "declined to decode a Graphics-Optional insn.\n");
-      goto decode_failure;
+      vex_printf("disInstr(ppc): found the Graphics-Optional instruction 0x%x\n"
+		 "that can't be handled by Valgrind on this host. This instruction\n"
+		 "requires a host that supports the Graphic-Optional instructions.\n",
+		 theInstr);
+      goto not_supported;
    decode_noDFP:
       vassert(!allow_DFP);
-      vex_printf("disInstr(ppc): "
-               "declined to decode a Decimal Floating Point insn.\n");
-      goto decode_failure;
+      vex_printf("disInstr(ppc): found the decimal floating point (DFP) instruction 0x%x\n"
+		 "that can't be handled by Valgrind on this host.  This instruction\n"
+		 "requires a host that supports DFP instructions.\n",
+		 theInstr);
+      goto not_supported;
    decode_noP8:
       vassert(!allow_isa_2_07);
-      vex_printf("disInstr(ppc): "
-               "declined to decode a Power 8 insn.\n");
-      goto decode_failure;
+      vex_printf("disInstr(ppc): found the Power 8 instruction 0x%x that can't be handled\n"
+		 "by Valgrind on this host.  This instruction requires a host that\n"
+		 "supports Power 8 instructions.\n",
+		 theInstr);
+      goto not_supported;
 
 
    decode_failure:
@@ -20140,6 +20303,7 @@ DisResult disInstr_PPC_WRK (
                  opc1, opc1, opc2, opc2);
    }
 
+   not_supported:
    /* Tell the dispatcher that this insn cannot be decoded, and so has
       not been executed, and (is currently) the next to be executed.
       CIA should be up-to-date since it made so at the start of each

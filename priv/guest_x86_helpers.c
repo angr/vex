@@ -724,13 +724,50 @@ UInt LibVEX_GuestX86_get_eflags ( /*IN*/const VexGuestX86State* vex_state )
    UInt dflag = vex_state->guest_DFLAG;
    vassert(dflag == 1 || dflag == 0xFFFFFFFF);
    if (dflag == 0xFFFFFFFF)
-      eflags |= (1<<10);
+      eflags |= X86G_CC_MASK_D;
    if (vex_state->guest_IDFLAG == 1)
-      eflags |= (1<<21);
+      eflags |= X86G_CC_MASK_ID;
    if (vex_state->guest_ACFLAG == 1)
-      eflags |= (1<<18);
+      eflags |= X86G_CC_MASK_AC;
 					     
    return eflags;
+}
+
+/* VISIBLE TO LIBVEX CLIENT */
+void
+LibVEX_GuestX86_put_eflags ( UInt eflags,
+                             /*MOD*/VexGuestX86State* vex_state )
+{
+   /* D flag */
+   if (eflags & X86G_CC_MASK_D) {
+      vex_state->guest_DFLAG = 0xFFFFFFFF;
+      eflags &= ~X86G_CC_MASK_D;
+   }
+   else
+      vex_state->guest_DFLAG = 1;
+
+   /* ID flag */
+   if (eflags & X86G_CC_MASK_ID) {
+      vex_state->guest_IDFLAG = 1;
+      eflags &= ~X86G_CC_MASK_ID;
+   }
+   else
+      vex_state->guest_IDFLAG = 0;
+
+   /* AC flag */
+   if (eflags & X86G_CC_MASK_AC) {
+      vex_state->guest_ACFLAG = 1;
+      eflags &= ~X86G_CC_MASK_AC;
+   }
+   else
+      vex_state->guest_ACFLAG = 0;
+
+   UInt cc_mask = X86G_CC_MASK_O | X86G_CC_MASK_S | X86G_CC_MASK_Z |
+                  X86G_CC_MASK_A | X86G_CC_MASK_C | X86G_CC_MASK_P;
+   vex_state->guest_CC_OP   = X86G_CC_OP_COPY;
+   vex_state->guest_CC_DEP1 = eflags & cc_mask;
+   vex_state->guest_CC_DEP2 = 0;
+   vex_state->guest_CC_NDEP = 0;
 }
 
 /* VISIBLE TO LIBVEX CLIENT */
@@ -1835,7 +1872,7 @@ VexEmNote x86g_dirtyhelper_FXRSTOR ( VexGuestX86State* gst, HWord addr )
 
      warnXMM = (VexEmNote)(w64 >> 32);
 
-     gst->guest_SSEROUND = (UInt)w64;
+     gst->guest_SSEROUND = w64 & 0xFFFFFFFF;;
    }
 
    /* Prefer an X87 emwarn over an XMM one, if both exist. */
@@ -1880,6 +1917,42 @@ VexEmNote x86g_dirtyhelper_FLDENV ( VexGuestX86State* gst, HWord addr )
    return do_put_x87( False/*don't move regs*/, (UChar*)addr, gst);
 }
 
+/* VISIBLE TO LIBVEX CLIENT */
+/* Do x87 save from the supplied VexGuestX86State structure and store the
+   result at the given address which represents a buffer of at least 108
+   bytes. */
+void LibVEX_GuestX86_get_x87 ( /*IN*/VexGuestX86State* vex_state,
+                               /*OUT*/UChar* x87_state )
+{
+   do_get_x87 ( vex_state, x87_state );
+}
+
+/* VISIBLE TO LIBVEX CLIENT */
+/* Do x87 restore from the supplied address and store read values to the given
+   VexGuestX86State structure. */
+VexEmNote LibVEX_GuestX86_put_x87 ( /*IN*/UChar* x87_state,
+                                    /*MOD*/VexGuestX86State* vex_state )
+{
+   return do_put_x87 ( True/*moveRegs*/, x87_state, vex_state );
+}
+
+/* VISIBLE TO LIBVEX CLIENT */
+/* Return mxcsr from the supplied VexGuestX86State structure. */
+UInt LibVEX_GuestX86_get_mxcsr ( /*IN*/VexGuestX86State* vex_state )
+{
+   return x86g_create_mxcsr ( vex_state->guest_SSEROUND );
+}
+
+/* VISIBLE TO LIBVEX CLIENT */
+/* Modify the given VexGuestX86State structure according to the passed mxcsr
+   value. */
+VexEmNote LibVEX_GuestX86_put_mxcsr ( /*IN*/UInt mxcsr,
+                                      /*MOD*/VexGuestX86State* vex_state)
+{
+   ULong w64 = x86g_check_ldmxcsr( mxcsr );
+   vex_state->guest_SSEROUND = w64 & 0xFFFFFFFF;
+   return (VexEmNote)(w64 >> 32);
+}
 
 /*---------------------------------------------------------------*/
 /*--- Misc integer helpers, including rotates and CPUID.      ---*/
@@ -2297,6 +2370,46 @@ void x86g_dirtyhelper_CPUID_sse1 ( VexGuestX86State* st )
    }
 }
 
+/* Claim to be the following SSE2-capable CPU:
+   vendor_id    : GenuineIntel
+   cpu family   : 15
+   model        : 2
+   model name   : Intel(R) Pentium(R) 4 CPU 3.00GHz
+   stepping     : 9
+   microcode    : 0x17
+   cpu MHz      : 2992.577
+   cache size   : 512 KB
+   flags        : fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov
+                  pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe
+                   pebs bts cid xtpr
+   clflush size : 64
+   cache_alignment : 128
+   address sizes : 36 bits physical, 32 bits virtual
+*/
+void x86g_dirtyhelper_CPUID_sse2 ( VexGuestX86State* st )
+{
+   switch (st->guest_EAX) {
+      case 0: 
+         st->guest_EAX = 0x00000002;
+         st->guest_EBX = 0x756e6547;
+         st->guest_ECX = 0x6c65746e;
+         st->guest_EDX = 0x49656e69;
+         break;
+      case 1: 
+         st->guest_EAX = 0x00000f29;
+         st->guest_EBX = 0x01020809;
+         st->guest_ECX = 0x00004400;
+         st->guest_EDX = 0xbfebfbff;
+         break;
+      default:
+         st->guest_EAX = 0x03020101;
+         st->guest_EBX = 0x00000000;
+         st->guest_ECX = 0x00000000;
+         st->guest_EDX = 0x0c040883;
+         break;
+   }
+}
+
 /* Claim to be the following SSSE3-capable CPU (2 x ...):
    vendor_id       : GenuineIntel
    cpu family      : 6
@@ -2324,7 +2437,7 @@ void x86g_dirtyhelper_CPUID_sse1 ( VexGuestX86State* st )
    address sizes   : 36 bits physical, 48 bits virtual
    power management:
 */
-void x86g_dirtyhelper_CPUID_sse2 ( VexGuestX86State* st )
+void x86g_dirtyhelper_CPUID_sse3 ( VexGuestX86State* st )
 {
 #  define SET_ABCD(_a,_b,_c,_d)               \
       do { st->guest_EAX = (UInt)(_a);        \

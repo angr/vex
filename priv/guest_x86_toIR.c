@@ -7134,17 +7134,26 @@ static UInt dis_SSE_E_to_G_unary_all (
    Int     alen;
    IRTemp  addr;
    UChar   rm = getIByte(delta);
+   // Sqrt32Fx4 and Sqrt64Fx2 take a rounding mode, which is faked
+   // up in the usual way.
+   Bool needsIRRM = op == Iop_Sqrt32Fx4 || op == Iop_Sqrt64Fx2;
    if (epartIsReg(rm)) {
-      putXMMReg( gregOfRM(rm), 
-                 unop(op, getXMMReg(eregOfRM(rm))) );
+      IRExpr* src = getXMMReg(eregOfRM(rm));
+      /* XXXROUNDINGFIXME */
+      IRExpr* res = needsIRRM ? binop(op, get_FAKE_roundingmode(), src)
+                              : unop(op, src);
+      putXMMReg( gregOfRM(rm), res );
       DIP("%s %s,%s\n", opname,
                         nameXMMReg(eregOfRM(rm)),
                         nameXMMReg(gregOfRM(rm)) );
       return delta+1;
    } else {
       addr = disAMode ( &alen, sorb, delta, dis_buf );
-      putXMMReg( gregOfRM(rm), 
-                 unop(op, loadLE(Ity_V128, mkexpr(addr))) );
+      IRExpr* src = loadLE(Ity_V128, mkexpr(addr));
+      /* XXXROUNDINGFIXME */
+      IRExpr* res = needsIRRM ? binop(op, get_FAKE_roundingmode(), src)
+                              : unop(op, src);
+      putXMMReg( gregOfRM(rm), res );
       DIP("%s %s,%s\n", opname,
                         dis_buf,
                         nameXMMReg(gregOfRM(rm)) );
@@ -13357,36 +13366,39 @@ DisResult disInstr_X86_WRK (
       }
 
       /* Handle int $0x80 (linux syscalls), int $0x81 and $0x82
-         (darwin syscalls).  As part of this, note where we are, so we
+         (darwin syscalls), int $0x91 (Solaris syscalls) and int $0xD2
+         (Solaris fasttrap syscalls).  As part of this, note where we are, so we
          can back up the guest to this point if the syscall needs to
          be restarted. */
-      if (d32 == 0x80) {
-         stmt( IRStmt_Put( OFFB_IP_AT_SYSCALL,
-                           mkU32(guest_EIP_curr_instr) ) );
-         jmp_lit(&dres, Ijk_Sys_int128, ((Addr32)guest_EIP_bbstart)+delta);
-         vassert(dres.whatNext == Dis_StopHere);
-         DIP("int $0x80\n");
+      IRJumpKind jump_kind;
+      switch (d32) {
+      case 0x80:
+         jump_kind = Ijk_Sys_int128;
          break;
-      }
-      if (d32 == 0x81) {
-         stmt( IRStmt_Put( OFFB_IP_AT_SYSCALL,
-                           mkU32(guest_EIP_curr_instr) ) );
-         jmp_lit(&dres, Ijk_Sys_int129, ((Addr32)guest_EIP_bbstart)+delta);
-         vassert(dres.whatNext == Dis_StopHere);
-         DIP("int $0x81\n");
+      case 0x81:
+         jump_kind = Ijk_Sys_int129;
          break;
-      }
-      if (d32 == 0x82) {
-         stmt( IRStmt_Put( OFFB_IP_AT_SYSCALL,
-                           mkU32(guest_EIP_curr_instr) ) );
-         jmp_lit(&dres, Ijk_Sys_int130, ((Addr32)guest_EIP_bbstart)+delta);
-         vassert(dres.whatNext == Dis_StopHere);
-         DIP("int $0x82\n");
+      case 0x82:
+         jump_kind = Ijk_Sys_int130;
+         break;
+      case 0x91:
+         jump_kind = Ijk_Sys_int145;
+         break;
+      case 0xD2:
+         jump_kind = Ijk_Sys_int210;
+         break;
+      default:
+         /* none of the above */
+         goto decode_failure;
          break;
       }
 
-      /* none of the above */
-      goto decode_failure;
+      stmt( IRStmt_Put( OFFB_IP_AT_SYSCALL,
+                        mkU32(guest_EIP_curr_instr) ) );
+      jmp_lit(&dres, jump_kind, ((Addr32)guest_EIP_bbstart)+delta);
+      vassert(dres.whatNext == Dis_StopHere);
+      DIP("int $0x%x\n", (Int)d32);
+      break;
 
    /* ------------------------ Jcond, byte offset --------- */
 
@@ -14842,6 +14854,11 @@ DisResult disInstr_X86_WRK (
          IRDirty* d     = NULL;
          void*    fAddr = NULL;
          const HChar* fName = NULL;
+         if (archinfo->hwcaps & VEX_HWCAPS_X86_SSE3) {
+            fName = "x86g_dirtyhelper_CPUID_sse3";
+            fAddr = &x86g_dirtyhelper_CPUID_sse3; 
+         } 
+         else
          if (archinfo->hwcaps & VEX_HWCAPS_X86_SSE2) {
             fName = "x86g_dirtyhelper_CPUID_sse2";
             fAddr = &x86g_dirtyhelper_CPUID_sse2; 
@@ -15337,7 +15354,7 @@ DisResult disInstr_X86_WRK (
 
       case 0x05: /* AMD's syscall */
          stmt( IRStmt_Put( OFFB_IP_AT_SYSCALL,
-              mkU32(guest_EIP_curr_instr) ) );
+                           mkU32(guest_EIP_curr_instr) ) );
          jmp_lit(&dres, Ijk_Sys_syscall, ((Addr32)guest_EIP_bbstart)+delta);
          vassert(dres.whatNext == Dis_StopHere);
          DIP("syscall\n");
