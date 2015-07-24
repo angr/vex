@@ -1527,6 +1527,7 @@ void LibVEX_default_VexArchInfo ( /*OUT*/VexArchInfo* vai )
    vai->ppc_dcbzl_szB           = 0;
    vai->arm64_dMinLine_lg2_szB  = 0;
    vai->arm64_iMinLine_lg2_szB  = 0;
+   vai->x86_cr0                 = 0xFFFFFFFF;
    vai->hwcache_info.num_levels = 0;
    vai->hwcache_info.num_caches = 0;
    vai->hwcache_info.caches     = NULL;
