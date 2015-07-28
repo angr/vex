@@ -14657,6 +14657,14 @@ DisResult disInstr_X86_WRK (
       break;
    }
 
+   /* -------------------------- halt ---------------------- */
+   case 0xF4: { /* hlt */
+      jmp_lit(&dres, Ijk_SigTRAP, ((Addr32)guest_EIP_bbstart)+delta);
+      vassert(dres.whatNext == Dis_StopHere);
+      DIP("hlt\n");
+      break;
+   }
+
    /* ------------------------ Escapes to 2-byte opcodes -- */
 
    case 0x0F: {
