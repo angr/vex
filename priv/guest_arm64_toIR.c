@@ -6468,7 +6468,7 @@ Bool dis_ARM64_branch_etc(/*MB_OUT*/DisResult* dres, UInt insn,
       }
       putPC(mkU64(guest_PC_curr_instr + simm64));
       dres->whatNext = Dis_StopHere;
-      dres->jk_StopHere = Ijk_Call;
+      dres->jk_StopHere = bLink ? Ijk_Call : Ijk_Boring;
       DIP("b%s 0x%llx\n", bLink == 1 ? "l" : "",
                           guest_PC_curr_instr + simm64);
       return True;
