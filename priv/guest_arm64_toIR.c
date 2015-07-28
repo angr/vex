@@ -4748,10 +4748,12 @@ Bool dis_ARM64_load_store(/*MB_OUT*/DisResult* dres, UInt insn)
             only down to SP before the instruction, which might not be
             far enough, if the -16 bit takes the actual access
             address to the next page.
+
+            CHANGES FOR PYVEX: We don't care about this! And furthermore,
+            for certain applications, we want blocks to lift the same way
+            regardless of different immediates.
          */
-         Bool earlyWBack
-           = wBack && simm9 < 0 && szB == 8
-             && how == BITS2(1,1) && nn == 31 && !isLoad && tt != nn;
+         Bool earlyWBack = 0;
 
          if (wBack && earlyWBack)
             putIReg64orSP(nn, mkexpr(tEA));
@@ -4852,10 +4854,12 @@ Bool dis_ARM64_load_store(/*MB_OUT*/DisResult* dres, UInt insn)
             only down to SP before the instruction, which might not be
             far enough, if the -112 bit takes the actual access
             address to the next page.
+
+            CHANGES FOR PYVEX: We don't care about this! And furthermore,
+            for certain applications, we want blocks to lift the same way
+            regardless of different immediates.
          */
-         Bool earlyWBack
-           = bWBack && simm7 < 0
-             && INSN(24,23) == BITS2(1,1) && rN == 31 && bL == 0;
+         Bool earlyWBack = 0;
 
          if (bWBack && earlyWBack)
             putIReg64orSP(rN, mkexpr(tEA));
@@ -5300,10 +5304,12 @@ Bool dis_ARM64_load_store(/*MB_OUT*/DisResult* dres, UInt insn)
             only down to SP before the instruction, which might not be
             far enough, if the -512 bit takes the actual access
             address to the next page.
+
+            CHANGES FOR PYVEX: We don't care about this! And furthermore,
+            for certain applications, we want blocks to lift the same way
+            regardless of different immediates.
          */
-         Bool earlyWBack
-           = wBack && simm7 < 0
-             && INSN(24,23) == BITS2(1,1) && nn == 31 && !isLD;
+         Bool earlyWBack = 0;
 
          if (wBack && earlyWBack)
             putIReg64orSP(nn, mkexpr(tEA));
