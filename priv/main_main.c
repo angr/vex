@@ -765,6 +765,8 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          vassert(sizeof( ((VexGuestMIPS64State*)0)->guest_CMSTART) == 8);
          vassert(sizeof( ((VexGuestMIPS64State*)0)->guest_CMLEN  ) == 8);
          vassert(sizeof( ((VexGuestMIPS64State*)0)->guest_NRADDR ) == 8);
+         mips_lastn = NULL;
+         mips_bstmt = NULL;
          break;
 
       default:
