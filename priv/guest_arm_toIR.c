@@ -1009,7 +1009,7 @@ static void put_GEFLAG32 ( Int flagNo,            /* 0, 1, 2 or 3 */
             lowbits_to_ignore == 31 );
    IRTemp masked = newTemp(Ity_I32);
    assign(masked, binop(Iop_Shr32, e, mkU8(lowbits_to_ignore)));
- 
+
    switch (flagNo) {
       case 0: putMiscReg32(OFFB_GEFLAG0, mkexpr(masked), condT); break;
       case 1: putMiscReg32(OFFB_GEFLAG1, mkexpr(masked), condT); break;
@@ -21478,7 +21478,7 @@ DisResult disInstr_THUMB_WRK (
       UInt rT2 = INSN1(11,8);
       UInt rD  = INSN1(3,0);
       if (!isBadRegT(rD) && !isBadRegT(rT) && !isBadRegT(rT2)
-          && rN != 15 && rD != rN && rD != rT && rD != rT) {
+          && rN != 15 && rD != rN && rD != rT && rD != rT2) {
          IRTemp resSC1, resSC32, data;
          // go uncond
          mk_skip_over_T32_if_cond_is_false( condT );

@@ -3415,22 +3415,11 @@ static HReg iselVecExpr_wrk ( ISelEnv* env, IRExpr* e )
 
       case Iop_RecipEst32Fx4: op = Xsse_RCPF;   goto do_32Fx4_unary;
       case Iop_RSqrtEst32Fx4: op = Xsse_RSQRTF; goto do_32Fx4_unary;
-      case Iop_Sqrt32Fx4:     op = Xsse_SQRTF;  goto do_32Fx4_unary;
       do_32Fx4_unary:
       {
          HReg arg = iselVecExpr(env, e->Iex.Unop.arg);
          HReg dst = newVRegV(env);
          addInstr(env, X86Instr_Sse32Fx4(op, arg, dst));
-         return dst;
-      }
-
-      case Iop_Sqrt64Fx2:  op = Xsse_SQRTF;  goto do_64Fx2_unary;
-      do_64Fx2_unary:
-      {
-         HReg arg = iselVecExpr(env, e->Iex.Unop.arg);
-         HReg dst = newVRegV(env);
-         REQUIRE_SSE2;
-         addInstr(env, X86Instr_Sse64Fx2(op, arg, dst));
          return dst;
       }
 
@@ -3498,6 +3487,21 @@ static HReg iselVecExpr_wrk ( ISelEnv* env, IRExpr* e )
 
    if (e->tag == Iex_Binop) {
    switch (e->Iex.Binop.op) {
+
+      case Iop_Sqrt64Fx2:
+         REQUIRE_SSE2;
+         /* fallthrough */
+      case Iop_Sqrt32Fx4: {
+         /* :: (rmode, vec) -> vec */
+         HReg arg = iselVecExpr(env, e->Iex.Binop.arg2);
+         HReg dst = newVRegV(env);
+         /* XXXROUNDINGFIXME */
+         /* set roundingmode here */
+         addInstr(env, (e->Iex.Binop.op == Iop_Sqrt64Fx2 
+                           ? X86Instr_Sse64Fx2 : X86Instr_Sse32Fx4)
+                       (Xsse_SQRTF, arg, dst));
+         return dst;
+      }
 
       case Iop_SetV128lo32: {
          HReg dst = newVRegV(env);
@@ -4281,6 +4285,8 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
          case Ijk_Sys_int128:
          case Ijk_Sys_int129:
          case Ijk_Sys_int130:
+         case Ijk_Sys_int145:
+         case Ijk_Sys_int210:
          case Ijk_Sys_syscall:
          case Ijk_Sys_sysenter:
          case Ijk_InvalICache:
@@ -4380,6 +4386,8 @@ static void iselNext ( ISelEnv* env,
       case Ijk_Sys_int128:
       case Ijk_Sys_int129:
       case Ijk_Sys_int130:
+      case Ijk_Sys_int145:
+      case Ijk_Sys_int210:
       case Ijk_Sys_syscall:
       case Ijk_Sys_sysenter:
       case Ijk_InvalICache:

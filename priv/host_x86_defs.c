@@ -2560,6 +2560,8 @@ Int emit_X86Instr ( /*MB_MOD*/Bool* is_profInc,
          case Ijk_Sys_int128:   trcval = VEX_TRC_JMP_SYS_INT128;   break;
          case Ijk_Sys_int129:   trcval = VEX_TRC_JMP_SYS_INT129;   break;
          case Ijk_Sys_int130:   trcval = VEX_TRC_JMP_SYS_INT130;   break;
+         case Ijk_Sys_int145:   trcval = VEX_TRC_JMP_SYS_INT145;   break;
+         case Ijk_Sys_int210:   trcval = VEX_TRC_JMP_SYS_INT210;   break;
          case Ijk_Sys_sysenter: trcval = VEX_TRC_JMP_SYS_SYSENTER; break;
          case Ijk_Yield:        trcval = VEX_TRC_JMP_YIELD;        break;
          case Ijk_EmWarn:       trcval = VEX_TRC_JMP_EMWARN;       break;
@@ -3360,7 +3362,8 @@ VexInvalRange chainXDirect_X86 ( VexEndness endness_host,
    */
    UChar* p = (UChar*)place_to_chain;
    vassert(p[0] == 0xBA);
-   vassert(*(UInt*)(&p[1]) == (UInt)(Addr)disp_cp_chain_me_EXPECTED);
+   vassert(read_misaligned_UInt_LE(&p[1])
+           == (UInt)(Addr)disp_cp_chain_me_EXPECTED);
    vassert(p[5] == 0xFF);
    vassert(p[6] == 0xD2);
    /* And what we want to change it to is:
@@ -3377,11 +3380,8 @@ VexInvalRange chainXDirect_X86 ( VexEndness endness_host,
 
    /* And make the modifications. */
    p[0] = 0xE9;
-   p[1] = (delta >> 0) & 0xFF;
-   p[2] = (delta >> 8) & 0xFF;
-   p[3] = (delta >> 16) & 0xFF;
-   p[4] = (delta >> 24) & 0xFF;
-   p[5] = 0x0F; p[6]  = 0x0B;
+   write_misaligned_UInt_LE(&p[1], (UInt)(ULong)delta);
+   p[5] = 0x0F; p[6] = 0x0B;
    /* sanity check on the delta -- top 32 are all 0 or all 1 */
    delta >>= 32;
    vassert(delta == 0LL || delta == -1LL);
@@ -3409,9 +3409,9 @@ VexInvalRange unchainXDirect_X86 ( VexEndness endness_host,
    UChar* p     = (UChar*)place_to_unchain;
    Bool   valid = False;
    if (p[0] == 0xE9 
-       && p[5]  == 0x0F && p[6]  == 0x0B) {
+       && p[5] == 0x0F && p[6]  == 0x0B) {
       /* Check the offset is right. */
-      Int s32 = *(Int*)(&p[1]);
+      Int s32 = (Int)read_misaligned_UInt_LE(&p[1]);
       if ((UChar*)p + 5 + s32 == place_to_jump_to_EXPECTED) {
          valid = True;
          if (0)
@@ -3428,7 +3428,7 @@ VexInvalRange unchainXDirect_X86 ( VexEndness endness_host,
       So it's the same length (convenient, huh).
    */
    p[0] = 0xBA;
-   *(UInt*)(&p[1]) = (UInt)(Addr)disp_cp_chain_me;
+   write_misaligned_UInt_LE(&p[1], (UInt)(Addr)disp_cp_chain_me);
    p[5] = 0xFF;
    p[6] = 0xD2;
    VexInvalRange vir = { (HWord)place_to_unchain, 7 };
@@ -3463,12 +3463,12 @@ VexInvalRange patchProfInc_X86 ( VexEndness endness_host,
    p[2] = imm32 & 0xFF; imm32 >>= 8;
    p[3] = imm32 & 0xFF; imm32 >>= 8;
    p[4] = imm32 & 0xFF; imm32 >>= 8;
-   p[5] = imm32 & 0xFF; imm32 >>= 8;
+   p[5] = imm32 & 0xFF;
    imm32 = 4 + (UInt)(Addr)location_of_counter;
    p[9]  = imm32 & 0xFF; imm32 >>= 8;
    p[10] = imm32 & 0xFF; imm32 >>= 8;
    p[11] = imm32 & 0xFF; imm32 >>= 8;
-   p[12] = imm32 & 0xFF; imm32 >>= 8;
+   p[12] = imm32 & 0xFF;
    VexInvalRange vir = { (HWord)place_to_patch, 14 };
    return vir;
 }

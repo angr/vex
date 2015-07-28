@@ -1521,6 +1521,8 @@ void ppIRJumpKind ( IRJumpKind kind )
       case Ijk_Sys_int128:    vex_printf("Sys_int128"); break;
       case Ijk_Sys_int129:    vex_printf("Sys_int129"); break;
       case Ijk_Sys_int130:    vex_printf("Sys_int130"); break;
+      case Ijk_Sys_int145:    vex_printf("Sys_int145"); break;
+      case Ijk_Sys_int210:    vex_printf("Sys_int210"); break;
       case Ijk_Sys_sysenter:  vex_printf("Sys_sysenter"); break;
       default:                vpanic("ppIRJumpKind");
    }
@@ -2860,6 +2862,10 @@ void typeOfPrimop ( IROp op,
       case Iop_RSqrtEst32Ux4:
          UNARY(Ity_V128, Ity_V128);
 
+      case Iop_Sqrt64Fx2:
+      case Iop_Sqrt32Fx4:
+         BINARY(ity_RMode,Ity_V128, Ity_V128);
+
       case Iop_64HLtoV128:
          BINARY(Ity_I64,Ity_I64, Ity_V128);
 
@@ -3020,8 +3026,8 @@ void typeOfPrimop ( IROp op,
       case Iop_RecipEst64Fx2: case Iop_RSqrtEst64Fx2:
       case Iop_RecipEst32Ux4:
       case Iop_RSqrtEst32F0x4:
-      case Iop_Sqrt32Fx4:  case Iop_Sqrt32F0x4:
-      case Iop_Sqrt64Fx2:  case Iop_Sqrt64F0x2:
+      case Iop_Sqrt32F0x4:
+      case Iop_Sqrt64F0x2:
       case Iop_CmpNEZ8x16: case Iop_CmpNEZ16x8:
       case Iop_CmpNEZ32x4: case Iop_CmpNEZ64x2:
       case Iop_Cnt8x16:
@@ -4176,7 +4182,7 @@ void tcStmt ( const IRSB* bb, const IRStmt* stmt, IRType gWordTy )
       case Ist_IMark:
          /* Somewhat heuristic, but rule out totally implausible
             instruction sizes and deltas. */
-         if (stmt->Ist.IMark.len > 20)
+         if (stmt->Ist.IMark.len > 24)
             sanityCheckFail(bb,stmt,"IRStmt.IMark.len: implausible");
          if (stmt->Ist.IMark.delta > 1)
             sanityCheckFail(bb,stmt,"IRStmt.IMark.delta: implausible");
