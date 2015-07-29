@@ -1414,36 +1414,18 @@ const HChar* sorbTxt ( UChar sorb )
 }
 
 
-/* 'virtual' is an IRExpr* holding a virtual address.  Convert it to a
-   linear address by adding any required segment override as indicated
-   by sorb. */
 static
-IRExpr* handleSegOverride ( UChar sorb, IRExpr* virtual )
+IRExpr* handleSegOverrideAux ( IRTemp seg_selector, IRExpr* virtual )
 {
-   Int    sreg;
    IRType hWordTy;
-   IRTemp ldt_ptr, gdt_ptr, seg_selector, r64;
-
-   if (sorb == 0)
-      /* the common case - no override */
-      return virtual;
-
-   switch (sorb) {
-      case 0x3E: sreg = R_DS; break;
-      case 0x26: sreg = R_ES; break;
-      case 0x64: sreg = R_FS; break;
-      case 0x65: sreg = R_GS; break;
-      default: vpanic("handleSegOverride(x86,guest)");
-   }
+   IRTemp ldt_ptr, gdt_ptr, r64;
 
    hWordTy = sizeof(HWord)==4 ? Ity_I32 : Ity_I64;
 
-   seg_selector = newTemp(Ity_I32);
    ldt_ptr      = newTemp(hWordTy);
    gdt_ptr      = newTemp(hWordTy);
    r64          = newTemp(Ity_I64);
 
-   assign( seg_selector, unop(Iop_16Uto32, getSReg(sreg)) );
    assign( ldt_ptr, IRExpr_Get( OFFB_LDT, hWordTy ));
    assign( gdt_ptr, IRExpr_Get( OFFB_GDT, hWordTy ));
 
@@ -1479,6 +1461,34 @@ IRExpr* handleSegOverride ( UChar sorb, IRExpr* virtual )
 
    /* otherwise, here's the translated result. */
    return unop(Iop_64to32, mkexpr(r64));
+}
+
+/* 'virtual' is an IRExpr* holding a virtual address.  Convert it to a
+   linear address by adding any required segment override as indicated
+   by sorb. */
+static
+IRExpr* handleSegOverride ( UChar sorb, IRExpr* virtual )
+{
+   Int    sreg;
+   IRTemp ldt_ptr, gdt_ptr, seg_selector, r64;
+
+   if (sorb == 0)
+      /* the common case - no override */
+      return virtual;
+
+   switch (sorb) {
+      case 0x3E: sreg = R_DS; break;
+      case 0x26: sreg = R_ES; break;
+      case 0x64: sreg = R_FS; break;
+      case 0x65: sreg = R_GS; break;
+      default: vpanic("handleSegOverride(x86,guest)");
+   }
+
+
+   seg_selector = newTemp(Ity_I32);
+   assign( seg_selector, unop(Iop_16Uto32, getSReg(sreg)) );
+
+   return handleSegOverrideAux(seg_selector, virtual);
 }
 
 
@@ -13415,6 +13425,23 @@ DisResult disInstr_X86_WRK (
       DIP("jmp-8 0x%x\n", d32);
       break;
 
+   case 0xEA: {/* jump far, 16/32 address */
+      UInt addr_offset = getUDisp(sz, delta);
+      delta += sz;
+      UInt selector = getUDisp16(delta);
+      delta += 2;
+
+      IRTemp final_addr = newTemp(Ity_I32);
+      IRTemp tmp_selector = newTemp(Ity_I32);
+      IRTemp tmp_addr_offset = newTemp(sz == 4 ? Ity_I32 : Ity_I16);
+      assign(tmp_selector, mkU32(selector));
+      assign(tmp_addr_offset, sz == 4 ? mkU32(addr_offset) : mkU16(addr_offset));
+      assign(final_addr, handleSegOverrideAux(tmp_selector, mkexpr(tmp_addr_offset)));
+
+      jmp_treg(&dres, Ijk_Boring, final_addr);
+      vassert(dres.whatNext == Dis_StopHere);
+      break;
+   }
    case 0xE9: /* Jv (jump, 16/32 offset) */
       vassert(sz == 4); /* JRS added 2004 July 11 */
       d32 = (((Addr32)guest_EIP_bbstart)+delta+sz) + getSDisp(sz,delta); 
