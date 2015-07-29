@@ -2609,6 +2609,13 @@ void x86g_dirtyhelper_SxDT ( void *address, UInt op ) {
 #  endif
 }
 
+/* op = 1: call the native LGDT instruction.
+   op = 2: call the native LIDT instruction.
+*/
+void x86g_dirtyhelper_LGDT_LIDT ( void *address, UInt op ) {
+   vpanic("x86g_dirtyhelper_LGDT_LIDT");
+}
+
 /*---------------------------------------------------------------*/
 /*--- Helpers for MMX/SSE/SSE2.                               ---*/
 /*---------------------------------------------------------------*/

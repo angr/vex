@@ -165,6 +165,9 @@ extern void x86g_dirtyhelper_OUT ( UInt portno, UInt data,
 extern void x86g_dirtyhelper_SxDT ( void* address,
                                     UInt op /* 0 or 1 */ );
 
+extern void x86g_dirtyhelper_LxDT ( void* address,
+                                    UInt op /* 2 or 3 */ );
+
 extern VexEmNote
             x86g_dirtyhelper_FXRSTOR ( VexGuestX86State*, HWord );
 

@@ -15332,6 +15332,8 @@ DisResult disInstr_X86_WRK (
       /* =-=-=-=-=-=-=-=-=- SGDT and SIDT =-=-=-=-=-=-=-=-=-=-= */
       case 0x01: /* 0F 01 /0 -- SGDT */
                  /* 0F 01 /1 -- SIDT */
+                 /* 0F 01 /2 -- LIDT */
+                 /* 0F 01 /3 -- LIDT */
       {
           /* This is really revolting, but ... since each processor
              (core) only has one IDT and one GDT, just let the guest
@@ -15341,25 +15343,45 @@ DisResult disInstr_X86_WRK (
          addr = disAMode ( &alen, sorb, delta, dis_buf );
          delta += alen;
          if (epartIsReg(modrm)) goto decode_failure;
-         if (gregOfRM(modrm) != 0 && gregOfRM(modrm) != 1)
+         if (gregOfRM(modrm) != 0 && gregOfRM(modrm) != 1 &&
+             gregOfRM(modrm) != 2 && gregOfRM(modrm) != 3)
             goto decode_failure;
-         switch (gregOfRM(modrm)) {
-            case 0: DIP("sgdt %s\n", dis_buf); break;
-            case 1: DIP("sidt %s\n", dis_buf); break;
-            default: vassert(0); /*NOTREACHED*/
-         }
 
-         IRDirty* d = unsafeIRDirty_0_N (
+         IRDirty* d = NULL;
+         switch (gregOfRM(modrm)) {
+            case 0: DIP("sgdt %s\n", dis_buf);
+            case 1: DIP("sidt %s\n", dis_buf);
+               d = unsafeIRDirty_0_N (
                           0/*regparms*/,
                           "x86g_dirtyhelper_SxDT",
                           &x86g_dirtyhelper_SxDT,
                           mkIRExprVec_2( mkexpr(addr),
                                          mkU32(gregOfRM(modrm)) )
                       );
-         /* declare we're writing memory */
-         d->mFx   = Ifx_Write;
-         d->mAddr = mkexpr(addr);
-         d->mSize = 6;
+               /* declare we're writing memory */
+               d->mFx   = Ifx_Write;
+               d->mAddr = mkexpr(addr);
+               d->mSize = 6;
+               break;
+            case 2: DIP("lgdt %s\n", dis_buf);
+            case 3: DIP("lidt %s\n", dis_buf);
+               d = unsafeIRDirty_0_N (
+                          0/*regparms*/,
+                          "x86g_dirtyhelper_LGDT_LIDT",
+                          &x86g_dirtyhelper_LGDT_LIDT,
+                          mkIRExprVec_2( mkexpr(addr),
+                                         mkU32(gregOfRM(modrm)) )
+                      );
+               /* declare we're reading memory */
+               d->mFx   = Ifx_Read;
+               d->mAddr = mkexpr(addr);
+               d->mSize = 6;
+               break;
+            default: vassert(0); /*NOTREACHED*/
+         }
+
+         vassert(d);
+
          stmt( IRStmt_Dirty(d) );
          break;
       }
