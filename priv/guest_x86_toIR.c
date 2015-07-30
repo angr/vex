@@ -14671,6 +14671,10 @@ DisResult disInstr_X86_WRK (
       opc = getIByte(delta); delta++;
       switch (opc) {
 
+      case 0x09: /* WBINVD */
+        /* We treat it as NOP */
+        break;
+
       /* =-=-=-=-=-=-=-=-=- Grp8 =-=-=-=-=-=-=-=-=-=-=-= */
 
       case 0xBA: { /* Grp8 Ib,Ev */
