@@ -1414,36 +1414,18 @@ const HChar* sorbTxt ( UChar sorb )
 }
 
 
-/* 'virtual' is an IRExpr* holding a virtual address.  Convert it to a
-   linear address by adding any required segment override as indicated
-   by sorb. */
 static
-IRExpr* handleSegOverride ( UChar sorb, IRExpr* virtual )
+IRExpr* handleSegOverrideAux ( IRTemp seg_selector, IRExpr* virtual )
 {
-   Int    sreg;
    IRType hWordTy;
-   IRTemp ldt_ptr, gdt_ptr, seg_selector, r64;
-
-   if (sorb == 0)
-      /* the common case - no override */
-      return virtual;
-
-   switch (sorb) {
-      case 0x3E: sreg = R_DS; break;
-      case 0x26: sreg = R_ES; break;
-      case 0x64: sreg = R_FS; break;
-      case 0x65: sreg = R_GS; break;
-      default: vpanic("handleSegOverride(x86,guest)");
-   }
+   IRTemp ldt_ptr, gdt_ptr, r64;
 
    hWordTy = sizeof(HWord)==4 ? Ity_I32 : Ity_I64;
 
-   seg_selector = newTemp(Ity_I32);
    ldt_ptr      = newTemp(hWordTy);
    gdt_ptr      = newTemp(hWordTy);
    r64          = newTemp(Ity_I64);
 
-   assign( seg_selector, unop(Iop_16Uto32, getSReg(sreg)) );
    assign( ldt_ptr, IRExpr_Get( OFFB_LDT, hWordTy ));
    assign( gdt_ptr, IRExpr_Get( OFFB_GDT, hWordTy ));
 
@@ -1479,6 +1461,34 @@ IRExpr* handleSegOverride ( UChar sorb, IRExpr* virtual )
 
    /* otherwise, here's the translated result. */
    return unop(Iop_64to32, mkexpr(r64));
+}
+
+/* 'virtual' is an IRExpr* holding a virtual address.  Convert it to a
+   linear address by adding any required segment override as indicated
+   by sorb. */
+static
+IRExpr* handleSegOverride ( UChar sorb, IRExpr* virtual )
+{
+   Int    sreg;
+   IRTemp ldt_ptr, gdt_ptr, seg_selector, r64;
+
+   if (sorb == 0)
+      /* the common case - no override */
+      return virtual;
+
+   switch (sorb) {
+      case 0x3E: sreg = R_DS; break;
+      case 0x26: sreg = R_ES; break;
+      case 0x64: sreg = R_FS; break;
+      case 0x65: sreg = R_GS; break;
+      default: vpanic("handleSegOverride(x86,guest)");
+   }
+
+
+   seg_selector = newTemp(Ity_I32);
+   assign( seg_selector, unop(Iop_16Uto32, getSReg(sreg)) );
+
+   return handleSegOverrideAux(seg_selector, virtual);
 }
 
 
@@ -13415,6 +13425,23 @@ DisResult disInstr_X86_WRK (
       DIP("jmp-8 0x%x\n", d32);
       break;
 
+   case 0xEA: {/* jump far, 16/32 address */
+      UInt addr_offset = getUDisp(sz, delta);
+      delta += sz;
+      UInt selector = getUDisp16(delta);
+      delta += 2;
+
+      IRTemp final_addr = newTemp(Ity_I32);
+      IRTemp tmp_selector = newTemp(Ity_I32);
+      IRTemp tmp_addr_offset = newTemp(sz == 4 ? Ity_I32 : Ity_I16);
+      assign(tmp_selector, mkU32(selector));
+      assign(tmp_addr_offset, sz == 4 ? mkU32(addr_offset) : mkU16(addr_offset));
+      assign(final_addr, handleSegOverrideAux(tmp_selector, mkexpr(tmp_addr_offset)));
+
+      jmp_treg(&dres, Ijk_Boring, final_addr);
+      vassert(dres.whatNext == Dis_StopHere);
+      break;
+   }
    case 0xE9: /* Jv (jump, 16/32 offset) */
       vassert(sz == 4); /* JRS added 2004 July 11 */
       d32 = (((Addr32)guest_EIP_bbstart)+delta+sz) + getSDisp(sz,delta); 
@@ -15332,6 +15359,8 @@ DisResult disInstr_X86_WRK (
       /* =-=-=-=-=-=-=-=-=- SGDT and SIDT =-=-=-=-=-=-=-=-=-=-= */
       case 0x01: /* 0F 01 /0 -- SGDT */
                  /* 0F 01 /1 -- SIDT */
+                 /* 0F 01 /2 -- LIDT */
+                 /* 0F 01 /3 -- LIDT */
       {
           /* This is really revolting, but ... since each processor
              (core) only has one IDT and one GDT, just let the guest
@@ -15341,25 +15370,45 @@ DisResult disInstr_X86_WRK (
          addr = disAMode ( &alen, sorb, delta, dis_buf );
          delta += alen;
          if (epartIsReg(modrm)) goto decode_failure;
-         if (gregOfRM(modrm) != 0 && gregOfRM(modrm) != 1)
+         if (gregOfRM(modrm) != 0 && gregOfRM(modrm) != 1 &&
+             gregOfRM(modrm) != 2 && gregOfRM(modrm) != 3)
             goto decode_failure;
-         switch (gregOfRM(modrm)) {
-            case 0: DIP("sgdt %s\n", dis_buf); break;
-            case 1: DIP("sidt %s\n", dis_buf); break;
-            default: vassert(0); /*NOTREACHED*/
-         }
 
-         IRDirty* d = unsafeIRDirty_0_N (
+         IRDirty* d = NULL;
+         switch (gregOfRM(modrm)) {
+            case 0: DIP("sgdt %s\n", dis_buf);
+            case 1: DIP("sidt %s\n", dis_buf);
+               d = unsafeIRDirty_0_N (
                           0/*regparms*/,
                           "x86g_dirtyhelper_SxDT",
                           &x86g_dirtyhelper_SxDT,
                           mkIRExprVec_2( mkexpr(addr),
                                          mkU32(gregOfRM(modrm)) )
                       );
-         /* declare we're writing memory */
-         d->mFx   = Ifx_Write;
-         d->mAddr = mkexpr(addr);
-         d->mSize = 6;
+               /* declare we're writing memory */
+               d->mFx   = Ifx_Write;
+               d->mAddr = mkexpr(addr);
+               d->mSize = 6;
+               break;
+            case 2: DIP("lgdt %s\n", dis_buf);
+            case 3: DIP("lidt %s\n", dis_buf);
+               d = unsafeIRDirty_0_N (
+                          0/*regparms*/,
+                          "x86g_dirtyhelper_LGDT_LIDT",
+                          &x86g_dirtyhelper_LGDT_LIDT,
+                          mkIRExprVec_2( mkexpr(addr),
+                                         mkU32(gregOfRM(modrm)) )
+                      );
+               /* declare we're reading memory */
+               d->mFx   = Ifx_Read;
+               d->mAddr = mkexpr(addr);
+               d->mSize = 6;
+               break;
+            default: vassert(0); /*NOTREACHED*/
+         }
+
+         vassert(d);
+
          stmt( IRStmt_Dirty(d) );
          break;
       }
