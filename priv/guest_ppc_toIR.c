@@ -5118,7 +5118,7 @@ static Bool dis_int_load ( UInt theInstr )
          break;
 
       default:
-         vex_printf("dis_int_load(ppc)(0x3A, opc2)\n");
+         //vex_printf("dis_int_load(ppc)(0x3A, opc2)\n");
          return False;
       }
       break;
@@ -5379,7 +5379,7 @@ static Bool dis_int_store ( UInt theInstr, const VexAbiInfo* vbi )
          break;
       }
       default:
-         vex_printf("dis_int_load(ppc)(0x3A, opc2)\n");
+         //vex_printf("dis_int_load(ppc)(0x3A, opc2)\n");
          return False;
       }
       break;
