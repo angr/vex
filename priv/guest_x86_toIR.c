@@ -13445,7 +13445,7 @@ DisResult disInstr_X86_WRK (
       break;
    }
    case 0xE9: /* Jv (jump, 16/32 offset) */
-      vassert(sz == 4); /* JRS added 2004 July 11 */
+      vassert(sz == 4 || sz == 2);
       d32 = (((Addr32)guest_EIP_bbstart)+delta+sz) + getSDisp(sz,delta); 
       delta += sz;
       if (resteerOkFn( callback_opaque, (Addr32)d32) ) {
