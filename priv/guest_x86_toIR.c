@@ -8108,7 +8108,7 @@ DisResult disInstr_X86_WRK (
 
    /* sz denotes the nominal data-op size of the insn; we change it to
       2 if an 0x66 prefix is seen */
-   Int sz = 4;
+   Int sz = archinfo->x86_cr0 & 1 ? 4 : 2;
 
    /* sorb holds the segment-override-prefix byte, if any.  Zero if no
       prefix has been seen, else one of {0x26, 0x3E, 0x64, 0x65}
@@ -14699,6 +14699,31 @@ DisResult disInstr_X86_WRK (
    case 0x0F: {
       opc = getIByte(delta); delta++;
       switch (opc) {
+
+      case 0x20: { /* mov r32, crX (X \in \{0, 2, 3, 4}) */
+        UChar rm = getIByte(delta++);
+        /* We only support cr0 for the moment */
+        if (gregOfRM(rm) != 0)
+          goto decode_failure;
+        putIReg(4, gregOfRM(rm), mkU32(archinfo->x86_cr0));
+        break;
+      }
+      case 0x22: {/* mov crX (X \in \{0, 2, 3, 4}), r32 */
+        UChar rm = getIByte(delta++);
+        /* We only support cr0 for the moment */
+        if (gregOfRM(rm) != 0)
+          goto decode_failure;
+        IRTemp value = newTemp(Ity_I32);
+        assign(value, getIReg(4, eregOfRM(rm)));
+        IRDirty* d = unsafeIRDirty_0_N (
+                           0/*regparms*/,
+                           "x86g_dirtyhelper_write_cr0",
+                           &x86g_dirtyhelper_write_cr0,
+                           mkIRExprVec_1( mkexpr(value) )
+                        );
+        stmt( IRStmt_Dirty(d) );
+        break;
+      }
 
       case 0x09: /* WBINVD */
         /* We treat it as NOP */

@@ -304,6 +304,9 @@ typedef
          line size of 64 bytes would be encoded here as 6. */
       UInt arm64_dMinLine_lg2_szB;
       UInt arm64_iMinLine_lg2_szB;
+      /* x86 cr0 register value, useful for distinguishing real/protected
+       * mode when decoding instructions */
+      UInt x86_cr0;
    }
    VexArchInfo;
 
