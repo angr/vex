@@ -13426,6 +13426,7 @@ DisResult disInstr_X86_WRK (
       break;
 
    case 0xEA: {/* jump far, 16/32 address */
+      vassert(sz == 4 || sz == 2);
       UInt addr_offset = getUDisp(sz, delta);
       delta += sz;
       UInt selector = getUDisp16(delta);
