@@ -1409,6 +1409,7 @@ const HChar* sorbTxt ( UChar sorb )
       case 0x26: return "%es:";
       case 0x64: return "%fs:";
       case 0x65: return "%gs:";
+      case 0x2e: return "%cs:";
       default: vpanic("sorbTxt(x86,guest)");
    }
 }
@@ -1481,6 +1482,7 @@ IRExpr* handleSegOverride ( UChar sorb, IRExpr* virtual )
       case 0x26: sreg = R_ES; break;
       case 0x64: sreg = R_FS; break;
       case 0x65: sreg = R_GS; break;
+      case 0x2E: sreg = R_CS; break;
       default: vpanic("handleSegOverride(x86,guest)");
    }
 
@@ -8279,8 +8281,7 @@ DisResult disInstr_X86_WRK (
                 || (op1 == 0x0F && op2 >= 0x80 && op2 <= 0x8F)) {
                if (0) vex_printf("vex x86->IR: ignoring branch hint\n");
             } else {
-               /* All other CS override cases are not handled */
-               goto decode_failure;
+              sorb = pre;
             }
             break;
          }
