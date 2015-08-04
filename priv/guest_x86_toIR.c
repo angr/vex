@@ -14883,6 +14883,9 @@ DisResult disInstr_X86_WRK (
                            mkIRExprVec_1( mkexpr(value) )
                         );
         stmt( IRStmt_Dirty(d) );
+        dres.whatNext    = Dis_StopHere;
+        dres.jk_StopHere = Ijk_Yield;
+        stmt( IRStmt_Put( OFFB_EIP, mkU32(guest_EIP_bbstart + delta) ) );
         break;
       }
 
