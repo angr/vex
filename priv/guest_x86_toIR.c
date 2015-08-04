@@ -13431,9 +13431,10 @@ DisResult disInstr_X86_WRK (
       UInt selector = getUDisp16(delta);
       delta += 2;
 
+      ty = szToITy(sz);
       IRTemp final_addr = newTemp(Ity_I32);
       IRTemp tmp_selector = newTemp(Ity_I32);
-      IRTemp tmp_addr_offset = newTemp(sz == 4 ? Ity_I32 : Ity_I16);
+      IRTemp tmp_addr_offset = newTemp(ty);
       assign(tmp_selector, mkU32(selector));
       assign(tmp_addr_offset, sz == 4 ? mkU32(addr_offset) : mkU16(addr_offset));
       assign(final_addr, handleSegOverrideAux(tmp_selector, mkexpr(tmp_addr_offset)));
