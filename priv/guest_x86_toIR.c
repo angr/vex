@@ -15387,7 +15387,7 @@ DisResult disInstr_X86_WRK (
       /* =-=-=-=-=-=-=-=-=- SGDT and SIDT =-=-=-=-=-=-=-=-=-=-= */
       case 0x01: /* 0F 01 /0 -- SGDT */
                  /* 0F 01 /1 -- SIDT */
-                 /* 0F 01 /2 -- LIDT */
+                 /* 0F 01 /2 -- LGDT */
                  /* 0F 01 /3 -- LIDT */
       {
           /* This is really revolting, but ... since each processor
