@@ -15394,16 +15394,20 @@ DisResult disInstr_X86_WRK (
              (core) only has one IDT and one GDT, just let the guest
              see it (pass-through semantics).  I can't see any way to
              construct a faked-up value, so don't bother to try. */
+         Int g;
          modrm = getUChar(delta);
-         addr = disAMode ( &alen, sorb, delta, dis_buf );
-         delta += alen;
-         if (epartIsReg(modrm)) goto decode_failure;
-         if (gregOfRM(modrm) != 0 && gregOfRM(modrm) != 1 &&
-             gregOfRM(modrm) != 2 && gregOfRM(modrm) != 3)
+         if (epartIsReg(modrm))
+           goto decode_failure;
+
+         g = gregOfRM(modrm);
+         if (g < 0 || g > 3)
             goto decode_failure;
 
+         addr = disAMode ( &alen, sorb, delta, dis_buf );
+         delta += alen;
+
          IRDirty* d = NULL;
-         switch (gregOfRM(modrm)) {
+         switch (g) {
             case 0: DIP("sgdt %s\n", dis_buf);
             case 1: DIP("sidt %s\n", dis_buf);
                d = unsafeIRDirty_0_N (
