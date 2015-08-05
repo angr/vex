@@ -211,6 +211,21 @@ static Addr32 guest_EIP_curr_instr;
 /* The IRSB* into which we're generating code. */
 static IRSB* irsb;
 
+/* Whether are not we are in protected mode */
+static Bool protected_mode;
+
+/* The addr-op size of the instruction
+ * By default it is 4 for protected mode and 2 for real mode.
+ * If there is the 0x67 prefix it is swapped
+ */
+static Int current_sz_addr;
+
+/* The data-op size of the instruction
+ * By default it is 4 for protected mode and 2 for real mode.
+ * If there is the 0x66 prefix it is swapped
+ */
+static Int current_sz_data;
+
 
 /*------------------------------------------------------------*/
 /*--- Debugging output                                     ---*/
@@ -1512,7 +1527,7 @@ static IRTemp disAMode_copy2tmp ( IRExpr* addr32 )
 }
 
 static 
-IRTemp disAMode ( Int* len, UChar sorb, Int delta, HChar* buf )
+IRTemp disAMode32 ( Int* len, UChar sorb, Int delta, HChar* buf )
 {
    UChar mod_reg_rm = getIByte(delta);
    delta++;
@@ -1742,12 +1757,92 @@ IRTemp disAMode ( Int* len, UChar sorb, Int delta, HChar* buf )
    }
 }
 
+static
+IRTemp disAMode16 ( Int* len, UChar sorb, Int delta, HChar* buf )
+{
+   UChar mod_reg_rm = getIByte(delta);
+   delta++;
+
+   buf[0] = (UChar)0;
+
+   /* squeeze out the reg field from mod_reg_rm, since a 256-entry
+      jump table seems a bit excessive.
+   */
+   mod_reg_rm &= 0xC7;                      /* is now XX000YYY */
+   mod_reg_rm  = toUChar(mod_reg_rm | (mod_reg_rm >> 3));
+                                            /* is now XX0XXYYY */
+   mod_reg_rm &= 0x1F;                      /* is now 000XXYYY */
+   switch (mod_reg_rm) {
+
+      case 0x00: case 0x01: case 0x02: case 0x03:
+         vpanic("TODO disAMode16 1");
+         break;
+
+      case 0x04: case 0x05: case 0x07:
+         { UChar rm = mod_reg_rm;
+           *len = 1;
+           return disAMode_copy2tmp(
+                  handleSegOverride(sorb, getIReg(2,rm)));
+         }
+
+      case 0x08: case 0x09: case 0x0a: case 0x0b:
+         vpanic("TODO disAMode16 2");
+         break;
+
+      case 0x0C: case 0x0D: case 0x0E: case 0x0F:
+         { UChar rm = toUChar(mod_reg_rm & 7);
+           UInt  d  = getSDisp8(delta);
+           DIS(buf, "%s%d(%s)", sorbTxt(sorb), (Int)d, nameIReg(2,rm));
+           *len = 2;
+           return disAMode_copy2tmp(
+                  handleSegOverride(sorb,
+                     binop(Iop_Add16,getIReg(2,rm),mkU16(d))));
+         }
+
+      case 0x14: case 0x15: case 0x16: case 0x17:
+         { UChar rm = toUChar(mod_reg_rm & 7);
+           UInt  d  = getUDisp16(delta);
+           DIS(buf, "%s0x%x(%s)", sorbTxt(sorb), (Int)d, nameIReg(2,rm));
+           *len = 3;
+           return disAMode_copy2tmp(
+                  handleSegOverride(sorb,
+                     binop(Iop_Add16,getIReg(2,rm),mkU16(d))));
+         }
+
+      /* This shouldn't happen. */
+      case 0x18: case 0x19: case 0x1A: case 0x1B:
+      case 0x1C: case 0x1D: case 0x1E: case 0x1F:
+         vpanic("disAMode(x86): not an addr!");
+
+      case 0x06:
+         { UInt d = getUDisp16(delta);
+           *len = 3;
+           DIS(buf, "%s(0x%x)", sorbTxt(sorb), d);
+           return disAMode_copy2tmp(
+                     handleSegOverride(sorb, mkU16(d)));
+         }
+
+
+      default:
+         vpanic("disAMode(x86)");
+         return 0; /*notreached*/
+   }
+}
+
+static
+IRTemp disAMode ( Int* len, UChar sorb, Int delta, HChar* buf ) {
+   if (current_sz_addr == 4) {
+     return disAMode32(len, sorb, delta, buf);
+   } else {
+     return disAMode16(len, sorb, delta, buf);
+   }
+}
 
 /* Figure out the number of (insn-stream) bytes constituting the amode
    beginning at delta.  Is useful for getting hold of literals beyond
    the end of the amode before it has been disassembled.  */
 
-static UInt lengthAMode ( Int delta )
+static UInt lengthAMode32 ( Int delta )
 {
    UChar mod_reg_rm = getIByte(delta); delta++;
 
@@ -1798,6 +1893,46 @@ static UInt lengthAMode ( Int delta )
       default:
          vpanic("lengthAMode");
          return 0; /*notreached*/
+   }
+}
+
+static UInt lengthAMode16 ( Int delta )
+{
+   UChar mod_reg_rm = getIByte(delta); delta++;
+
+   /* squeeze out the reg field from mod_reg_rm, since a 256-entry
+      jump table seems a bit excessive. 
+   */
+   mod_reg_rm &= 0xC7;               /* is now XX000YYY */
+   mod_reg_rm  = toUChar(mod_reg_rm | (mod_reg_rm >> 3));  
+                                     /* is now XX0XXYYY */
+   mod_reg_rm &= 0x1F;               /* is now 000XXYYY */
+   switch (mod_reg_rm) {
+
+      case 0x04: case 0x05: case 0x07:
+      case 0x18: case 0x19: case 0x1A: case 0x1B:
+      case 0x1C: case 0x1D: case 0x1E: case 0x1F:
+         return 1;
+      case 0x00: case 0x01: case 0x02: case 0x03: case 0x06:
+         return 2;
+      case 0x08: case 0x09: case 0x0a: case 0x0b:
+      case 0x0c: case 0x0d: case 0x0e: case 0x0f:
+      case 0x14: case 0x15: case 0x16: case 0x17:
+         return 3;
+      case 0x10: case 0x11: case 0x12: case 0x13:
+         return 4;
+      default:
+         vpanic("lengthAMode16");
+         return 0; /*notreached*/
+   }
+}
+
+static UInt lengthAMode ( Int delta )
+{
+   if (protected_mode) {
+      return lengthAMode32(delta);
+   } else {
+      return lengthAMode16(delta);
    }
 }
 
@@ -3097,7 +3232,7 @@ UInt dis_Grp5 ( UChar sorb, Bool locked, Int sz, Int delta,
             vassert(dres->whatNext == Dis_StopHere);
             break;
          case 4: /* jmp Ev */
-            vassert(sz == 4);
+            vassert(sz == 4 || sz == 2);
             jmp_treg(dres, Ijk_Boring, t1);
             vassert(dres->whatNext == Dis_StopHere);
             break;
@@ -8108,9 +8243,21 @@ DisResult disInstr_X86_WRK (
       consistent error messages for unimplemented insns. */
    Int delta_start = delta;
 
-   /* sz denotes the nominal data-op size of the insn; we change it to
-      2 if an 0x66 prefix is seen */
-   Int sz = archinfo->x86_cr0 & 1 ? 4 : 2;
+   /* we keep using sz in order to avoid changing a lot of code without
+    * any gain. So sz is equal to the current_sz_data.
+    */
+   Int sz;
+   if (archinfo->x86_cr0 & 1) {
+     sz = 4;
+     current_sz_addr = 4;
+     current_sz_data = 4;
+     protected_mode = True;
+   } else {
+     sz = 2;
+     current_sz_addr = 2;
+     current_sz_data = 2;
+     protected_mode = False;
+   }
 
    /* sorb holds the segment-override-prefix byte, if any.  Zero if no
       prefix has been seen, else one of {0x26, 0x3E, 0x64, 0x65}
@@ -8256,8 +8403,21 @@ DisResult disInstr_X86_WRK (
       if (n_prefixes > 7) goto decode_failure;
       pre = getUChar(delta);
       switch (pre) {
-         case 0x66: 
-            sz = 2;
+         case 0x66:
+            if (protected_mode) {
+               sz = 2;
+               current_sz_data = 2;
+            } else {
+               sz = 4;
+               current_sz_data = 4;
+            }
+            break;
+         case 0x67:
+            if (protected_mode) {
+               current_sz_addr = 2;
+            } else {
+               current_sz_addr = 4;
+            }
             break;
          case 0xF0: 
             pfx_lock = True; 
