@@ -168,6 +168,8 @@ extern void x86g_dirtyhelper_SxDT ( void* address,
 extern void x86g_dirtyhelper_LGDT_LIDT ( void* address,
                                          UInt op /* 2 or 3 */ );
 
+extern void x86g_dirtyhelper_write_cr0 ( UInt value );
+
 extern VexEmNote
             x86g_dirtyhelper_FXRSTOR ( VexGuestX86State*, HWord );
 
