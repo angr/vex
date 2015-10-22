@@ -13239,20 +13239,21 @@ DisResult disInstr_X86_WRK (
       d32 = getUDisp32(delta); delta += 4;
       d32 += (guest_EIP_bbstart+delta); 
       /* (guest_eip_bbstart+delta) == return-to addr, d32 == call-to addr */
-      if (d32 == guest_EIP_bbstart+delta && getIByte(delta) >= 0x58 
-                                         && getIByte(delta) <= 0x5F) {
-         /* Specially treat the position-independent-code idiom 
-                 call X
-              X: popl %reg
-            as 
-                 movl %eip, %reg.
-            since this generates better code, but for no other reason. */
-         Int archReg = getIByte(delta) - 0x58;
-         /* vex_printf("-- fPIC thingy\n"); */
-         putIReg(4, archReg, mkU32(guest_EIP_bbstart+delta));
-         delta++; /* Step over the POP */
-         DIP("call 0x%x ; popl %s\n",d32,nameIReg(4,archReg));
-      } else {
+      //if (d32 == guest_EIP_bbstart+delta && getIByte(delta) >= 0x58 
+      //                                   && getIByte(delta) <= 0x5F) {
+      //   /* Specially treat the position-independent-code idiom 
+      //           call X
+      //        X: popl %reg
+      //      as 
+      //           movl %eip, %reg.
+      //      since this generates better code, but for no other reason. */
+      //   Int archReg = getIByte(delta) - 0x58;
+      //   /* vex_printf("-- fPIC thingy\n"); */
+      //   putIReg(4, archReg, mkU32(guest_EIP_bbstart+delta));
+      //   delta++; /* Step over the POP */
+      //   DIP("call 0x%x ; popl %s\n",d32,nameIReg(4,archReg));
+      //} else {
+      {
          /* The normal sequence for a call. */
          t1 = newTemp(Ity_I32); 
          assign(t1, binop(Iop_Sub32, getIReg(4,R_ESP), mkU32(4)));
