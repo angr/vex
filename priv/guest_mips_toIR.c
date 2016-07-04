@@ -12079,6 +12079,13 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
    cins = getUInt(code);
    DIP("\t0x%llx:\t0x%08x\t", (Addr64)guest_PC_curr_instr, cins);
 
+   /* Can't decode a single instruction if it is a branch or jump
+      (as the delay slot is also needed for meaningful decoding) */
+   if ((vex_control.guest_max_insns == 1 || vex_control.guest_max_bytes < 8)
+       && branch_or_jump(guest_code)) {
+      goto decode_failure;
+   }
+
    if (delta == 0) {
       lastn = NULL;
       bstmt = NULL;
@@ -17153,9 +17160,11 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
    }
 
    /* On MIPS we need to check if the last instruction in block is branch or
-      jump. */
-   if (((vex_control.guest_max_insns - 1) == (delta + 4) / 4)
-       &&  (dres.whatNext != Dis_StopHere))
+      jump. Do this by first checking if we just disassembled the second-last
+      instruction in the block, and we're not stopping here. */
+   if ((((delta / 4) == vex_control.guest_max_insns - 2) ||
+       delta == vex_control.guest_max_bytes - 8) &&
+       (dres.whatNext != Dis_StopHere)) {
       if (branch_or_jump(guest_code + delta + 4)) {
          dres.whatNext = Dis_StopHere;
          dres.jk_StopHere = Ijk_Boring;
@@ -17164,6 +17173,7 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
          else
             putPC(mkU32(guest_PC_curr_instr + 4));
       }
+   }
    dres.len = 4;
 
    DIP("\n");
