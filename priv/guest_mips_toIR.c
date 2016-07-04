@@ -12064,6 +12064,12 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
    cins = getUInt(code);
    DIP("\t0x%lx:\t0x%08x\t", (long)guest_PC_curr_instr, cins);
 
+   /* Can't decode a single instruction if it is a branch or jump
+      (as the delay slot is also needed for meaningful decoding) */
+   if (vex_control.guest_max_insns == 1 && branch_or_jump(guest_code)) {
+      goto decode_failure;
+   }
+
    if (delta != 0) {
       if (branch_or_jump(guest_code + delta - 4)) {
          if (lastn == NULL && bstmt == NULL) {
