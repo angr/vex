@@ -17560,7 +17560,7 @@ DisResult disInstr_ARM_WRK (
    /* --------------------- Svc --------------------- */
    if (BITS8(1,1,1,1,0,0,0,0) == (INSN(27,20) & BITS8(1,1,1,1,0,0,0,0))) {
       UInt imm24 = (insn >> 0) & 0xFFFFFF;
-      if (imm24 == 0) {
+      if (imm24 < 0xffff) {
          /* A syscall.  We can't do this conditionally, hence: */
          if (condT != IRTemp_INVALID) {
             mk_skip_over_A32_if_cond_is_false( condT );
@@ -17570,6 +17570,10 @@ DisResult disInstr_ARM_WRK (
          dres.jk_StopHere = Ijk_Sys_syscall;
          dres.whatNext    = Dis_StopHere;
          DIP("svc%s #0x%08x\n", nCC(INSN_COND), imm24);
+         /*
+          * Note that imm24 (the svc number) is not stored anywhere. We might
+          * want to store it somewhere in the future.
+          */
          goto decode_success;
       }
       /* fall through */
