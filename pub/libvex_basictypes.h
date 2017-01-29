@@ -132,8 +132,9 @@ static inline UInt toUInt ( Long x ) {
 typedef  UInt      Addr32;
 typedef  ULong     Addr64;
 
-/* An address: 32-bit or 64-bit wide depending on host architecture */
-typedef unsigned long Addr;
+/* An address. In order to analyze 64-bit guests on 32-bit hosts, this must be
+   64 bits wide. */
+typedef Addr64 Addr;
 
 
 /* Something which has the same size as void* on the host.  That is,

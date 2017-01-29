@@ -1623,7 +1623,7 @@ void ppIRStmt ( const IRStmt* s )
          vex_printf("IR-NoOp");
          break;
       case Ist_IMark:
-         vex_printf( "------ IMark(0x%lx, %u, %u) ------", 
+         vex_printf( "------ IMark(0x%llx, %u, %u) ------", 
                      s->Ist.IMark.addr, s->Ist.IMark.len,
                      (UInt)s->Ist.IMark.delta);
          break;

@@ -4901,7 +4901,7 @@ static IRSB* maybe_loop_unroll_BB ( IRSB* bb0, Addr my_addr )
    }
 
    if (DEBUG_IROPT) {
-      vex_printf("\nUNROLLED (%lx)\n", my_addr);
+      vex_printf("\nUNROLLED (%llx)\n", my_addr);
       ppIRSB(bb1);
       vex_printf("\n");
    }
