@@ -469,7 +469,6 @@ IRSB *LibVEX_Lift (  VexTranslateArgs *vta,
          offB_CMLEN              = offsetof(VexGuestARMState,guest_CMLEN);
          offB_GUEST_IP           = offsetof(VexGuestARMState,guest_R15T);
          szB_GUEST_IP            = sizeof( ((VexGuestARMState*)0)->guest_R15T );
-         vassert(vta->archinfo_guest.endness == VexEndnessLE);
          vassert(0 == sizeof(VexGuestARMState) % LibVEX_GUEST_STATE_ALIGN);
          vassert(sizeof( ((VexGuestARMState*)0)->guest_CMSTART) == 4);
          vassert(sizeof( ((VexGuestARMState*)0)->guest_CMLEN  ) == 4);
