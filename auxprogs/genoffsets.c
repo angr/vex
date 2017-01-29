@@ -766,6 +766,7 @@ int main(int argc, char **argv)
    GENOFFSET(MIPS32,mips32,ac2);
    GENOFFSET(MIPS32,mips32,ac3);
    GENOFFSET(MIPS32,mips32,CP0_status);
+   GENOFFSET(MIPS32,mips32,IP_AT_SYSCALL);
 
    // MIPS64
    GENOFFSET(MIPS64,mips64,r0);
@@ -847,6 +848,7 @@ int main(int argc, char **argv)
    GENOFFSET(MIPS64,mips64,CMSTART);
    GENOFFSET(MIPS64,mips64,CMLEN);
    GENOFFSET(MIPS64,mips64,NRADDR);
+   GENOFFSET(MIPS64,mips64,IP_AT_SYSCALL);
 
    // Tilegx
    GENOFFSET(TILEGX,tilegx,r0);

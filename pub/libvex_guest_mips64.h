@@ -148,7 +148,7 @@ typedef
 
       /*  608 */ ULong guest_NRADDR;
 
-      /*  616 */ ULong _padding2;
+      /*  616 */ ULong guest_IP_AT_SYSCALL;
 } VexGuestMIPS64State;
 
 /*---------------------------------------------------------------*/
