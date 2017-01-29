@@ -7933,10 +7933,12 @@ static Bool dis_branch ( UInt theInstr,
          if (flag_LK)
             putGST( PPC_GST_LR, e_nia );
          
-         stmt( IRStmt_Exit(
-                  binop(Iop_CmpEQ32, mkexpr(cond_ok), mkU32(0)),
-                  Ijk_Boring,
-                  c_nia, OFFB_CIA ));
+         if (!((BO & 0x14) == 0x14)) {
+            stmt( IRStmt_Exit(
+                     binop(Iop_CmpEQ32, mkexpr(cond_ok), mkU32(0)),
+                     Ijk_Boring,
+                     c_nia, OFFB_CIA ));
+         }
 
          if (flag_LK && vbi->guest_ppc_zap_RZ_at_bl) {
             make_redzone_AbiHint( vbi, lr_old,
@@ -7973,10 +7975,12 @@ static Bool dis_branch ( UInt theInstr,
          if (flag_LK)
             putGST( PPC_GST_LR,  e_nia );
 
-         stmt( IRStmt_Exit(
-                  binop(Iop_CmpEQ32, mkexpr(do_branch), mkU32(0)),
-                  Ijk_Boring,
-                  c_nia, OFFB_CIA ));
+         if (!vanilla_return) {
+            stmt( IRStmt_Exit(
+                     binop(Iop_CmpEQ32, mkexpr(do_branch), mkU32(0)),
+                     Ijk_Boring,
+                     c_nia, OFFB_CIA ));
+         }
 
          if (vanilla_return && vbi->guest_ppc_zap_RZ_at_blr) {
             make_redzone_AbiHint( vbi, lr_old,
