@@ -21402,7 +21402,16 @@ Long dis_ESC_NONE (
       }
       DIP("jmp-8 0x%llx\n", (ULong)d64);
       return delta;
-
+   case 0xFA:
+   case 0xFB: /* CLI / STI */
+      /* We treat them as NOP */
+      return ++delta;
+   case 0xF4: /* hlt */
+      ++delta;
+      jmp_lit(dres, Ijk_SigTRAP, guest_RIP_bbstart + delta);
+      vassert(dres->whatNext == Dis_StopHere);
+      DIP("hlt\n");
+      return delta;
    case 0xF5: /* CMC */
    case 0xF8: /* CLC */
    case 0xF9: /* STC */
