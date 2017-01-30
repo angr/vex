@@ -780,6 +780,16 @@ typedef
 
 extern 
 VexTranslateResult LibVEX_Translate ( VexTranslateArgs* );
+extern
+IRSB *LibVEX_Lift ( VexTranslateArgs*,
+                    VexTranslateResult*,
+                    VexRegisterUpdates* );
+extern
+void LibVEX_Codegen ( VexTranslateArgs*,
+                      VexTranslateResult*,
+                      IRSB*,
+                      VexRegisterUpdates );
+
 
 /* A subtlety re interaction between self-checking translations and
    bb-chasing.  The supplied chase_into_ok function should say NO
