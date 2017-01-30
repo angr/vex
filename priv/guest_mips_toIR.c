@@ -12079,7 +12079,10 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
    cins = getUInt(code);
    DIP("\t0x%llx:\t0x%08x\t", (Addr64)guest_PC_curr_instr, cins);
 
-   if (delta != 0) {
+   if (delta == 0) {
+      lastn = NULL;
+      bstmt = NULL;
+   } else {
       if (branch_or_jump(guest_code + delta - 4)) {
          if (lastn == NULL && bstmt == NULL) {
             vassert(0);
