@@ -88,7 +88,7 @@ void ppHReg ( HReg r )
 
 void RRegUniverse__init ( /*OUT*/RRegUniverse* univ )
 {
-   *univ = (RRegUniverse){};
+   __builtin_memset(univ, 0, sizeof(RRegUniverse));
    univ->size      = 0;
    univ->allocable = 0;
    for (UInt i = 0; i < N_RREGUNIVERSE_REGS; i++) {

@@ -73,9 +73,15 @@ static IRSB *irsb;
 /*--- Debugging output                                     ---*/
 /*------------------------------------------------------------*/
 
+#ifndef _MSC_VER
 #define DIP(format, args...)                    \
   if (vex_traceflags & VEX_TRACE_FE)            \
     vex_printf(format, ## args)
+#else
+#define DIP(format, ...)                        \
+  if (vex_traceflags & VEX_TRACE_FE)            \
+    vex_printf(format, __VA_ARGS__)
+#endif
 
 /*------------------------------------------------------------*/
 /*--- Helper bits and pieces for deconstructing the        ---*/
@@ -260,18 +266,18 @@ static IRStmt* dis_branch ( IRExpr* guard, ULong imm )
 
 /* Expand/repeat byte _X 8 times to a 64-bit value */
 #define  V1EXP(_X)                                     \
-  ({                                                   \
-    _X = ((((UChar)(_X)) << 8) | ((UChar)(_X)));       \
-    _X = (((_X) << 16) | (_X));                        \
-    (((_X) << 32) | (_X));                             \
-  })
+  ((                                                   \
+    _X = ((((UChar)(_X)) << 8) | ((UChar)(_X))),       \
+    _X = (((_X) << 16) | (_X)),                        \
+    (((_X) << 32) | (_X))                              \
+  ))
 
 /* Expand/repeat byte _X 4 times to a 64-bit value */
 #define  V2EXP(_X)                                 \
-  ({                                               \
-    _X = ((((UChar)(_X)) << 16) | ((UChar)(_X)));  \
-    (((_X) << 32) | (_X));                         \
-  })
+  ((                                               \
+    _X = ((((UChar)(_X)) << 16) | ((UChar)(_X))),  \
+    (((_X) << 32) | (_X))                          \
+  ))
 
 /*------------------------------------------------------------*/
 /*--- Disassemble a single instruction                     ---*/
@@ -398,8 +404,8 @@ static DisResult disInstr_TILEGX_WRK ( Bool(*resteerOkFn) (void *, Addr),
     }
 
     /* We don't expect this. */
-    vex_printf("%s: unexpect special bundles at %lx\n",
-               __func__, (Addr)guest_PC_curr_instr);
+    vex_printf("dis_branch: unexpect special bundles at %lx\n",
+               (Addr)guest_PC_curr_instr);
     delta += 16;
     goto decode_failure;
     /*NOTREACHED*/

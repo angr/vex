@@ -593,6 +593,7 @@ typedef struct {
          /* No fields.  The address of the counter to inc is
             installed later, post-translation, by patching it in,
             as it is not known at translation time. */
+		Int nop;
       } ProfInc;
 
       /* Move from/to fpr to/from gpr */

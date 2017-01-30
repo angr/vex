@@ -557,6 +557,7 @@ typedef
             loads and stores as much as possible before continuing.
             On AMD64 we emit a real "mfence". */
          struct {
+			 Int nop;
          } MFence;
          struct {
             AMD64AMode* addr;
@@ -713,6 +714,7 @@ typedef
             /* No fields.  The address of the counter to inc is
                installed later, post-translation, by patching it in,
                as it is not known at translation time. */
+			Int nop;
          } ProfInc;
 
       } Ain;

@@ -216,6 +216,7 @@ static IRSB* irsb;
 /*--- Debugging output                                     ---*/
 /*------------------------------------------------------------*/
 
+#ifndef _MSC_VER
 #define DIP(format, args...)           \
    if (vex_traceflags & VEX_TRACE_FE)  \
       vex_printf(format, ## args)
@@ -223,6 +224,16 @@ static IRSB* irsb;
 #define DIS(buf, format, args...)      \
    if (vex_traceflags & VEX_TRACE_FE)  \
       vex_sprintf(buf, format, ## args)
+#else
+#define DIP(format, ...)           \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_printf(format, __VA_ARGS__)
+
+#define DIS(buf, format, ...)      \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_sprintf(buf, format, __VA_ARGS__)
+#endif
+
 
 
 /*------------------------------------------------------------*/
@@ -3933,16 +3944,37 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
          delta++;
          switch (modrm) {
 
-            case 0xC0 ... 0xC7: /* FADD %st(?),%st(0) */
+            case 0xc0:
+            case 0xc1:
+            case 0xc2:
+            case 0xc3:
+            case 0xc4:
+            case 0xc5:
+            case 0xc6:
+            case 0xc7: /* FADD %st(?),%st(0) */
                fp_do_op_ST_ST ( "add", Iop_AddF64, modrm - 0xC0, 0, False );
                break;
 
-            case 0xC8 ... 0xCF: /* FMUL %st(?),%st(0) */
+            case 0xc8:
+            case 0xc9:
+            case 0xca:
+            case 0xcb:
+            case 0xcc:
+            case 0xcd:
+            case 0xce:
+            case 0xcf: /* FMUL %st(?),%st(0) */
                fp_do_op_ST_ST ( "mul", Iop_MulF64, modrm - 0xC8, 0, False );
                break;
 
             /* Dunno if this is right */
-            case 0xD0 ... 0xD7: /* FCOM %st(?),%st(0) */
+            case 0xd0:
+            case 0xd1:
+            case 0xd2:
+            case 0xd3:
+            case 0xd4:
+            case 0xd5:
+            case 0xd6:
+            case 0xd7: /* FCOM %st(?),%st(0) */
                r_dst = (UInt)modrm - 0xD0;
                DIP("fcom %%st(0),%%st(%u)\n", r_dst);
                /* This forces C1 to zero, which isn't right. */
@@ -3956,7 +3988,14 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                break;
 
             /* Dunno if this is right */
-            case 0xD8 ... 0xDF: /* FCOMP %st(?),%st(0) */
+            case 0xd8:
+            case 0xd9:
+            case 0xda:
+            case 0xdb:
+            case 0xdc:
+            case 0xdd:
+            case 0xde:
+            case 0xdf: /* FCOMP %st(?),%st(0) */
                r_dst = (UInt)modrm - 0xD8;
                DIP("fcomp %%st(0),%%st(%u)\n", r_dst);
                /* This forces C1 to zero, which isn't right. */
@@ -3970,19 +4009,47 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                fp_pop();
                break;
 
-            case 0xE0 ... 0xE7: /* FSUB %st(?),%st(0) */
+            case 0xe0:
+            case 0xe1:
+            case 0xe2:
+            case 0xe3:
+            case 0xe4:
+            case 0xe5:
+            case 0xe6:
+            case 0xe7: /* FSUB %st(?),%st(0) */
                fp_do_op_ST_ST ( "sub", Iop_SubF64, modrm - 0xE0, 0, False );
                break;
 
-            case 0xE8 ... 0xEF: /* FSUBR %st(?),%st(0) */
+            case 0xe8:
+            case 0xe9:
+            case 0xea:
+            case 0xeb:
+            case 0xec:
+            case 0xed:
+            case 0xee:
+            case 0xef: /* FSUBR %st(?),%st(0) */
                fp_do_oprev_ST_ST ( "subr", Iop_SubF64, modrm - 0xE8, 0, False );
                break;
 
-            case 0xF0 ... 0xF7: /* FDIV %st(?),%st(0) */
+            case 0xf0:
+            case 0xf1:
+            case 0xf2:
+            case 0xf3:
+            case 0xf4:
+            case 0xf5:
+            case 0xf6:
+            case 0xf7: /* FDIV %st(?),%st(0) */
                fp_do_op_ST_ST ( "div", Iop_DivF64, modrm - 0xF0, 0, False );
                break;
 
-            case 0xF8 ... 0xFF: /* FDIVR %st(?),%st(0) */
+            case 0xf8:
+            case 0xf9:
+            case 0xfa:
+            case 0xfb:
+            case 0xfc:
+            case 0xfd:
+            case 0xfe:
+            case 0xff: /* FDIVR %st(?),%st(0) */
                fp_do_oprev_ST_ST ( "divr", Iop_DivF64, modrm - 0xF8, 0, False );
                break;
 
@@ -4189,7 +4256,14 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
          delta++;
          switch (modrm) {
 
-            case 0xC0 ... 0xC7: /* FLD %st(?) */
+            case 0xc0:
+            case 0xc1:
+            case 0xc2:
+            case 0xc3:
+            case 0xc4:
+            case 0xc5:
+            case 0xc6:
+            case 0xc7: /* FLD %st(?) */
                r_src = (UInt)modrm - 0xC0;
                DIP("fld %%st(%u)\n", r_src);
                t1 = newTemp(Ity_F64);
@@ -4198,7 +4272,14 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                put_ST(0, mkexpr(t1));
                break;
 
-            case 0xC8 ... 0xCF: /* FXCH %st(?) */
+            case 0xc8:
+            case 0xc9:
+            case 0xca:
+            case 0xcb:
+            case 0xcc:
+            case 0xcd:
+            case 0xce:
+            case 0xcf: /* FXCH %st(?) */
                r_src = (UInt)modrm - 0xC8;
                DIP("fxch %%st(%u)\n", r_src);
                t1 = newTemp(Ity_F64);
@@ -4636,7 +4717,14 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
          delta++;
          switch (modrm) {
 
-            case 0xC0 ... 0xC7: /* FCMOVB ST(i), ST(0) */
+            case 0xc0:
+            case 0xc1:
+            case 0xc2:
+            case 0xc3:
+            case 0xc4:
+            case 0xc5:
+            case 0xc6:
+            case 0xc7: /* FCMOVB ST(i), ST(0) */
                r_src = (UInt)modrm - 0xC0;
                DIP("fcmovb %%st(%u), %%st(0)\n", r_src);
                put_ST_UNCHECKED(0, 
@@ -4645,7 +4733,14 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                                     get_ST(r_src), get_ST(0)) );
                break;
 
-            case 0xC8 ... 0xCF: /* FCMOVE(Z) ST(i), ST(0) */
+            case 0xc8:
+            case 0xc9:
+            case 0xca:
+            case 0xcb:
+            case 0xcc:
+            case 0xcd:
+            case 0xce:
+            case 0xcf: /* FCMOVE(Z) ST(i), ST(0) */
                r_src = (UInt)modrm - 0xC8;
                DIP("fcmovz %%st(%u), %%st(0)\n", r_src);
                put_ST_UNCHECKED(0, 
@@ -4654,7 +4749,14 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                                     get_ST(r_src), get_ST(0)) );
                break;
 
-            case 0xD0 ... 0xD7: /* FCMOVBE ST(i), ST(0) */
+            case 0xd0:
+            case 0xd1:
+            case 0xd2:
+            case 0xd3:
+            case 0xd4:
+            case 0xd5:
+            case 0xd6:
+            case 0xd7: /* FCMOVBE ST(i), ST(0) */
                r_src = (UInt)modrm - 0xD0;
                DIP("fcmovbe %%st(%u), %%st(0)\n", r_src);
                put_ST_UNCHECKED(0, 
@@ -4663,7 +4765,14 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                                     get_ST(r_src), get_ST(0)) );
                break;
 
-            case 0xD8 ... 0xDF: /* FCMOVU ST(i), ST(0) */
+            case 0xd8:
+            case 0xd9:
+            case 0xda:
+            case 0xdb:
+            case 0xdc:
+            case 0xdd:
+            case 0xde:
+            case 0xdf: /* FCMOVU ST(i), ST(0) */
                r_src = (UInt)modrm - 0xD8;
                DIP("fcmovu %%st(%u), %%st(0)\n", r_src);
                put_ST_UNCHECKED(0, 
@@ -4797,7 +4906,14 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
          delta++;
          switch (modrm) {
 
-            case 0xC0 ... 0xC7: /* FCMOVNB ST(i), ST(0) */
+            case 0xc0:
+            case 0xc1:
+            case 0xc2:
+            case 0xc3:
+            case 0xc4:
+            case 0xc5:
+            case 0xc6:
+            case 0xc7: /* FCMOVNB ST(i), ST(0) */
                r_src = (UInt)modrm - 0xC0;
                DIP("fcmovnb %%st(%u), %%st(0)\n", r_src);
                put_ST_UNCHECKED(0, 
@@ -4806,7 +4922,14 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                                     get_ST(r_src), get_ST(0)) );
                break;
 
-            case 0xC8 ... 0xCF: /* FCMOVNE(NZ) ST(i), ST(0) */
+            case 0xc8:
+            case 0xc9:
+            case 0xca:
+            case 0xcb:
+            case 0xcc:
+            case 0xcd:
+            case 0xce:
+            case 0xcf: /* FCMOVNE(NZ) ST(i), ST(0) */
                r_src = (UInt)modrm - 0xC8;
                DIP("fcmovnz %%st(%u), %%st(0)\n", r_src);
                put_ST_UNCHECKED(0, 
@@ -4815,7 +4938,14 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                                     get_ST(r_src), get_ST(0)) );
                break;
 
-            case 0xD0 ... 0xD7: /* FCMOVNBE ST(i), ST(0) */
+            case 0xd0:
+            case 0xd1:
+            case 0xd2:
+            case 0xd3:
+            case 0xd4:
+            case 0xd5:
+            case 0xd6:
+            case 0xd7: /* FCMOVNBE ST(i), ST(0) */
                r_src = (UInt)modrm - 0xD0;
                DIP("fcmovnbe %%st(%u), %%st(0)\n", r_src);
                put_ST_UNCHECKED(0, 
@@ -4824,7 +4954,14 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                                     get_ST(r_src), get_ST(0)) );
                break;
 
-            case 0xD8 ... 0xDF: /* FCMOVNU ST(i), ST(0) */
+            case 0xd8:
+            case 0xd9:
+            case 0xda:
+            case 0xdb:
+            case 0xdc:
+            case 0xdd:
+            case 0xde:
+            case 0xdf: /* FCMOVNU ST(i), ST(0) */
                r_src = (UInt)modrm - 0xD8;
                DIP("fcmovnu %%st(%u), %%st(0)\n", r_src);
                put_ST_UNCHECKED(0, 
@@ -4877,11 +5014,25 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                break;
             }
 
-            case 0xE8 ... 0xEF: /* FUCOMI %st(0),%st(?) */
+            case 0xe8:
+            case 0xe9:
+            case 0xea:
+            case 0xeb:
+            case 0xec:
+            case 0xed:
+            case 0xee:
+            case 0xef: /* FUCOMI %st(0),%st(?) */
                fp_do_ucomi_ST0_STi( (UInt)modrm - 0xE8, False );
                break;
 
-            case 0xF0 ... 0xF7: /* FCOMI %st(0),%st(?) */
+            case 0xf0:
+            case 0xf1:
+            case 0xf2:
+            case 0xf3:
+            case 0xf4:
+            case 0xf5:
+            case 0xf6:
+            case 0xf7: /* FCOMI %st(0),%st(?) */
                fp_do_ucomi_ST0_STi( (UInt)modrm - 0xF0, False );
                break;
 
@@ -4967,27 +5118,69 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
          delta++;
          switch (modrm) {
 
-            case 0xC0 ... 0xC7: /* FADD %st(0),%st(?) */
+            case 0xc0:
+            case 0xc1:
+            case 0xc2:
+            case 0xc3:
+            case 0xc4:
+            case 0xc5:
+            case 0xc6:
+            case 0xc7: /* FADD %st(0),%st(?) */
                fp_do_op_ST_ST ( "add", Iop_AddF64, 0, modrm - 0xC0, False );
                break;
 
-            case 0xC8 ... 0xCF: /* FMUL %st(0),%st(?) */
+            case 0xc8:
+            case 0xc9:
+            case 0xca:
+            case 0xcb:
+            case 0xcc:
+            case 0xcd:
+            case 0xce:
+            case 0xcf: /* FMUL %st(0),%st(?) */
                fp_do_op_ST_ST ( "mul", Iop_MulF64, 0, modrm - 0xC8, False );
                break;
 
-            case 0xE0 ... 0xE7: /* FSUBR %st(0),%st(?) */
+            case 0xe0:
+            case 0xe1:
+            case 0xe2:
+            case 0xe3:
+            case 0xe4:
+            case 0xe5:
+            case 0xe6:
+            case 0xe7: /* FSUBR %st(0),%st(?) */
                fp_do_oprev_ST_ST ( "subr", Iop_SubF64, 0, modrm - 0xE0, False );
                break;
 
-            case 0xE8 ... 0xEF: /* FSUB %st(0),%st(?) */
+            case 0xe8:
+            case 0xe9:
+            case 0xea:
+            case 0xeb:
+            case 0xec:
+            case 0xed:
+            case 0xee:
+            case 0xef: /* FSUB %st(0),%st(?) */
                fp_do_op_ST_ST ( "sub", Iop_SubF64, 0, modrm - 0xE8, False );
                break;
 
-            case 0xF0 ... 0xF7: /* FDIVR %st(0),%st(?) */
+            case 0xf0:
+            case 0xf1:
+            case 0xf2:
+            case 0xf3:
+            case 0xf4:
+            case 0xf5:
+            case 0xf6:
+            case 0xf7: /* FDIVR %st(0),%st(?) */
                fp_do_oprev_ST_ST ( "divr", Iop_DivF64, 0, modrm - 0xF0, False );
                break;
 
-            case 0xF8 ... 0xFF: /* FDIV %st(0),%st(?) */
+            case 0xf8:
+            case 0xf9:
+            case 0xfa:
+            case 0xfb:
+            case 0xfc:
+            case 0xfd:
+            case 0xfe:
+            case 0xff: /* FDIV %st(0),%st(?) */
                fp_do_op_ST_ST ( "div", Iop_DivF64, 0, modrm - 0xF8, False );
                break;
 
@@ -5156,13 +5349,27 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
          delta++;
          switch (modrm) {
 
-            case 0xC0 ... 0xC7: /* FFREE %st(?) */
+            case 0xc0:
+            case 0xc1:
+            case 0xc2:
+            case 0xc3:
+            case 0xc4:
+            case 0xc5:
+            case 0xc6:
+            case 0xc7: /* FFREE %st(?) */
                r_dst = (UInt)modrm - 0xC0;
                DIP("ffree %%st(%u)\n", r_dst);
                put_ST_TAG ( r_dst, mkU8(0) );
                break;
 
-            case 0xD0 ... 0xD7: /* FST %st(0),%st(?) */
+            case 0xd0:
+            case 0xd1:
+            case 0xd2:
+            case 0xd3:
+            case 0xd4:
+            case 0xd5:
+            case 0xd6:
+            case 0xd7: /* FST %st(0),%st(?) */
                r_dst = (UInt)modrm - 0xD0;
                DIP("fst %%st(0),%%st(%u)\n", r_dst);
                /* P4 manual says: "If the destination operand is a
@@ -5171,7 +5378,14 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                put_ST_UNCHECKED(r_dst, get_ST(0));
                break;
 
-            case 0xD8 ... 0xDF: /* FSTP %st(0),%st(?) */
+            case 0xd8:
+            case 0xd9:
+            case 0xda:
+            case 0xdb:
+            case 0xdc:
+            case 0xdd:
+            case 0xde:
+            case 0xdf: /* FSTP %st(0),%st(?) */
                r_dst = (UInt)modrm - 0xD8;
                DIP("fstp %%st(0),%%st(%u)\n", r_dst);
                /* P4 manual says: "If the destination operand is a
@@ -5181,7 +5395,14 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                fp_pop();
                break;
 
-            case 0xE0 ... 0xE7: /* FUCOM %st(0),%st(?) */
+            case 0xe0:
+            case 0xe1:
+            case 0xe2:
+            case 0xe3:
+            case 0xe4:
+            case 0xe5:
+            case 0xe6:
+            case 0xe7: /* FUCOM %st(0),%st(?) */
                r_dst = (UInt)modrm - 0xE0;
                DIP("fucom %%st(0),%%st(%u)\n", r_dst);
                /* This forces C1 to zero, which isn't right. */
@@ -5194,7 +5415,14 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                    ));
                break;
 
-            case 0xE8 ... 0xEF: /* FUCOMP %st(0),%st(?) */
+            case 0xe8:
+            case 0xe9:
+            case 0xea:
+            case 0xeb:
+            case 0xec:
+            case 0xed:
+            case 0xee:
+            case 0xef: /* FUCOMP %st(0),%st(?) */
                r_dst = (UInt)modrm - 0xE8;
                DIP("fucomp %%st(0),%%st(%u)\n", r_dst);
                /* This forces C1 to zero, which isn't right. */
@@ -5322,11 +5550,25 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
          delta++;
          switch (modrm) {
 
-            case 0xC0 ... 0xC7: /* FADDP %st(0),%st(?) */
+            case 0xc0:
+            case 0xc1:
+            case 0xc2:
+            case 0xc3:
+            case 0xc4:
+            case 0xc5:
+            case 0xc6:
+            case 0xc7: /* FADDP %st(0),%st(?) */
                fp_do_op_ST_ST ( "add", Iop_AddF64, 0, modrm - 0xC0, True );
                break;
 
-            case 0xC8 ... 0xCF: /* FMULP %st(0),%st(?) */
+            case 0xc8:
+            case 0xc9:
+            case 0xca:
+            case 0xcb:
+            case 0xcc:
+            case 0xcd:
+            case 0xce:
+            case 0xcf: /* FMULP %st(0),%st(?) */
                fp_do_op_ST_ST ( "mul", Iop_MulF64, 0, modrm - 0xC8, True );
                break;
 
@@ -5344,19 +5586,47 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                fp_pop();
                break;
 
-            case 0xE0 ... 0xE7: /* FSUBRP %st(0),%st(?) */
+            case 0xe0:
+            case 0xe1:
+            case 0xe2:
+            case 0xe3:
+            case 0xe4:
+            case 0xe5:
+            case 0xe6:
+            case 0xe7: /* FSUBRP %st(0),%st(?) */
                fp_do_oprev_ST_ST ( "subr", Iop_SubF64, 0,  modrm - 0xE0, True );
                break;
 
-            case 0xE8 ... 0xEF: /* FSUBP %st(0),%st(?) */
+            case 0xe8:
+            case 0xe9:
+            case 0xea:
+            case 0xeb:
+            case 0xec:
+            case 0xed:
+            case 0xee:
+            case 0xef: /* FSUBP %st(0),%st(?) */
                fp_do_op_ST_ST ( "sub", Iop_SubF64, 0,  modrm - 0xE8, True );
                break;
 
-            case 0xF0 ... 0xF7: /* FDIVRP %st(0),%st(?) */
+            case 0xf0:
+            case 0xf1:
+            case 0xf2:
+            case 0xf3:
+            case 0xf4:
+            case 0xf5:
+            case 0xf6:
+            case 0xf7: /* FDIVRP %st(0),%st(?) */
                fp_do_oprev_ST_ST ( "divr", Iop_DivF64, 0, modrm - 0xF0, True );
                break;
 
-            case 0xF8 ... 0xFF: /* FDIVP %st(0),%st(?) */
+            case 0xf8:
+            case 0xf9:
+            case 0xfa:
+            case 0xfb:
+            case 0xfc:
+            case 0xfd:
+            case 0xfe:
+            case 0xff: /* FDIVP %st(0),%st(?) */
                fp_do_op_ST_ST ( "div", Iop_DivF64, 0, modrm - 0xF8, True );
                break;
 
@@ -5464,11 +5734,25 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                }
                break;
 
-            case 0xE8 ... 0xEF: /* FUCOMIP %st(0),%st(?) */
+            case 0xe8:
+            case 0xe9:
+            case 0xea:
+            case 0xeb:
+            case 0xec:
+            case 0xed:
+            case 0xee:
+            case 0xef: /* FUCOMIP %st(0),%st(?) */
                fp_do_ucomi_ST0_STi( (UInt)modrm - 0xE8, True );
                break;
 
-            case 0xF0 ... 0xF7: /* FCOMIP %st(0),%st(?) */
+            case 0xf0:
+            case 0xf1:
+            case 0xf2:
+            case 0xf3:
+            case 0xf4:
+            case 0xf5:
+            case 0xf6:
+            case 0xf7: /* FCOMIP %st(0),%st(?) */
                /* not really right since COMIP != UCOMIP */
                fp_do_ucomi_ST0_STi( (UInt)modrm - 0xF0, True );
                break;

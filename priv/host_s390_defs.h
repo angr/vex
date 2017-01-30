@@ -618,6 +618,7 @@ typedef struct {
          /* No fields.  The address of the counter to increment is
             installed later, post-translation, by patching it in,
             as it is not known at translation time. */
+		Int nop;
       } profinc;
 
    } variant;

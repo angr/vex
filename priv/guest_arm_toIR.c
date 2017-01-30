@@ -168,6 +168,7 @@ static IRTemp r15kind;
 /*--- Debugging output                                     ---*/
 /*------------------------------------------------------------*/
 
+#ifndef _MSC_VER
 #define DIP(format, args...)           \
    if (vex_traceflags & VEX_TRACE_FE)  \
       vex_printf(format, ## args)
@@ -175,6 +176,15 @@ static IRTemp r15kind;
 #define DIS(buf, format, args...)      \
    if (vex_traceflags & VEX_TRACE_FE)  \
       vex_sprintf(buf, format, ## args)
+#else
+#define DIP(format, ...)           \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_printf(format, __VA_ARGS__)
+
+#define DIS(buf, format, ...)      \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_sprintf(buf, format, __VA_ARGS__)
+#endif
 
 #define ASSERT_IS_THUMB \
    do { vassert(__curr_is_Thumb); } while (0)
@@ -2614,7 +2624,30 @@ static UInt thumbExpandImm ( Bool* updatesC,
       case 6: case 7:
          return (abcdefgh << 24) | (abcdefgh << 16)
                 | (abcdefgh << 8) | abcdefgh;
-      case 8 ... 31:
+      case 0x8:
+      case 0x9:
+      case 0xa:
+      case 0xb:
+      case 0xc:
+      case 0xd:
+      case 0xe:
+      case 0xf:
+      case 0x10:
+      case 0x11:
+      case 0x12:
+      case 0x13:
+      case 0x14:
+      case 0x15:
+      case 0x16:
+      case 0x17:
+      case 0x18:
+      case 0x19:
+      case 0x1a:
+      case 0x1b:
+      case 0x1c:
+      case 0x1d:
+      case 0x1e:
+      case 0x1f:
          return lbcdefgh << (32 - i_imm3_a);
       default:
          break;
@@ -7669,10 +7702,20 @@ static
 const char *ppNeonImmType(UInt cmode, UInt op)
 {
    switch (cmode) {
-      case 0 ... 7:
+      case 0x0:
+      case 0x1:
+      case 0x2:
+      case 0x3:
+      case 0x4:
+      case 0x5:
+      case 0x6:
+      case 0x7:
       case 12: case 13:
          return "i32";
-      case 8 ... 11:
+      case 0x8:
+      case 0x9:
+      case 0xa:
+      case 0xb:
          return "i16";
       case 14:
          if (op)

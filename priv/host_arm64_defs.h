@@ -673,9 +673,11 @@ typedef
             sequence "dsb sy ; dmb sy ; isb sy", which is probably
             total nuclear overkill, but better safe than sorry. */
          struct {
+            Int nop;
          } MFence;
          /* A CLREX instruction. */
          struct {
+            Int nop;
          } ClrEX;
          /* --- INSTRUCTIONS INVOLVING VECTOR REGISTERS --- */
          /* ld/st to/from low 16 bits of vec reg, imm offset */
@@ -878,6 +880,7 @@ typedef
             /* No fields.  The address of the counter to inc is
                installed later, post-translation, by patching it in,
                as it is not known at translation time. */
+            Int nop;
          } ProfInc;
       } ARM64in;
    }

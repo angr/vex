@@ -1,0 +1,50 @@
+!include common.mk
+
+##
+## Step 1: A bunch of defines
+##
+
+!if "$(MULTIARCH)" == "1"
+LIB_OBJS = $(NORMAL_OBJS) $(MULTIARCH_OBJS)
+!else
+LIB_OBJS = $(NORMAL_OBJS) $(MULTIARCH_OBJS)
+!endif
+
+CC = cl
+CC_NATIVE = cl
+AR = lib
+RM = del /F
+
+STATIC_LIBRARY_FILE = libvex.lib
+DYNAMIC_LIBRARY_FILE = libvex.dll
+EXTRA_CLEAN_FILES = auxprogs/genoffsets.exe genoffsets.obj
+
+CCFLAGS = /Ipub /Ipriv $(EXTRA_CFLAGS) /O2 /wd4715
+
+all: vex
+
+$(STATIC_LIBRARY_FILE): $(LIB_OBJS)
+	$(AR) -OUT:libvex.lib $(LIB_OBJS)
+
+$(DYNAMIC_LIBRARY_FILE): $(LIB_OBJS)
+	@echo "Currently, we don't build libvex.dll."
+	@echo "Doing so would require assembling a list of export symbols."
+
+
+pub\libvex_guest_offsets.h: $(PUB_HEADERS) auxprogs/genoffsets.c
+	$(CC_NATIVE) $(CCFLAGS) auxprogs\genoffsets.c \
+		/Fo:auxprogs\genoffsets.o /Fe:auxprogs\genoffsets.exe
+	auxprogs\genoffsets.exe > pub\libvex_guest_offsets.h
+
+.SUFFIXES: .o .c
+.c.o:
+	$(CC) /Fo:$@ -c $< $(CCFLAGS)
+
+scratch: clean all
+
+vex: $(STATIC_LIBRARY_FILE) $(DYNAMIC_LIBRARY_FILE) $(GEN_HEADERS:/=\)
+
+clean:
+	$(RM) $(GEN_HEADERS:/=\) $(NORMAL_OBJS:/=\) $(SINGLEARCH_OBJS:/=\) $(MULTIARCH_OBJS:/=\) \
+		$(STATIC_LIBRARY_FILE:/=\) $(DYNAMIC_LIBRARY_FILE:/=\) \
+		$(EXTRA_CLEAN_FILES:/=\)

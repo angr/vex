@@ -1388,7 +1388,7 @@ static UChar* do_load_or_store_machine_word ( UChar* p, Bool isLoad, UInt reg,
   UInt rA = iregNo(am->GXam.IR.base);
 
   if (am->tag != GXam_IR)
-    vpanic(__func__);
+    vpanic("do_load_or_store_machine_word");
 
   if (isLoad) /* load */ {
      /* r51 is reserved scratch registers. */

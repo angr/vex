@@ -38,6 +38,7 @@
 
 #include "libvex_basictypes.h"
 #include "libvex.h"
+#include "main_util.h"
 
 
 /* Global settings for the VEX library.  These are the

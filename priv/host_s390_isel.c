@@ -151,15 +151,61 @@ get_guest_reg(Int offset)
 
       /* Also make sure there is never a partial write to one of
          these registers. That would complicate matters. */
-   case S390X_GUEST_OFFSET(guest_IA)+1      ... S390X_GUEST_OFFSET(guest_IA)+7:
-   case S390X_GUEST_OFFSET(guest_CC_OP)+1   ... S390X_GUEST_OFFSET(guest_CC_OP)+7:
-   case S390X_GUEST_OFFSET(guest_CC_DEP1)+1 ... S390X_GUEST_OFFSET(guest_CC_DEP1)+7:
-   case S390X_GUEST_OFFSET(guest_CC_DEP2)+1 ... S390X_GUEST_OFFSET(guest_CC_DEP2)+7:
-   case S390X_GUEST_OFFSET(guest_CC_NDEP)+1 ... S390X_GUEST_OFFSET(guest_CC_NDEP)+7:
-   case S390X_GUEST_OFFSET(guest_SYSNO)+1   ... S390X_GUEST_OFFSET(guest_SYSNO)+7:
+   case S390X_GUEST_OFFSET(guest_IA)+1:
+   case S390X_GUEST_OFFSET(guest_IA)+2:
+   case S390X_GUEST_OFFSET(guest_IA)+3:
+   case S390X_GUEST_OFFSET(guest_IA)+4:
+   case S390X_GUEST_OFFSET(guest_IA)+5:
+   case S390X_GUEST_OFFSET(guest_IA)+6:
+   case S390X_GUEST_OFFSET(guest_IA)+7:
+
+   case S390X_GUEST_OFFSET(guest_CC_OP)+1:
+   case S390X_GUEST_OFFSET(guest_CC_OP)+2:
+   case S390X_GUEST_OFFSET(guest_CC_OP)+3:
+   case S390X_GUEST_OFFSET(guest_CC_OP)+4:
+   case S390X_GUEST_OFFSET(guest_CC_OP)+5:
+   case S390X_GUEST_OFFSET(guest_CC_OP)+6:
+   case S390X_GUEST_OFFSET(guest_CC_OP)+7:
+
+   case S390X_GUEST_OFFSET(guest_CC_DEP1)+1:
+   case S390X_GUEST_OFFSET(guest_CC_DEP1)+2:
+   case S390X_GUEST_OFFSET(guest_CC_DEP1)+3:
+   case S390X_GUEST_OFFSET(guest_CC_DEP1)+4:
+   case S390X_GUEST_OFFSET(guest_CC_DEP1)+5:
+   case S390X_GUEST_OFFSET(guest_CC_DEP1)+6:
+   case S390X_GUEST_OFFSET(guest_CC_DEP1)+7:
+
+   case S390X_GUEST_OFFSET(guest_CC_DEP2)+1:
+   case S390X_GUEST_OFFSET(guest_CC_DEP2)+2:
+   case S390X_GUEST_OFFSET(guest_CC_DEP2)+3:
+   case S390X_GUEST_OFFSET(guest_CC_DEP2)+4:
+   case S390X_GUEST_OFFSET(guest_CC_DEP2)+5:
+   case S390X_GUEST_OFFSET(guest_CC_DEP2)+6:
+   case S390X_GUEST_OFFSET(guest_CC_DEP2)+7:
+
+   case S390X_GUEST_OFFSET(guest_CC_NDEP)+1:
+   case S390X_GUEST_OFFSET(guest_CC_NDEP)+2:
+   case S390X_GUEST_OFFSET(guest_CC_NDEP)+3:
+   case S390X_GUEST_OFFSET(guest_CC_NDEP)+4:
+   case S390X_GUEST_OFFSET(guest_CC_NDEP)+5:
+   case S390X_GUEST_OFFSET(guest_CC_NDEP)+6:
+   case S390X_GUEST_OFFSET(guest_CC_NDEP)+7:
+
+   case S390X_GUEST_OFFSET(guest_SYSNO)+1:
+   case S390X_GUEST_OFFSET(guest_SYSNO)+2:
+   case S390X_GUEST_OFFSET(guest_SYSNO)+3:
+   case S390X_GUEST_OFFSET(guest_SYSNO)+4:
+   case S390X_GUEST_OFFSET(guest_SYSNO)+5:
+   case S390X_GUEST_OFFSET(guest_SYSNO)+6:
+   case S390X_GUEST_OFFSET(guest_SYSNO)+7:
+
       /* counter is used both as 4-byte and as 8-byte entity */
-   case S390X_GUEST_OFFSET(guest_counter)+1 ... S390X_GUEST_OFFSET(guest_counter)+3:
-   case S390X_GUEST_OFFSET(guest_counter)+5 ... S390X_GUEST_OFFSET(guest_counter)+7:
+   case S390X_GUEST_OFFSET(guest_counter)+1:
+   case S390X_GUEST_OFFSET(guest_counter)+2:
+   case S390X_GUEST_OFFSET(guest_counter)+3:
+   case S390X_GUEST_OFFSET(guest_counter)+5:
+   case S390X_GUEST_OFFSET(guest_counter)+6:
+   case S390X_GUEST_OFFSET(guest_counter)+7:
       vpanic("partial update of this guest state register is not allowed");
       break;
 

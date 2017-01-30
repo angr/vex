@@ -409,17 +409,17 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       case VexArchX86:
          mode64       = False;
          rRegUniv     = X86FN(getRRegUniverse_X86());
-         isMove       = (__typeof__(isMove)) X86FN(isMove_X86Instr);
+         isMove       = CAST_AS(isMove) X86FN(isMove_X86Instr);
          getRegUsage  
-            = (__typeof__(getRegUsage)) X86FN(getRegUsage_X86Instr);
-         mapRegs      = (__typeof__(mapRegs)) X86FN(mapRegs_X86Instr);
-         genSpill     = (__typeof__(genSpill)) X86FN(genSpill_X86);
-         genReload    = (__typeof__(genReload)) X86FN(genReload_X86);
-         directReload = (__typeof__(directReload)) X86FN(directReload_X86);
-         ppInstr      = (__typeof__(ppInstr)) X86FN(ppX86Instr);
-         ppReg        = (__typeof__(ppReg)) X86FN(ppHRegX86);
+            = CAST_AS(getRegUsage) X86FN(getRegUsage_X86Instr);
+         mapRegs      = CAST_AS(mapRegs) X86FN(mapRegs_X86Instr);
+         genSpill     = CAST_AS(genSpill) X86FN(genSpill_X86);
+         genReload    = CAST_AS(genReload) X86FN(genReload_X86);
+         directReload = CAST_AS(directReload) X86FN(directReload_X86);
+         ppInstr      = CAST_AS(ppInstr) X86FN(ppX86Instr);
+         ppReg        = CAST_AS(ppReg) X86FN(ppHRegX86);
          iselSB       = X86FN(iselSB_X86);
-         emit         = (__typeof__(emit)) X86FN(emit_X86Instr);
+         emit         = CAST_AS(emit) X86FN(emit_X86Instr);
          host_word_type = Ity_I32;
          vassert(vta->archinfo_host.endness == VexEndnessLE);
          break;
@@ -427,16 +427,16 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       case VexArchAMD64:
          mode64       = True;
          rRegUniv     = AMD64FN(getRRegUniverse_AMD64());
-         isMove       = (__typeof__(isMove)) AMD64FN(isMove_AMD64Instr);
+         isMove       = CAST_AS(isMove) AMD64FN(isMove_AMD64Instr);
          getRegUsage  
-            = (__typeof__(getRegUsage)) AMD64FN(getRegUsage_AMD64Instr);
-         mapRegs      = (__typeof__(mapRegs)) AMD64FN(mapRegs_AMD64Instr);
-         genSpill     = (__typeof__(genSpill)) AMD64FN(genSpill_AMD64);
-         genReload    = (__typeof__(genReload)) AMD64FN(genReload_AMD64);
-         ppInstr      = (__typeof__(ppInstr)) AMD64FN(ppAMD64Instr);
-         ppReg        = (__typeof__(ppReg)) AMD64FN(ppHRegAMD64);
+            = CAST_AS(getRegUsage) AMD64FN(getRegUsage_AMD64Instr);
+         mapRegs      = CAST_AS(mapRegs) AMD64FN(mapRegs_AMD64Instr);
+         genSpill     = CAST_AS(genSpill) AMD64FN(genSpill_AMD64);
+         genReload    = CAST_AS(genReload) AMD64FN(genReload_AMD64);
+         ppInstr      = CAST_AS(ppInstr) AMD64FN(ppAMD64Instr);
+         ppReg        = CAST_AS(ppReg) AMD64FN(ppHRegAMD64);
          iselSB       = AMD64FN(iselSB_AMD64);
-         emit         = (__typeof__(emit)) AMD64FN(emit_AMD64Instr);
+         emit         = CAST_AS(emit) AMD64FN(emit_AMD64Instr);
          host_word_type = Ity_I64;
          vassert(vta->archinfo_host.endness == VexEndnessLE);
          break;
@@ -444,16 +444,16 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       case VexArchPPC32:
          mode64       = False;
          rRegUniv     = PPC32FN(getRRegUniverse_PPC(mode64));
-         isMove       = (__typeof__(isMove)) PPC32FN(isMove_PPCInstr);
+         isMove       = CAST_AS(isMove) PPC32FN(isMove_PPCInstr);
          getRegUsage  
-            = (__typeof__(getRegUsage)) PPC32FN(getRegUsage_PPCInstr);
-         mapRegs      = (__typeof__(mapRegs)) PPC32FN(mapRegs_PPCInstr);
-         genSpill     = (__typeof__(genSpill)) PPC32FN(genSpill_PPC);
-         genReload    = (__typeof__(genReload)) PPC32FN(genReload_PPC);
-         ppInstr      = (__typeof__(ppInstr)) PPC32FN(ppPPCInstr);
-         ppReg        = (__typeof__(ppReg)) PPC32FN(ppHRegPPC);
+            = CAST_AS(getRegUsage) PPC32FN(getRegUsage_PPCInstr);
+         mapRegs      = CAST_AS(mapRegs) PPC32FN(mapRegs_PPCInstr);
+         genSpill     = CAST_AS(genSpill) PPC32FN(genSpill_PPC);
+         genReload    = CAST_AS(genReload) PPC32FN(genReload_PPC);
+         ppInstr      = CAST_AS(ppInstr) PPC32FN(ppPPCInstr);
+         ppReg        = CAST_AS(ppReg) PPC32FN(ppHRegPPC);
          iselSB       = PPC32FN(iselSB_PPC);
-         emit         = (__typeof__(emit)) PPC32FN(emit_PPCInstr);
+         emit         = CAST_AS(emit) PPC32FN(emit_PPCInstr);
          host_word_type = Ity_I32;
          vassert(vta->archinfo_host.endness == VexEndnessBE);
          break;
@@ -461,16 +461,16 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       case VexArchPPC64:
          mode64       = True;
          rRegUniv     = PPC64FN(getRRegUniverse_PPC(mode64));
-         isMove       = (__typeof__(isMove)) PPC64FN(isMove_PPCInstr);
+         isMove       = CAST_AS(isMove) PPC64FN(isMove_PPCInstr);
          getRegUsage  
-            = (__typeof__(getRegUsage)) PPC64FN(getRegUsage_PPCInstr);
-         mapRegs      = (__typeof__(mapRegs)) PPC64FN(mapRegs_PPCInstr);
-         genSpill     = (__typeof__(genSpill)) PPC64FN(genSpill_PPC);
-         genReload    = (__typeof__(genReload)) PPC64FN(genReload_PPC);
-         ppInstr      = (__typeof__(ppInstr)) PPC64FN(ppPPCInstr);
-         ppReg        = (__typeof__(ppReg)) PPC64FN(ppHRegPPC);
+            = CAST_AS(getRegUsage) PPC64FN(getRegUsage_PPCInstr);
+         mapRegs      = CAST_AS(mapRegs) PPC64FN(mapRegs_PPCInstr);
+         genSpill     = CAST_AS(genSpill) PPC64FN(genSpill_PPC);
+         genReload    = CAST_AS(genReload) PPC64FN(genReload_PPC);
+         ppInstr      = CAST_AS(ppInstr) PPC64FN(ppPPCInstr);
+         ppReg        = CAST_AS(ppReg) PPC64FN(ppHRegPPC);
          iselSB       = PPC64FN(iselSB_PPC);
-         emit         = (__typeof__(emit)) PPC64FN(emit_PPCInstr);
+         emit         = CAST_AS(emit) PPC64FN(emit_PPCInstr);
          host_word_type = Ity_I64;
          vassert(vta->archinfo_host.endness == VexEndnessBE ||
                  vta->archinfo_host.endness == VexEndnessLE );
@@ -481,17 +481,17 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          /* KLUDGE: export hwcaps. */
          s390_host_hwcaps = vta->archinfo_host.hwcaps;
          rRegUniv     = S390FN(getRRegUniverse_S390());
-         isMove       = (__typeof__(isMove)) S390FN(isMove_S390Instr);
+         isMove       = CAST_AS(isMove) S390FN(isMove_S390Instr);
          getRegUsage  
-            = (__typeof__(getRegUsage)) S390FN(getRegUsage_S390Instr);
-         mapRegs      = (__typeof__(mapRegs)) S390FN(mapRegs_S390Instr);
-         genSpill     = (__typeof__(genSpill)) S390FN(genSpill_S390);
-         genReload    = (__typeof__(genReload)) S390FN(genReload_S390);
+            = CAST_AS(getRegUsage) S390FN(getRegUsage_S390Instr);
+         mapRegs      = CAST_AS(mapRegs) S390FN(mapRegs_S390Instr);
+         genSpill     = CAST_AS(genSpill) S390FN(genSpill_S390);
+         genReload    = CAST_AS(genReload) S390FN(genReload_S390);
          // fixs390: consider implementing directReload_S390
-         ppInstr      = (__typeof__(ppInstr)) S390FN(ppS390Instr);
-         ppReg        = (__typeof__(ppReg)) S390FN(ppHRegS390);
+         ppInstr      = CAST_AS(ppInstr) S390FN(ppS390Instr);
+         ppReg        = CAST_AS(ppReg) S390FN(ppHRegS390);
          iselSB       = S390FN(iselSB_S390);
-         emit         = (__typeof__(emit)) S390FN(emit_S390Instr);
+         emit         = CAST_AS(emit) S390FN(emit_S390Instr);
          host_word_type = Ity_I64;
          vassert(vta->archinfo_host.endness == VexEndnessBE);
          break;
@@ -499,16 +499,16 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       case VexArchARM:
          mode64       = False;
          rRegUniv     = ARMFN(getRRegUniverse_ARM());
-         isMove       = (__typeof__(isMove)) ARMFN(isMove_ARMInstr);
+         isMove       = CAST_AS(isMove) ARMFN(isMove_ARMInstr);
          getRegUsage  
-            = (__typeof__(getRegUsage)) ARMFN(getRegUsage_ARMInstr);
-         mapRegs      = (__typeof__(mapRegs)) ARMFN(mapRegs_ARMInstr);
-         genSpill     = (__typeof__(genSpill)) ARMFN(genSpill_ARM);
-         genReload    = (__typeof__(genReload)) ARMFN(genReload_ARM);
-         ppInstr      = (__typeof__(ppInstr)) ARMFN(ppARMInstr);
-         ppReg        = (__typeof__(ppReg)) ARMFN(ppHRegARM);
+            = CAST_AS(getRegUsage) ARMFN(getRegUsage_ARMInstr);
+         mapRegs      = CAST_AS(mapRegs) ARMFN(mapRegs_ARMInstr);
+         genSpill     = CAST_AS(genSpill) ARMFN(genSpill_ARM);
+         genReload    = CAST_AS(genReload) ARMFN(genReload_ARM);
+         ppInstr      = CAST_AS(ppInstr) ARMFN(ppARMInstr);
+         ppReg        = CAST_AS(ppReg) ARMFN(ppHRegARM);
          iselSB       = ARMFN(iselSB_ARM);
-         emit         = (__typeof__(emit)) ARMFN(emit_ARMInstr);
+         emit         = CAST_AS(emit) ARMFN(emit_ARMInstr);
          host_word_type = Ity_I32;
          vassert(vta->archinfo_host.endness == VexEndnessLE);
          break;
@@ -516,16 +516,16 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       case VexArchARM64:
          mode64       = True;
          rRegUniv     = ARM64FN(getRRegUniverse_ARM64());
-         isMove       = (__typeof__(isMove)) ARM64FN(isMove_ARM64Instr);
+         isMove       = CAST_AS(isMove) ARM64FN(isMove_ARM64Instr);
          getRegUsage  
-            = (__typeof__(getRegUsage)) ARM64FN(getRegUsage_ARM64Instr);
-         mapRegs      = (__typeof__(mapRegs)) ARM64FN(mapRegs_ARM64Instr);
-         genSpill     = (__typeof__(genSpill)) ARM64FN(genSpill_ARM64);
-         genReload    = (__typeof__(genReload)) ARM64FN(genReload_ARM64);
-         ppInstr      = (__typeof__(ppInstr)) ARM64FN(ppARM64Instr);
-         ppReg        = (__typeof__(ppReg)) ARM64FN(ppHRegARM64);
+            = CAST_AS(getRegUsage) ARM64FN(getRegUsage_ARM64Instr);
+         mapRegs      = CAST_AS(mapRegs) ARM64FN(mapRegs_ARM64Instr);
+         genSpill     = CAST_AS(genSpill) ARM64FN(genSpill_ARM64);
+         genReload    = CAST_AS(genReload) ARM64FN(genReload_ARM64);
+         ppInstr      = CAST_AS(ppInstr) ARM64FN(ppARM64Instr);
+         ppReg        = CAST_AS(ppReg) ARM64FN(ppHRegARM64);
          iselSB       = ARM64FN(iselSB_ARM64);
-         emit         = (__typeof__(emit)) ARM64FN(emit_ARM64Instr);
+         emit         = CAST_AS(emit) ARM64FN(emit_ARM64Instr);
          host_word_type = Ity_I64;
          vassert(vta->archinfo_host.endness == VexEndnessLE);
          break;
@@ -533,16 +533,16 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       case VexArchMIPS32:
          mode64       = False;
          rRegUniv     = MIPS32FN(getRRegUniverse_MIPS(mode64));
-         isMove       = (__typeof__(isMove)) MIPS32FN(isMove_MIPSInstr);
+         isMove       = CAST_AS(isMove) MIPS32FN(isMove_MIPSInstr);
          getRegUsage  
-            = (__typeof__(getRegUsage)) MIPS32FN(getRegUsage_MIPSInstr);
-         mapRegs      = (__typeof__(mapRegs)) MIPS32FN(mapRegs_MIPSInstr);
-         genSpill     = (__typeof__(genSpill)) MIPS32FN(genSpill_MIPS);
-         genReload    = (__typeof__(genReload)) MIPS32FN(genReload_MIPS);
-         ppInstr      = (__typeof__(ppInstr)) MIPS32FN(ppMIPSInstr);
-         ppReg        = (__typeof__(ppReg)) MIPS32FN(ppHRegMIPS);
+            = CAST_AS(getRegUsage) MIPS32FN(getRegUsage_MIPSInstr);
+         mapRegs      = CAST_AS(mapRegs) MIPS32FN(mapRegs_MIPSInstr);
+         genSpill     = CAST_AS(genSpill) MIPS32FN(genSpill_MIPS);
+         genReload    = CAST_AS(genReload) MIPS32FN(genReload_MIPS);
+         ppInstr      = CAST_AS(ppInstr) MIPS32FN(ppMIPSInstr);
+         ppReg        = CAST_AS(ppReg) MIPS32FN(ppHRegMIPS);
          iselSB       = MIPS32FN(iselSB_MIPS);
-         emit         = (__typeof__(emit)) MIPS32FN(emit_MIPSInstr);
+         emit         = CAST_AS(emit) MIPS32FN(emit_MIPSInstr);
          host_word_type = Ity_I32;
          vassert(vta->archinfo_host.endness == VexEndnessLE
                  || vta->archinfo_host.endness == VexEndnessBE);
@@ -551,16 +551,16 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       case VexArchMIPS64:
          mode64       = True;
          rRegUniv     = MIPS64FN(getRRegUniverse_MIPS(mode64));
-         isMove       = (__typeof__(isMove)) MIPS64FN(isMove_MIPSInstr);
+         isMove       = CAST_AS(isMove) MIPS64FN(isMove_MIPSInstr);
          getRegUsage  
-            = (__typeof__(getRegUsage)) MIPS64FN(getRegUsage_MIPSInstr);
-         mapRegs      = (__typeof__(mapRegs)) MIPS64FN(mapRegs_MIPSInstr);
-         genSpill     = (__typeof__(genSpill)) MIPS64FN(genSpill_MIPS);
-         genReload    = (__typeof__(genReload)) MIPS64FN(genReload_MIPS);
-         ppInstr      = (__typeof__(ppInstr)) MIPS64FN(ppMIPSInstr);
-         ppReg        = (__typeof__(ppReg)) MIPS64FN(ppHRegMIPS);
+            = CAST_AS(getRegUsage) MIPS64FN(getRegUsage_MIPSInstr);
+         mapRegs      = CAST_AS(mapRegs) MIPS64FN(mapRegs_MIPSInstr);
+         genSpill     = CAST_AS(genSpill) MIPS64FN(genSpill_MIPS);
+         genReload    = CAST_AS(genReload) MIPS64FN(genReload_MIPS);
+         ppInstr      = CAST_AS(ppInstr) MIPS64FN(ppMIPSInstr);
+         ppReg        = CAST_AS(ppReg) MIPS64FN(ppHRegMIPS);
          iselSB       = MIPS64FN(iselSB_MIPS);
-         emit         = (__typeof__(emit)) MIPS64FN(emit_MIPSInstr);
+         emit         = CAST_AS(emit) MIPS64FN(emit_MIPSInstr);
          host_word_type = Ity_I64;
          vassert(vta->archinfo_host.endness == VexEndnessLE
                  || vta->archinfo_host.endness == VexEndnessBE);
@@ -569,16 +569,16 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       case VexArchTILEGX:
          mode64      = True;
          rRegUniv    = TILEGXFN(getRRegUniverse_TILEGX());
-         isMove      = (__typeof__(isMove)) TILEGXFN(isMove_TILEGXInstr);
+         isMove      = CAST_AS(isMove) TILEGXFN(isMove_TILEGXInstr);
          getRegUsage =
-            (__typeof__(getRegUsage)) TILEGXFN(getRegUsage_TILEGXInstr);
-         mapRegs     = (__typeof__(mapRegs)) TILEGXFN(mapRegs_TILEGXInstr);
-         genSpill    = (__typeof__(genSpill)) TILEGXFN(genSpill_TILEGX);
-         genReload   = (__typeof__(genReload)) TILEGXFN(genReload_TILEGX);
-         ppInstr     = (__typeof__(ppInstr)) TILEGXFN(ppTILEGXInstr);
-         ppReg       = (__typeof__(ppReg)) TILEGXFN(ppHRegTILEGX);
+            CAST_AS(getRegUsage) TILEGXFN(getRegUsage_TILEGXInstr);
+         mapRegs     = CAST_AS(mapRegs) TILEGXFN(mapRegs_TILEGXInstr);
+         genSpill    = CAST_AS(genSpill) TILEGXFN(genSpill_TILEGX);
+         genReload   = CAST_AS(genReload) TILEGXFN(genReload_TILEGX);
+         ppInstr     = CAST_AS(ppInstr) TILEGXFN(ppTILEGXInstr);
+         ppReg       = CAST_AS(ppReg) TILEGXFN(ppHRegTILEGX);
          iselSB      = TILEGXFN(iselSB_TILEGX);
-         emit        = (__typeof__(emit)) TILEGXFN(emit_TILEGXInstr);
+         emit        = CAST_AS(emit) TILEGXFN(emit_TILEGXInstr);
          host_word_type    = Ity_I64;
          vassert(vta->archinfo_host.endness == VexEndnessLE);
          break;

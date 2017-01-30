@@ -578,7 +578,7 @@ typedef
 extern void LibVEX_Init (
 
    /* failure exit function */
-#  if __cplusplus == 1 && __GNUC__ && __GNUC__ <= 3
+#  if (__cplusplus == 1 && __GNUC__ && __GNUC__ <= 3) || defined(_MSC_VER)
    /* g++ 3.x doesn't understand attributes on function parameters.
       See #265762. */
 #  else

@@ -122,35 +122,80 @@ void ppIROp ( IROp op )
    const HChar* str = NULL; 
    IROp   base;
    switch (op) {
-      case Iop_Add8 ... Iop_Add64:
+      case Iop_Add8:
+      case Iop_Add16:
+      case Iop_Add32:
+      case Iop_Add64:
          str = "Add"; base = Iop_Add8; break;
-      case Iop_Sub8 ... Iop_Sub64:
+      case Iop_Sub8:
+      case Iop_Sub16:
+      case Iop_Sub32:
+      case Iop_Sub64:
          str = "Sub"; base = Iop_Sub8; break;
-      case Iop_Mul8 ... Iop_Mul64:
+      case Iop_Mul8:
+      case Iop_Mul16:
+      case Iop_Mul32:
+      case Iop_Mul64:
          str = "Mul"; base = Iop_Mul8; break;
-      case Iop_Or8 ... Iop_Or64:
+      case Iop_Or8:
+      case Iop_Or16:
+      case Iop_Or32:
+      case Iop_Or64:
          str = "Or"; base = Iop_Or8; break;
-      case Iop_And8 ... Iop_And64:
+      case Iop_And8:
+      case Iop_And16:
+      case Iop_And32:
+      case Iop_And64:
          str = "And"; base = Iop_And8; break;
-      case Iop_Xor8 ... Iop_Xor64:
+      case Iop_Xor8:
+      case Iop_Xor16:
+      case Iop_Xor32:
+      case Iop_Xor64:
          str = "Xor"; base = Iop_Xor8; break;
-      case Iop_Shl8 ... Iop_Shl64:
+      case Iop_Shl8:
+      case Iop_Shl16:
+      case Iop_Shl32:
+      case Iop_Shl64:
          str = "Shl"; base = Iop_Shl8; break;
-      case Iop_Shr8 ... Iop_Shr64:
+      case Iop_Shr8:
+      case Iop_Shr16:
+      case Iop_Shr32:
+      case Iop_Shr64:
          str = "Shr"; base = Iop_Shr8; break;
-      case Iop_Sar8 ... Iop_Sar64:
+      case Iop_Sar8:
+      case Iop_Sar16:
+      case Iop_Sar32:
+      case Iop_Sar64:
          str = "Sar"; base = Iop_Sar8; break;
-      case Iop_CmpEQ8 ... Iop_CmpEQ64:
+      case Iop_CmpEQ8:
+      case Iop_CmpEQ16:
+      case Iop_CmpEQ32:
+      case Iop_CmpEQ64:
          str = "CmpEQ"; base = Iop_CmpEQ8; break;
-      case Iop_CmpNE8 ... Iop_CmpNE64:
+      case Iop_CmpNE8:
+      case Iop_CmpNE16:
+      case Iop_CmpNE32:
+      case Iop_CmpNE64:
          str = "CmpNE"; base = Iop_CmpNE8; break;
-      case Iop_CasCmpEQ8 ... Iop_CasCmpEQ64:
+      case Iop_CasCmpEQ8:
+      case Iop_CasCmpEQ16:
+      case Iop_CasCmpEQ32:
+      case Iop_CasCmpEQ64:
          str = "CasCmpEQ"; base = Iop_CasCmpEQ8; break;
-      case Iop_CasCmpNE8 ... Iop_CasCmpNE64:
+      case Iop_CasCmpNE8:
+      case Iop_CasCmpNE16:
+      case Iop_CasCmpNE32:
+      case Iop_CasCmpNE64:
          str = "CasCmpNE"; base = Iop_CasCmpNE8; break;
-      case Iop_ExpCmpNE8 ... Iop_ExpCmpNE64:
+      case Iop_ExpCmpNE8:
+      case Iop_ExpCmpNE16:
+      case Iop_ExpCmpNE32:
+      case Iop_ExpCmpNE64:
          str = "ExpCmpNE"; base = Iop_ExpCmpNE8; break;
-      case Iop_Not8 ... Iop_Not64:
+      case Iop_Not8:
+      case Iop_Not16:
+      case Iop_Not32:
+      case Iop_Not64:
          str = "Not"; base = Iop_Not8; break;
       /* other cases must explicitly "return;" */
       case Iop_8Uto16:   vex_printf("8Uto16");  return;

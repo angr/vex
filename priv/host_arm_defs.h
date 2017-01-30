@@ -886,9 +886,11 @@ typedef
             sorry.
          */
          struct {
+			 Int nop;
          } MFence;
          /* A CLREX instruction. */
          struct {
+			 Int nop;
          } CLREX;
          /* Neon data processing instruction: 3 registers of the same
             length */
@@ -978,6 +980,7 @@ typedef
             /* No fields.  The address of the counter to inc is
                installed later, post-translation, by patching it in,
                as it is not known at translation time. */
+			Int nop;
          } ProfInc;
       } ARMin;
    }

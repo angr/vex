@@ -117,6 +117,7 @@ static IRSB* irsb;
 /*--- Debugging output                                     ---*/
 /*------------------------------------------------------------*/
 
+#ifndef _MSC_VER
 #define DIP(format, args...)           \
    if (vex_traceflags & VEX_TRACE_FE)  \
       vex_printf(format, ## args)
@@ -124,6 +125,15 @@ static IRSB* irsb;
 #define DIS(buf, format, args...)      \
    if (vex_traceflags & VEX_TRACE_FE)  \
       vex_sprintf(buf, format, ## args)
+#else
+#define DIP(format, ...)           \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_printf(format, __VA_ARGS__)
+
+#define DIS(buf, format, ...)      \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_sprintf(buf, format, __VA_ARGS__)
+#endif
 
 
 /*------------------------------------------------------------*/
@@ -12397,7 +12407,7 @@ Bool dis_AdvSIMD_two_reg_misc(/*MB_OUT*/DisResult* dres, UInt insn)
       IRType srcTy  = size == X00 ? Ity_F32 : Ity_F64;
       IROp   opCvt  = size == X00 ? Iop_F32toF16 : Iop_F64toF32;
       IRTemp rm     = mk_get_IR_rounding_mode();
-      IRTemp src[nLanes];
+      IRTemp src[4];
       for (UInt i = 0; i < nLanes; i++) {
          src[i] = newTemp(srcTy);
          assign(src[i], getQRegLane(nn, i, srcTy));
@@ -12446,7 +12456,7 @@ Bool dis_AdvSIMD_two_reg_misc(/*MB_OUT*/DisResult* dres, UInt insn)
       UInt   nLanes = size == X00 ? 4 : 2;
       IRType srcTy  = size == X00 ? Ity_F16 : Ity_F32;
       IROp   opCvt  = size == X00 ? Iop_F16toF32 : Iop_F32toF64;
-      IRTemp src[nLanes];
+      IRTemp src[4];
       for (UInt i = 0; i < nLanes; i++) {
          src[i] = newTemp(srcTy);
          assign(src[i], getQRegLane(nn, nLanes * bitQ + i, srcTy));

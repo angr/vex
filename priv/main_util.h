@@ -43,8 +43,25 @@
 
 #define NULL ((void*)0)
 
+/* This is where we bootstrap msvc compatibility */
+#ifndef _MSC_VER /* gcc/clang/etc stuff */
 #define LIKELY(x)       __builtin_expect(!!(x), 1)
 #define UNLIKELY(x)     __builtin_expect(!!(x), 0)
+#define CAST_AS(x)      (__typeof__(x))
+
+#else /* msvc stuff */
+#define LIKELY(x)       (x)
+#define UNLIKELY(x)     (x)
+#define CAST_AS(x)
+
+#define __builtin_memset memset
+#define __builtin_memcpy memcpy
+#define __PRETTY_FUNCTION__ __FUNCDNAME__
+
+#define __attribute__(x)
+#define __attribute(x)
+#define __inline__
+#endif
 
 #if !defined(offsetof)
 #   define offsetof(type,memb) ((SizeT)(HWord)&((type*)0)->memb)
@@ -68,16 +85,23 @@ extern void vex_assert_fail ( const HChar* expr, const HChar* file,
 __attribute__ ((__noreturn__))
 extern void vpanic ( const HChar* str );
 
-__attribute__ ((__noreturn__)) __attribute__ ((format (printf, 1, 2)))
+__attribute__ ((__noreturn__))
+#ifndef _MSC_VER
+__attribute__ ((format (printf, 1, 2)))
+#endif
 extern void vfatal ( const HChar* format, ... );
 
 
 /* Printing */
 
+#ifndef _MSC_VER
 __attribute__ ((format (printf, 1, 2)))
+#endif
 extern UInt vex_printf ( const HChar *format, ... );
 
+#ifndef _MSC_VER
 __attribute__ ((format (printf, 2, 3)))
+#endif
 extern UInt vex_sprintf ( HChar* buf, const HChar *format, ... );
 
 

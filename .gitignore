@@ -3,6 +3,7 @@
 *.so
 *.lib
 *.dll
+*.exe
 vex
 
 auxprogs/genoffsets

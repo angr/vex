@@ -370,6 +370,7 @@ static void unimplemented ( const HChar* str )
    vpanic(str);
 }
 
+#ifndef _MSC_VER
 #define DIP(format, args...)           \
    if (vex_traceflags & VEX_TRACE_FE)  \
       vex_printf(format, ## args)
@@ -377,6 +378,15 @@ static void unimplemented ( const HChar* str )
 #define DIS(buf, format, args...)      \
    if (vex_traceflags & VEX_TRACE_FE)  \
       vex_sprintf(buf, format, ## args)
+#else
+#define DIP(format, ...)           \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_printf(format, __VA_ARGS__)
+
+#define DIS(buf, format, ...)      \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_sprintf(buf, format, __VA_ARGS__)
+#endif
 
 
 /*------------------------------------------------------------*/
@@ -5482,16 +5492,19 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
          delta++;
          switch (modrm) {
 
-            case 0xC0 ... 0xC7: /* FADD %st(?),%st(0) */
+            case 0xc0: case 0xc1: case 0xc2: case 0xc3:
+            case 0xc4: case 0xc5: case 0xc6: case 0xc7: /* FADD %st(?),%st(0) */
                fp_do_op_ST_ST ( "add", Iop_AddF64, modrm - 0xC0, 0, False );
                break;
 
-            case 0xC8 ... 0xCF: /* FMUL %st(?),%st(0) */
+            case 0xc8: case 0xc9: case 0xca: case 0xcb:
+            case 0xcc: case 0xcd: case 0xce: case 0xcf: /* FMUL %st(?),%st(0) */
                fp_do_op_ST_ST ( "mul", Iop_MulF64, modrm - 0xC8, 0, False );
                break;
 
             /* Dunno if this is right */
-            case 0xD0 ... 0xD7: /* FCOM %st(?),%st(0) */
+            case 0xd0: case 0xd1: case 0xd2: case 0xd3:
+            case 0xd4: case 0xd5: case 0xd6: case 0xd7: /* FCOM %st(?),%st(0) */
                r_dst = (UInt)modrm - 0xD0;
                DIP("fcom %%st(0),%%st(%u)\n", r_dst);
                /* This forces C1 to zero, which isn't right. */
@@ -5506,7 +5519,8 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                break;
 
             /* Dunno if this is right */
-            case 0xD8 ... 0xDF: /* FCOMP %st(?),%st(0) */
+            case 0xd8: case 0xd9: case 0xda: case 0xdb:
+            case 0xdc: case 0xdd: case 0xde: case 0xdf: /* FCOMP %st(?),%st(0) */
                r_dst = (UInt)modrm - 0xD8;
                DIP("fcomp %%st(0),%%st(%u)\n", r_dst);
                /* This forces C1 to zero, which isn't right. */
@@ -5521,19 +5535,23 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                fp_pop();
                break;
 
-            case 0xE0 ... 0xE7: /* FSUB %st(?),%st(0) */
+            case 0xe0: case 0xe1: case 0xe2: case 0xe3:
+            case 0xe4: case 0xe5: case 0xe6: case 0xe7: /* FSUB %st(?),%st(0) */
                fp_do_op_ST_ST ( "sub", Iop_SubF64, modrm - 0xE0, 0, False );
                break;
 
-            case 0xE8 ... 0xEF: /* FSUBR %st(?),%st(0) */
+            case 0xe8: case 0xe9: case 0xea: case 0xeb:
+            case 0xec: case 0xed: case 0xee: case 0xef: /* FSUBR %st(?),%st(0) */
                fp_do_oprev_ST_ST ( "subr", Iop_SubF64, modrm - 0xE8, 0, False );
                break;
 
-            case 0xF0 ... 0xF7: /* FDIV %st(?),%st(0) */
+            case 0xf0: case 0xf1: case 0xf2: case 0xf3:
+            case 0xf4: case 0xf5: case 0xf6: case 0xf7: /* FDIV %st(?),%st(0) */
                fp_do_op_ST_ST ( "div", Iop_DivF64, modrm - 0xF0, 0, False );
                break;
 
-            case 0xF8 ... 0xFF: /* FDIVR %st(?),%st(0) */
+            case 0xf8: case 0xf9: case 0xfa: case 0xfb:
+            case 0xfc: case 0xfd: case 0xfe: case 0xff: /* FDIVR %st(?),%st(0) */
                fp_do_oprev_ST_ST ( "divr", Iop_DivF64, modrm - 0xF8, 0, False );
                break;
 
@@ -5743,7 +5761,8 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
          delta++;
          switch (modrm) {
 
-            case 0xC0 ... 0xC7: /* FLD %st(?) */
+            case 0xc0: case 0xc1: case 0xc2: case 0xc3:
+            case 0xc4: case 0xc5: case 0xc6: case 0xc7: /* FLD %st(?) */
                r_src = (UInt)modrm - 0xC0;
                DIP("fld %%st(%u)\n", r_src);
                t1 = newTemp(Ity_F64);
@@ -5752,7 +5771,8 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                put_ST(0, mkexpr(t1));
                break;
 
-            case 0xC8 ... 0xCF: /* FXCH %st(?) */
+            case 0xc8: case 0xc9: case 0xca: case 0xcb:
+            case 0xcc: case 0xcd: case 0xce: case 0xcf: /* FXCH %st(?) */
                r_src = (UInt)modrm - 0xC8;
                DIP("fxch %%st(%u)\n", r_src);
                t1 = newTemp(Ity_F64);
@@ -6144,7 +6164,8 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
          delta++;
          switch (modrm) {
 
-            case 0xC0 ... 0xC7: /* FCMOVB ST(i), ST(0) */
+            case 0xc0: case 0xc1: case 0xc2: case 0xc3:
+            case 0xc4: case 0xc5: case 0xc6: case 0xc7: /* FCMOVB ST(i), ST(0) */
                r_src = (UInt)modrm - 0xC0;
                DIP("fcmovb %%st(%u), %%st(0)\n", r_src);
                put_ST_UNCHECKED(0, 
@@ -6153,7 +6174,8 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                                     get_ST(r_src), get_ST(0)) );
                break;
 
-            case 0xC8 ... 0xCF: /* FCMOVE(Z) ST(i), ST(0) */
+            case 0xc8: case 0xc9: case 0xca: case 0xcb:
+            case 0xcc: case 0xcd: case 0xce: case 0xcf: /* FCMOVE(Z) ST(i), ST(0) */
                r_src = (UInt)modrm - 0xC8;
                DIP("fcmovz %%st(%u), %%st(0)\n", r_src);
                put_ST_UNCHECKED(0, 
@@ -6162,7 +6184,8 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                                     get_ST(r_src), get_ST(0)) );
                break;
 
-            case 0xD0 ... 0xD7: /* FCMOVBE ST(i), ST(0) */
+            case 0xd0: case 0xd1: case 0xd2: case 0xd3:
+            case 0xd4: case 0xd5: case 0xd6: case 0xd7: /* FCMOVBE ST(i), ST(0) */
                r_src = (UInt)modrm - 0xD0;
                DIP("fcmovbe %%st(%u), %%st(0)\n", r_src);
                put_ST_UNCHECKED(0, 
@@ -6171,7 +6194,8 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                                     get_ST(r_src), get_ST(0)) );
                break;
 
-            case 0xD8 ... 0xDF: /* FCMOVU ST(i), ST(0) */
+            case 0xd8: case 0xd9: case 0xda: case 0xdb:
+            case 0xdc: case 0xdd: case 0xde: case 0xdf: /* FCMOVU ST(i), ST(0) */
                r_src = (UInt)modrm - 0xD8;
                DIP("fcmovu %%st(%u), %%st(0)\n", r_src);
                put_ST_UNCHECKED(0, 
@@ -6309,7 +6333,8 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
          delta++;
          switch (modrm) {
 
-            case 0xC0 ... 0xC7: /* FCMOVNB ST(i), ST(0) */
+            case 0xc0: case 0xc1: case 0xc2: case 0xc3:
+            case 0xc4: case 0xc5: case 0xc6: case 0xc7: /* FCMOVNB ST(i), ST(0) */
                r_src = (UInt)modrm - 0xC0;
                DIP("fcmovnb %%st(%u), %%st(0)\n", r_src);
                put_ST_UNCHECKED(0, 
@@ -6318,7 +6343,8 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                                     get_ST(r_src), get_ST(0)) );
                break;
 
-            case 0xC8 ... 0xCF: /* FCMOVNE(NZ) ST(i), ST(0) */
+            case 0xc8: case 0xc9: case 0xca: case 0xcb:
+            case 0xcc: case 0xcd: case 0xce: case 0xcf: /* FCMOVNE(NZ) ST(i), ST(0) */
                r_src = (UInt)modrm - 0xC8;
                DIP("fcmovnz %%st(%u), %%st(0)\n", r_src);
                put_ST_UNCHECKED(
@@ -6331,7 +6357,8 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                );
                break;
 
-            case 0xD0 ... 0xD7: /* FCMOVNBE ST(i), ST(0) */
+            case 0xd0: case 0xd1: case 0xd2: case 0xd3:
+            case 0xd4: case 0xd5: case 0xd6: case 0xd7: /* FCMOVNBE ST(i), ST(0) */
                r_src = (UInt)modrm - 0xD0;
                DIP("fcmovnbe %%st(%u), %%st(0)\n", r_src);
                put_ST_UNCHECKED(
@@ -6344,7 +6371,8 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                );
                break;
 
-            case 0xD8 ... 0xDF: /* FCMOVNU ST(i), ST(0) */
+            case 0xd8: case 0xd9: case 0xda: case 0xdb:
+            case 0xdc: case 0xdd: case 0xde: case 0xdf: /* FCMOVNU ST(i), ST(0) */
                r_src = (UInt)modrm - 0xD8;
                DIP("fcmovnu %%st(%u), %%st(0)\n", r_src);
                put_ST_UNCHECKED(
@@ -6367,11 +6395,13 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                break;
             }
 
-            case 0xE8 ... 0xEF: /* FUCOMI %st(0),%st(?) */
+            case 0xe8: case 0xe9: case 0xea: case 0xeb:
+            case 0xec: case 0xed: case 0xee: case 0xef: /* FUCOMI %st(0),%st(?) */
                fp_do_ucomi_ST0_STi( (UInt)modrm - 0xE8, False );
                break;
 
-            case 0xF0 ... 0xF7: /* FCOMI %st(0),%st(?) */
+            case 0xf0: case 0xf1: case 0xf2: case 0xf3:
+            case 0xf4: case 0xf5: case 0xf6: case 0xf7: /* FCOMI %st(0),%st(?) */
                fp_do_ucomi_ST0_STi( (UInt)modrm - 0xF0, False );
                break;
 
@@ -6460,27 +6490,33 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
          delta++;
          switch (modrm) {
 
-            case 0xC0 ... 0xC7: /* FADD %st(0),%st(?) */
+            case 0xc0: case 0xc1: case 0xc2: case 0xc3:
+            case 0xc4: case 0xc5: case 0xc6: case 0xc7: /* FADD %st(0),%st(?) */
                fp_do_op_ST_ST ( "add", Iop_AddF64, 0, modrm - 0xC0, False );
                break;
 
-            case 0xC8 ... 0xCF: /* FMUL %st(0),%st(?) */
+            case 0xc8: case 0xc9: case 0xca: case 0xcb:
+            case 0xcc: case 0xcd: case 0xce: case 0xcf: /* FMUL %st(0),%st(?) */
                fp_do_op_ST_ST ( "mul", Iop_MulF64, 0, modrm - 0xC8, False );
                break;
 
-            case 0xE0 ... 0xE7: /* FSUBR %st(0),%st(?) */
+            case 0xe0: case 0xe1: case 0xe2: case 0xe3:
+            case 0xe4: case 0xe5: case 0xe6: case 0xe7: /* FSUBR %st(0),%st(?) */
                fp_do_oprev_ST_ST ( "subr", Iop_SubF64, 0, modrm - 0xE0, False );
                break;
 
-            case 0xE8 ... 0xEF: /* FSUB %st(0),%st(?) */
+            case 0xe8: case 0xe9: case 0xea: case 0xeb:
+            case 0xec: case 0xed: case 0xee: case 0xef: /* FSUB %st(0),%st(?) */
                fp_do_op_ST_ST ( "sub", Iop_SubF64, 0, modrm - 0xE8, False );
                break;
 
-            case 0xF0 ... 0xF7: /* FDIVR %st(0),%st(?) */
+            case 0xf0: case 0xf1: case 0xf2: case 0xf3:
+            case 0xf4: case 0xf5: case 0xf6: case 0xf7: /* FDIVR %st(0),%st(?) */
                fp_do_oprev_ST_ST ( "divr", Iop_DivF64, 0, modrm - 0xF0, False );
                break;
 
-            case 0xF8 ... 0xFF: /* FDIV %st(0),%st(?) */
+            case 0xf8: case 0xf9: case 0xfa: case 0xfb:
+            case 0xfc: case 0xfd: case 0xfe: case 0xff: /* FDIV %st(0),%st(?) */
                fp_do_op_ST_ST ( "div", Iop_DivF64, 0, modrm - 0xF8, False );
                break;
 
@@ -6694,13 +6730,15 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
          delta++;
          switch (modrm) {
 
-            case 0xC0 ... 0xC7: /* FFREE %st(?) */
+            case 0xc0: case 0xc1: case 0xc2: case 0xc3:
+            case 0xc4: case 0xc5: case 0xc6: case 0xc7: /* FFREE %st(?) */
                r_dst = (UInt)modrm - 0xC0;
                DIP("ffree %%st(%u)\n", r_dst);
                put_ST_TAG ( r_dst, mkU8(0) );
                break;
 
-            case 0xD0 ... 0xD7: /* FST %st(0),%st(?) */
+            case 0xd0: case 0xd1: case 0xd2: case 0xd3:
+            case 0xd4: case 0xd5: case 0xd6: case 0xd7: /* FST %st(0),%st(?) */
                r_dst = (UInt)modrm - 0xD0;
                DIP("fst %%st(0),%%st(%u)\n", r_dst);
                /* P4 manual says: "If the destination operand is a
@@ -6709,7 +6747,8 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                put_ST_UNCHECKED(r_dst, get_ST(0));
                break;
 
-            case 0xD8 ... 0xDF: /* FSTP %st(0),%st(?) */
+            case 0xd8: case 0xd9: case 0xda: case 0xdb:
+            case 0xdc: case 0xdd: case 0xde: case 0xdf: /* FSTP %st(0),%st(?) */
                r_dst = (UInt)modrm - 0xD8;
                DIP("fstp %%st(0),%%st(%u)\n", r_dst);
                /* P4 manual says: "If the destination operand is a
@@ -6719,7 +6758,8 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                fp_pop();
                break;
 
-            case 0xE0 ... 0xE7: /* FUCOM %st(0),%st(?) */
+            case 0xe0: case 0xe1: case 0xe2: case 0xe3:
+            case 0xe4: case 0xe5: case 0xe6: case 0xe7: /* FUCOM %st(0),%st(?) */
                r_dst = (UInt)modrm - 0xE0;
                DIP("fucom %%st(0),%%st(%u)\n", r_dst);
                /* This forces C1 to zero, which isn't right. */
@@ -6733,7 +6773,8 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                    )));
                break;
 
-            case 0xE8 ... 0xEF: /* FUCOMP %st(0),%st(?) */
+            case 0xe8: case 0xe9: case 0xea: case 0xeb:
+            case 0xec: case 0xed: case 0xee: case 0xef: /* FUCOMP %st(0),%st(?) */
                r_dst = (UInt)modrm - 0xE8;
                DIP("fucomp %%st(0),%%st(%u)\n", r_dst);
                /* This forces C1 to zero, which isn't right. */
@@ -6830,11 +6871,13 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
          delta++;
          switch (modrm) {
 
-            case 0xC0 ... 0xC7: /* FADDP %st(0),%st(?) */
+            case 0xc0: case 0xc1: case 0xc2: case 0xc3:
+            case 0xc4: case 0xc5: case 0xc6: case 0xc7: /* FADDP %st(0),%st(?) */
                fp_do_op_ST_ST ( "add", Iop_AddF64, 0, modrm - 0xC0, True );
                break;
 
-            case 0xC8 ... 0xCF: /* FMULP %st(0),%st(?) */
+            case 0xc8: case 0xc9: case 0xca: case 0xcb:
+            case 0xcc: case 0xcd: case 0xce: case 0xcf: /* FMULP %st(0),%st(?) */
                fp_do_op_ST_ST ( "mul", Iop_MulF64, 0, modrm - 0xC8, True );
                break;
 
@@ -6853,19 +6896,23 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                fp_pop();
                break;
 
-            case 0xE0 ... 0xE7: /* FSUBRP %st(0),%st(?) */
+            case 0xe0: case 0xe1: case 0xe2: case 0xe3:
+            case 0xe4: case 0xe5: case 0xe6: case 0xe7: /* FSUBRP %st(0),%st(?) */
                fp_do_oprev_ST_ST ( "subr", Iop_SubF64, 0,  modrm - 0xE0, True );
                break;
 
-            case 0xE8 ... 0xEF: /* FSUBP %st(0),%st(?) */
+            case 0xe8: case 0xe9: case 0xea: case 0xeb:
+            case 0xec: case 0xed: case 0xee: case 0xef: /* FSUBP %st(0),%st(?) */
                fp_do_op_ST_ST ( "sub", Iop_SubF64, 0,  modrm - 0xE8, True );
                break;
 
-            case 0xF0 ... 0xF7: /* FDIVRP %st(0),%st(?) */
+            case 0xf0: case 0xf1: case 0xf2: case 0xf3:
+            case 0xf4: case 0xf5: case 0xf6: case 0xf7: /* FDIVRP %st(0),%st(?) */
                fp_do_oprev_ST_ST ( "divr", Iop_DivF64, 0, modrm - 0xF0, True );
                break;
 
-            case 0xF8 ... 0xFF: /* FDIVP %st(0),%st(?) */
+            case 0xf8: case 0xf9: case 0xfa: case 0xfb:
+            case 0xfc: case 0xfd: case 0xfe: case 0xff: /* FDIVP %st(0),%st(?) */
                fp_do_op_ST_ST ( "div", Iop_DivF64, 0, modrm - 0xF8, True );
                break;
 
@@ -6972,11 +7019,13 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                )));
                break;
 
-            case 0xE8 ... 0xEF: /* FUCOMIP %st(0),%st(?) */
+            case 0xe8: case 0xe9: case 0xea: case 0xeb:
+            case 0xec: case 0xed: case 0xee: case 0xef: /* FUCOMIP %st(0),%st(?) */
                fp_do_ucomi_ST0_STi( (UInt)modrm - 0xE8, True );
                break;
 
-            case 0xF0 ... 0xF7: /* FCOMIP %st(0),%st(?) */
+            case 0xf0: case 0xf1: case 0xf2: case 0xf3:
+            case 0xf4: case 0xf5: case 0xf6: case 0xf7: /* FCOMIP %st(0),%st(?) */
                /* not really right since COMIP != UCOMIP */
                fp_do_ucomi_ST0_STi( (UInt)modrm - 0xF0, True );
                break;
@@ -29544,9 +29593,36 @@ Long dis_ESC_0F38__VEX (
       }
       break;
 
-   case 0x96 ... 0x9F:
-   case 0xA6 ... 0xAF:
-   case 0xB6 ... 0xBF:
+   case 0x96:
+   case 0x97:
+   case 0x98:
+   case 0x99:
+   case 0x9a:
+   case 0x9b:
+   case 0x9c:
+   case 0x9d:
+   case 0x9e:
+   case 0x9f:
+   case 0xa6:
+   case 0xa7:
+   case 0xa8:
+   case 0xa9:
+   case 0xaa:
+   case 0xab:
+   case 0xac:
+   case 0xad:
+   case 0xae:
+   case 0xaf:
+   case 0xb6:
+   case 0xb7:
+   case 0xb8:
+   case 0xb9:
+   case 0xba:
+   case 0xbb:
+   case 0xbc:
+   case 0xbd:
+   case 0xbe:
+   case 0xbf:
       /* VFMADDSUB132PS xmm3/m128, xmm2, xmm1 = VEX.DDS.128.66.0F38.W0 96 /r */
       /* VFMADDSUB132PS ymm3/m256, ymm2, ymm1 = VEX.DDS.256.66.0F38.W0 96 /r */
       /* VFMADDSUB132PD xmm3/m128, xmm2, xmm1 = VEX.DDS.128.66.0F38.W1 96 /r */
@@ -31756,10 +31832,7 @@ Long dis_ESC_0F3A__VEX (
       }
       break;
 
-   case 0x60:
-   case 0x61:
-   case 0x62:
-   case 0x63:
+   case 0x60: case 0x61: case 0x62: case 0x63:
       /* VEX.128.66.0F3A.WIG 63 /r ib = VPCMPISTRI imm8, xmm2/m128, xmm1
          VEX.128.66.0F3A.WIG 62 /r ib = VPCMPISTRM imm8, xmm2/m128, xmm1
          VEX.128.66.0F3A.WIG 61 /r ib = VPCMPESTRI imm8, xmm2/m128, xmm1
@@ -31774,9 +31847,11 @@ Long dis_ESC_0F3A__VEX (
          /* else fall though; dis_PCMPxSTRx failed to decode it */
       }
       break;
-   case 0x5C ... 0x5F:
-   case 0x68 ... 0x6F:
-   case 0x78 ... 0x7F:
+   case 0x5c: case 0x5d: case 0x5e: case 0x5f:
+   case 0x68: case 0x69: case 0x6a: case 0x6b:
+   case 0x6c: case 0x6d: case 0x6e: case 0x6f:
+   case 0x78: case 0x79: case 0x7a: case 0x7b:
+   case 0x7c: case 0x7d: case 0x7e: case 0x7f:
       if (have66noF2noF3(pfx) && 0==getVexL(pfx)/*128*/) {
          Long delta0 = delta;
          delta = dis_FMA4( pfx, delta, opc, uses_vvvv, vbi );
@@ -31999,7 +32074,11 @@ DisResult disInstr_AMD64_WRK (
          case 0x64: pfx |= PFX_FS; break;
          case 0x65: pfx |= PFX_GS; break;
          case 0x36: pfx |= PFX_SS; break;
-         case 0x40 ... 0x4F:
+
+         case 0x40: case 0x41: case 0x42: case 0x43:
+         case 0x44: case 0x45: case 0x46: case 0x47:
+         case 0x48: case 0x49: case 0x4a: case 0x4b:
+         case 0x4c: case 0x4d: case 0x4e: case 0x4f:
             pfx |= PFX_REX;
             if (pre & (1<<3)) pfx |= PFX_REXW;
             if (pre & (1<<2)) pfx |= PFX_REXR;
