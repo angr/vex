@@ -158,7 +158,7 @@
 #define MIPS64ST(f) vassert(0)
 #endif
 
-#if defined(VGA_tilegx) || defined(VEXMULTIARCH)
+#if defined(VGA_tilegx) //|| defined(VEXMULTIARCH)
 #define TILEGXFN(f) f
 #define TILEGXST(f) f
 #else
