@@ -475,7 +475,7 @@ typedef
          Default=120.  A setting of zero disables unrolling.  */
       Int iropt_unroll_thresh;
       /* What's the maximum basic block length the front end(s) allow?
-         BBs longer than this are split up.  Default=50 (guest
+         BBs longer than this are split up.  Default=60 (guest
          insns). */
       Int guest_max_insns;
       /* How aggressive should front ends be in following
@@ -596,6 +596,8 @@ extern void LibVEX_Init (
    const VexControl* vcon
 );
 
+/* Update the global VexControl */
+extern void LibVEX_Update_Control (const VexControl * );
 
 /*-------------------------------------------------------*/
 /*--- Make a translation                              ---*/
