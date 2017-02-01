@@ -216,6 +216,7 @@ IRSB* bb_to_IR (
    Addr       guest_IP_curr_instr;
    IRConst*   guest_IP_bbstart_IRConst = NULL;
    Int        n_cond_resteers_allowed = 2;
+   UShort     tmpsize;
 
    Bool (*resteerOKfn)(void*,Addr) = NULL;
 
@@ -225,6 +226,8 @@ IRSB* bb_to_IR (
    vassert(sizeof(HWord) == sizeof(void*));
    vassert(vex_control.guest_max_insns >= 1);
    vassert(vex_control.guest_max_insns <= 100);
+   vassert(vex_control.guest_max_bytes >= 1);
+   vassert(vex_control.guest_max_bytes <= 5000);
    vassert(vex_control.guest_chase_thresh >= 0);
    vassert(vex_control.guest_chase_thresh < vex_control.guest_max_insns);
    vassert(guest_word_type == Ity_I32 || guest_word_type == Ity_I64);
@@ -406,6 +409,27 @@ IRSB* bb_to_IR (
       vassert(irsb->jumpkind == Ijk_Boring);
       vassert(irsb->offsIP == 0);
 
+      /* Update the VexGuestExtents we are constructing. */
+      /* If vex_control.guest_max_insns is required to be < 100 and
+         each insn is at max 20 bytes long, this limit of 5000 then
+         seems reasonable since the max possible extent length will be
+         100 * 20 == 2000. */
+      vassert(vge->len[vge->n_used-1] < 5000);
+      tmpsize = toUShort(toUInt( vge->len[vge->n_used-1] + dres.len ));
+
+      /* If we've gone over the maximum lift size, roll back and abort */
+      if (tmpsize > vex_control.guest_max_bytes) {
+         irsb->stmts_used = first_stmt_idx;
+         /* first_stmt_idx is never read from again except to sanity check,
+            so it's safe to set a fake value here */
+         first_stmt_idx--;
+         dres.whatNext = Dis_StopHere;
+         dres.jk_StopHere = Ijk_Boring;
+      } else {
+        n_instrs++;
+        vge->len[vge->n_used-1] = tmpsize;
+      }
+
       /* Individual insn disassembly must finish the IR for each
          instruction with an assignment to the guest PC. */
       vassert(first_stmt_idx < irsb->stmts_used);
@@ -418,16 +442,6 @@ IRSB* bb_to_IR (
            == guest_word_type, but that's a bit expensive. */
       }
 
-      /* Update the VexGuestExtents we are constructing. */
-      /* If vex_control.guest_max_insns is required to be < 100 and
-         each insn is at max 20 bytes long, this limit of 5000 then
-         seems reasonable since the max possible extent length will be
-         100 * 20 == 2000. */
-      vassert(vge->len[vge->n_used-1] < 5000);
-      vge->len[vge->n_used-1] 
-         = toUShort(toUInt( vge->len[vge->n_used-1] + dres.len ));
-      n_instrs++;
-
       /* Advance delta (inconspicuous but very important :-) */
       delta += (Long)dres.len;
 
@@ -435,7 +449,8 @@ IRSB* bb_to_IR (
          case Dis_Continue:
             vassert(dres.continueAt == 0);
             vassert(dres.jk_StopHere == Ijk_INVALID);
-            if (n_instrs < vex_control.guest_max_insns) {
+            if (n_instrs < vex_control.guest_max_insns && 
+                vge->len[vge->n_used-1] < vex_control.guest_max_bytes) {
                /* keep going */
             } else {
                /* We have to stop.  See comment above re irsb field

@@ -195,6 +195,7 @@ void LibVEX_default_VexControl ( /*OUT*/ VexControl* vcon )
    vcon->iropt_register_updates_default = VexRegUpdUnwindregsAtMemAccess;
    vcon->iropt_unroll_thresh            = 120;
    vcon->guest_max_insns                = 60;
+   vcon->guest_max_bytes                = 5000;
    vcon->guest_chase_thresh             = 10;
    vcon->guest_chase_cond               = False;
 }
