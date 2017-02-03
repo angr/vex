@@ -19175,11 +19175,12 @@ DisResult disInstr_THUMB_WRK (
       also possibly guarded.  Hence if 'label:' is the start of a hot
       loop we will get a big performance hit.
    */
-   {
-      /* Summary result of this analysis: False == safe but
-         suboptimal. */
-      vassert(guaranteedUnconditional == False);
 
+    /* Summary result of this analysis: False == safe but
+       suboptimal. */
+    vassert(guaranteedUnconditional == False);
+
+   if (vex_control.arm_allow_optimizing_lookback) {
       UInt pc = guest_R15_curr_instr_notENC;
       vassert(0 == (pc & 1));
 

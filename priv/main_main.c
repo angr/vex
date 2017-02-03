@@ -198,6 +198,7 @@ void LibVEX_default_VexControl ( /*OUT*/ VexControl* vcon )
    vcon->guest_max_bytes                = 5000;
    vcon->guest_chase_thresh             = 10;
    vcon->guest_chase_cond               = False;
+   vcon->arm_allow_optimizing_lookback  = True;
 }
 
 

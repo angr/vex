@@ -489,6 +489,10 @@ typedef
       /* EXPERIMENTAL: chase across conditional branches?  Not all
          front ends honour this.  Default: NO. */
       Bool guest_chase_cond;
+      /* Should the arm-thumb lifter be allowed to look before the
+         current instruction pointer in order to check if there are no
+         IT instructions so that it can optimize the IR? Default: YES */
+      Bool arm_allow_optimizing_lookback;
    }
    VexControl;
 
