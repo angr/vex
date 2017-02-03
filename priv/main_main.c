@@ -190,15 +190,16 @@ static  Int sdiv32 (  Int x,  Int y ) { return x/y; }
 void LibVEX_default_VexControl ( /*OUT*/ VexControl* vcon )
 {
    vex_bzero(vcon, sizeof(*vcon));
-   vcon->iropt_verbosity                = 0;
-   vcon->iropt_level                    = 2;
-   vcon->iropt_register_updates_default = VexRegUpdUnwindregsAtMemAccess;
-   vcon->iropt_unroll_thresh            = 120;
-   vcon->guest_max_insns                = 60;
-   vcon->guest_max_bytes                = 5000;
-   vcon->guest_chase_thresh             = 10;
-   vcon->guest_chase_cond               = False;
-   vcon->arm_allow_optimizing_lookback  = True;
+   vcon->iropt_verbosity                 = 0;
+   vcon->iropt_level                     = 2;
+   vcon->iropt_register_updates_default  = VexRegUpdUnwindregsAtMemAccess;
+   vcon->iropt_unroll_thresh             = 120;
+   vcon->guest_max_insns                 = 60;
+   vcon->guest_max_bytes                 = 5000;
+   vcon->guest_chase_thresh              = 10;
+   vcon->guest_chase_cond                = False;
+   vcon->arm_allow_optimizing_lookback   = True;
+   vcon->arm64_allow_reordered_writeback = True;
 }
 
 

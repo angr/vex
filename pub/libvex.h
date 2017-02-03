@@ -493,6 +493,10 @@ typedef
          current instruction pointer in order to check if there are no
          IT instructions so that it can optimize the IR? Default: YES */
       Bool arm_allow_optimizing_lookback;
+      /* Should the arm64 lifter be allowed to re-order register
+         writeback in a handful of special cases that make memcheck
+         unhappy otherwise? Default: YES */
+      Bool arm64_allow_reordered_writeback;
    }
    VexControl;
 
