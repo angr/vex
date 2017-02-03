@@ -19211,7 +19211,7 @@ DisResult disInstr_THUMB_WRK (
             insn.  So, have a look at them. */
          guaranteedUnconditional = True; /* assume no 'it' insn found,
                                             till we do */
-         UShort* hwp = (UShort*)(HWord)pc;
+         const UShort* hwp = (const UShort*) guest_instr;
          Int i;
          for (i = -1; i >= -9; i--) {
             /* We're in the same page.  (True, but commented out due
