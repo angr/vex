@@ -500,6 +500,9 @@ typedef
          writeback in a handful of special cases that make memcheck
          unhappy otherwise? Default: YES */
       Bool arm64_allow_reordered_writeback;
+      /* Whether we should lift the x86 code `call $+5; pop xxx` as
+         one instruction (True) or two (False). Default: True */
+      Bool x86_optimize_callpop_idiom;
    }
    VexControl;
 
