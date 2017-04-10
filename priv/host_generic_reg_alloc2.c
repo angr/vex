@@ -286,11 +286,58 @@ static void sortRRLRarray ( RRegLR* arr,
    respectively.  Results are undefined if the argument is zero.
    Don't pass it zero :) */
 static inline UInt ULong__maxIndex ( ULong w64 ) {
+#ifdef _MSC_VER
+   /* This implementation should be correct with 32 or 64-bit msvc compiler.
+      Ref: https://chessprogramming.wikispaces.com/BitScan */
+   const int index64[64] = {
+        0, 47,  1, 56, 48, 27,  2, 60,
+       57, 49, 41, 37, 28, 16,  3, 61,
+       54, 58, 35, 52, 50, 42, 21, 44,
+       38, 32, 29, 23, 17, 11,  4, 62,
+       46, 55, 26, 59, 40, 36, 15, 53,
+       34, 51, 20, 43, 31, 22, 10, 45,
+       25, 39, 14, 33, 19, 30,  9, 24,
+       13, 18,  8, 12,  7,  6,  5, 63
+   };
+
+   const ULong debruijn64 = 0x03f79d71b4cb0a89;
+   ULong bb = w64;
+   bb |= bb >> 1;
+   bb |= bb >> 2;
+   bb |= bb >> 4;
+   bb |= bb >> 8;
+   bb |= bb >> 16;
+   bb |= bb >> 32;
+   return index64[(bb * debruijn64) >> 58];
+#else
    return 63 - __builtin_clzll(w64);
+#endif
 }
 
 static inline UInt ULong__minIndex ( ULong w64 ) {
+#ifdef _MSC_VER
+   /* This implementation should be correct with 32 or 64-bit msvc compiler.
+      Ref: https://chessprogramming.wikispaces.com/BitScan */
+   const int lsb_64_table[64] =
+   {
+      63, 30,  3, 32, 59, 14, 11, 33,
+      60, 24, 50,  9, 55, 19, 21, 34,
+      61, 29,  2, 53, 51, 23, 41, 18,
+      56, 28,  1, 43, 46, 27,  0, 35,
+      62, 31, 58,  4,  5, 49, 54,  6,
+      15, 52, 12, 40,  7, 42, 45, 16,
+      25, 57, 48, 13, 10, 39,  8, 44,
+      20, 47, 38, 22, 17, 37, 36, 26
+   };
+
+   unsigned int folded;
+   ULong bb = w64;
+   bb ^= bb - 1;
+   folded = (int) bb ^ (bb >> 32);
+   return lsb_64_table[folded * 0x78291ACF >> 26];
+#else
    return __builtin_ctzll(w64);
+#endif
 }
 
 
