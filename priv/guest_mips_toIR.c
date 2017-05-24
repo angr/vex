@@ -13803,12 +13803,12 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
       } else {
          /* t1 = addr */
          t1 = newTemp(Ity_I32);
-#if defined (_MIPSEL)
-         assign(t1, binop(Iop_Add32, getIReg(rs), mkU32(extend_s_16to32(imm))));
-#elif defined (_MIPSEB)
-         assign(t1, binop(Iop_Xor32, mkU32(0x3), binop(Iop_Add32, getIReg(rs),
-                                     mkU32(extend_s_16to32(imm)))));
-#endif
+         if (guest_endness == Iend_LE) {
+             assign(t1, binop(Iop_Add32, getIReg(rs), mkU32(extend_s_16to32(imm))));
+         } else {
+             assign(t1, binop(Iop_Xor32, mkU32(0x3), binop(Iop_Add32, getIReg(rs),
+                                         mkU32(extend_s_16to32(imm)))));
+         }
 
          /* t2 = word addr */
          /* t4 = addr mod 4 */
