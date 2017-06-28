@@ -61,6 +61,7 @@
 #define __attribute__(x)
 #define __attribute(x)
 #define __inline__
+#define inline
 #endif
 
 #if !defined(offsetof)
