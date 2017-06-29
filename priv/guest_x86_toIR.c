@@ -14739,6 +14739,11 @@ DisResult disInstr_X86_WRK (
                              guest_EIP_bbstart+delta, "repne scas" );
          break;
 
+      case 0xC3:           /* REPNE RET, used to help out AMD cpus */
+         dis_ret(&dres, 0);
+         DIP("repne ret\n");
+         break;
+
       default:
          goto decode_failure;
       }
@@ -14810,7 +14815,7 @@ DisResult disInstr_X86_WRK (
          vassert(dres.whatNext == Dis_StopHere);
          break;
 
-      case 0xC3:           /* REP RET -- same as normal ret? */
+      case 0xC3:           /* REP RET, used to help out AMD cpus */
          dis_ret(&dres, 0);
          DIP("rep ret\n");
          break;
