@@ -43,27 +43,6 @@
 
 #define NULL ((void*)0)
 
-/* This is where we bootstrap msvc compatibility */
-#ifndef _MSC_VER /* gcc/clang/etc stuff */
-#define LIKELY(x)       __builtin_expect(!!(x), 1)
-#define UNLIKELY(x)     __builtin_expect(!!(x), 0)
-#define CAST_AS(x)      (__typeof__(x))
-
-#else /* msvc stuff */
-#define LIKELY(x)       (x)
-#define UNLIKELY(x)     (x)
-#define CAST_AS(x)
-
-#define __builtin_memset memset
-#define __builtin_memcpy memcpy
-#define __PRETTY_FUNCTION__ __FUNCDNAME__
-
-#define __attribute__(x)
-#define __attribute(x)
-#define __inline__
-#define inline
-#endif
-
 #if !defined(offsetof)
 #   define offsetof(type,memb) ((SizeT)(HWord)&((type*)0)->memb)
 #endif
