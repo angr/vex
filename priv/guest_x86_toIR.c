@@ -14740,8 +14740,35 @@ DisResult disInstr_X86_WRK (
          break;
 
       case 0xC3:           /* REPNE RET, used to help out AMD cpus */
+                           /* identical to normal RET */
          dis_ret(&dres, 0);
          DIP("repne ret\n");
+         break;
+
+      case 0x70: case 0x71: case 0x72: case 0x73:
+      case 0x74: case 0x75: case 0x76: case 0x77:
+      case 0x78: case 0x79: case 0x7A: case 0x7B:
+      case 0x7C: case 0x7D: case 0x7E: case 0x7F:
+         /* Jump instructions, same reason as RET */
+         { Int    jmpDelta;
+           jmpDelta = (Int)getSDisp8(delta);
+           vassert(-128 <= jmpDelta && jmpDelta < 128);
+           d32 = (((Addr32)guest_EIP_bbstart)+delta+1) + jmpDelta; 
+           delta++;
+           jcc_01( &dres, (X86Condcode)(abyte - 0x70), 
+                   (Addr32)(guest_EIP_bbstart+delta), d32);
+           vassert(dres.whatNext == Dis_StopHere);
+         }
+         DIP("repne j%s-8 0x%x %s\n", name_X86Condcode(abyte - 0x70), d32);
+         break;
+
+      case 0xE9: /* Jv (jump, 16/32 offset) */
+         vassert(sz == 4 || sz == 2);
+         d32 = (((Addr32)guest_EIP_bbstart)+delta+sz) + getSDisp(sz,delta); 
+         delta += sz;
+         jmp_lit(&dres, Ijk_Boring, d32);
+         vassert(dres.whatNext == Dis_StopHere);
+         DIP("repne jmp 0x%x\n", d32);
          break;
 
       default:
