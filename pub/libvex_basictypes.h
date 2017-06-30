@@ -162,7 +162,11 @@ typedef Addr64 Addr;
    it is 32 bits on a 32-bit host and 64 bits on a 64-bit host, and so
    it can safely be coerced to and from a pointer type on the host
    machine. */
+#ifdef _WIN64
+typedef  unsigned long long HWord;
+#else
 typedef  unsigned long HWord;
+#endif
 
 /* Set up VEX_HOST_WORDSIZE and VEX_REGPARM. */
 #undef VEX_HOST_WORDSIZE
