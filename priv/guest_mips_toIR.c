@@ -1006,7 +1006,6 @@ static ULong extend_s_32to64 ( UInt x )
 
 static void jmp_lit32 ( /*MOD*/ DisResult* dres, IRJumpKind kind, Addr32 d32 )
 {
-   vassert(dres->whatNext    == Dis_Continue);
    vassert(dres->len         == 0);
    vassert(dres->continueAt  == 0);
    vassert(dres->jk_StopHere == Ijk_INVALID);
@@ -1017,7 +1016,6 @@ static void jmp_lit32 ( /*MOD*/ DisResult* dres, IRJumpKind kind, Addr32 d32 )
 
 static void jmp_lit64 ( /*MOD*/ DisResult* dres, IRJumpKind kind, Addr64 d64 )
 {
-   vassert(dres->whatNext    == Dis_Continue);
    vassert(dres->len         == 0);
    vassert(dres->continueAt  == 0);
    vassert(dres->jk_StopHere == Ijk_INVALID);
