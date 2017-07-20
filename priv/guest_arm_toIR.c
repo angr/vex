@@ -20030,6 +20030,10 @@ DisResult disInstr_THUMB_WRK (
                         Ijk_Boring,
                         IRConst_U32(toUInt(dst)),
                         OFFB_R15T ));
+      llPutIReg(15, mkU32( (guest_R15_curr_instr_notENC + 2) 
+                          | 1 /*CPSR.T*/ ));
+      dres.jk_StopHere = Ijk_Boring;
+      dres.whatNext    = Dis_StopHere;
       DIP("cb%s r%u, 0x%x\n", bOP ? "nz" : "z", rN, dst - 1);
       goto decode_success;
    }
