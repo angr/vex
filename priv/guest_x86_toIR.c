@@ -14759,7 +14759,7 @@ DisResult disInstr_X86_WRK (
                    (Addr32)(guest_EIP_bbstart+delta), d32);
            vassert(dres.whatNext == Dis_StopHere);
          }
-         DIP("repne j%s-8 0x%x %s\n", name_X86Condcode(abyte - 0x70), d32);
+         DIP("repne j%s-8 0x%x\n", name_X86Condcode(abyte - 0x70), d32);
          break;
 
       case 0xE9: /* Jv (jump, 16/32 offset) */
