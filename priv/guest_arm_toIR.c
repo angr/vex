@@ -21798,7 +21798,11 @@ DisResult disInstr_THUMB_WRK (
                vassert(rT == 15);
                vassert(condT == IRTemp_INVALID); /* due to check above */
                llPutIReg(15, mkexpr(newRt));
-               dres.jk_StopHere = Ijk_Boring;  /* or _Ret ? */
+               if (rN==13 && imm8 == 4) {
+                  dres.jk_StopHere = Ijk_Ret;     /* LDR PC, [SP],#4 is used as ret */
+               } else {
+                  dres.jk_StopHere = Ijk_Boring;  /* or _Ret ? */
+               }
                dres.whatNext    = Dis_StopHere;
             }
          }
