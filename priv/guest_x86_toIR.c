@@ -1532,10 +1532,18 @@ IRExpr* handleSegOverride ( UChar sorb, IRExpr* virtual )
    The computed address is stored in a new tempreg, and the
    identity of the tempreg is returned.  */
 
-static IRTemp disAMode_copy2tmp ( IRExpr* addr32 )
+static IRTemp disAMode_copy2tmp ( IRExpr* addr )
 {
    IRTemp tmp = newTemp(Ity_I32);
-   assign( tmp, addr32 );
+   IRTemp halfsize_tmp = IRTemp_INVALID;
+
+   if (current_sz_addr == 4) {
+      assign( tmp, addr );
+   } else {
+      halfsize_tmp = newTemp(Ity_I16);
+      assign(halfsize_tmp, addr);
+      assign(tmp, unop(Iop_16Uto32, mkexpr(halfsize_tmp)));
+   }
    return tmp;
 }
 
