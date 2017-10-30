@@ -15583,9 +15583,9 @@ DisResult disInstr_X86_WRK (
       case 0x8F: /* JGb/JNLEb (jump greater) */
        { Int    jmpDelta;
          const HChar* comment  = "";
-         jmpDelta = (Int)getUDisp32(delta);
-         d32 = (((Addr32)guest_EIP_bbstart)+delta+4) + jmpDelta;
-         delta += 4;
+         jmpDelta = (Int)getUDisp(current_sz_data, delta);
+         d32 = (((Addr32)guest_EIP_bbstart)+delta+current_sz_data) + jmpDelta;
+         delta += current_sz_data;
          if (resteerCisOk
              && vex_control.guest_chase_cond
              && (Addr32)d32 != (Addr32)guest_EIP_bbstart
