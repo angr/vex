@@ -419,6 +419,9 @@ IRSB* bb_to_IR (
 
       /* If we've gone over the maximum lift size, roll back and abort */
       if (tmpsize > vex_control.guest_max_bytes) {
+         if (n_instrs == 0) {
+           vpanic("Not enough bytes given to decode even a single instruction");
+         }
          irsb->stmts_used = first_stmt_idx;
          /* first_stmt_idx is never read from again except to sanity check,
             so it's safe to set a fake value here */
