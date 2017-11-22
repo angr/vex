@@ -21403,7 +21403,7 @@ Long dis_ESC_NONE (
    case 0xFA:
    case 0xFB: /* CLI / STI */
       /* We treat them as NOP */
-      return ++delta;
+      return delta;
    case 0xF4: /* hlt */
       ++delta;
       jmp_lit(dres, Ijk_SigTRAP, guest_RIP_bbstart + delta);
