@@ -15256,6 +15256,17 @@ DisResult disInstr_X86_WRK (
       case 0xCE:
       case 0xCF: /* BSWAP %edi */
          /* AFAICS from the Intel docs, this only exists at size 4. */
+
+         /* however, we are in the business of emulating stuff, and an
+          * emulator has no business crashing when it sees an "undefined"
+          * instruction. My CPU just clears the lowest two bytes of the
+          * register so let's implement that. */
+         if (sz == 2) {
+            putIReg(2, opc-0xC8, mkU16(0));
+            DIP("bswapw %s (UNDEFINED)\n", nameIReg(2, opc-0xC8));
+            break;
+         }
+
          if (sz != 4) goto decode_failure;
          
          t1 = newTemp(Ity_I32);

@@ -22389,6 +22389,15 @@ Long dis_ESC_0F (
          DIP("bswapq %s\n", nameIRegRexB(8, pfx, opc-0xC8));
          return delta;
       }
+      /* however, we are in the business of emulating stuff, and an
+       * emulator has no business crashing when it sees an "undefined"
+       * instruction. My CPU just clears the lowest two bytes of the
+       * register so let's implement that. */
+      if (sz == 2) {
+         putIRegRexB(2, pfx, opc-0xC8, mkU16(0));
+         DIP("bswapw %s (UNDEFINED)\n", nameIRegRexB(2, pfx, opc-0xC8));
+         return delta;
+      }
       goto decode_failure;
 
    default:
