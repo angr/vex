@@ -1445,17 +1445,14 @@ const HChar* sorbTxt ( UChar sorb )
 static
 IRExpr* handleSegOverrideAux ( IRTemp seg_selector, IRExpr* virtual )
 {
-   IRType hWordTy;
    IRTemp ldt_ptr, gdt_ptr, r64;
 
-   hWordTy = sizeof(HWord)==4 ? Ity_I32 : Ity_I64;
-
-   ldt_ptr      = newTemp(hWordTy);
-   gdt_ptr      = newTemp(hWordTy);
+   ldt_ptr      = newTemp(Ity_I64);
+   gdt_ptr      = newTemp(Ity_I64);
    r64          = newTemp(Ity_I64);
 
-   assign( ldt_ptr, IRExpr_Get( OFFB_LDT, hWordTy ));
-   assign( gdt_ptr, IRExpr_Get( OFFB_GDT, hWordTy ));
+   assign( ldt_ptr, IRExpr_Get( OFFB_LDT, Ity_I64 ));
+   assign( gdt_ptr, IRExpr_Get( OFFB_GDT, Ity_I64 ));
 
    /*
    Call this to do the translation and limit checks: 
