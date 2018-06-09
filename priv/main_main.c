@@ -191,16 +191,17 @@ void LibVEX_default_VexControl ( /*OUT*/ VexControl* vcon )
 {
    vex_bzero(vcon, sizeof(*vcon));
    vcon->iropt_verbosity                 = 0;
-   vcon->iropt_level                     = 2;
+   vcon->iropt_level                     = 0;    // No optimization by default
    vcon->iropt_register_updates_default  = VexRegUpdUnwindregsAtMemAccess;
-   vcon->iropt_unroll_thresh             = 120;
-   vcon->guest_max_insns                 = 60;
+   vcon->iropt_unroll_thresh             = 0;
+   vcon->guest_max_insns                 = 1;    // By default, we vex 1 instruction at a time
    vcon->guest_max_bytes                 = 5000;
-   vcon->guest_chase_thresh              = 10;
+   vcon->guest_chase_thresh              = 0;
    vcon->guest_chase_cond                = False;
+   vcon->arm_strict_block_end            = True;
    vcon->arm_allow_optimizing_lookback   = True;
-   vcon->arm64_allow_reordered_writeback = True;
-   vcon->x86_optimize_callpop_idiom      = True;
+   vcon->arm64_allow_reordered_writeback = False;
+   vcon->x86_optimize_callpop_idiom      = False;
 }
 
 
@@ -308,6 +309,14 @@ void LibVEX_Update_Control(const VexControl *vcon)
    vassert(vcon->guest_chase_thresh < vcon->guest_max_insns);
    vassert(vcon->guest_chase_cond == True
            || vcon->guest_chase_cond == False);
+   vassert(vcon->arm_strict_block_end  == True
+           || vcon->arm_strict_block_end  == False);
+   vassert(vcon->arm_allow_optimizing_lookback  == True
+           || vcon->arm_allow_optimizing_lookback  == False);
+   vassert(vcon->arm64_allow_reordered_writeback  == True
+           || vcon->arm64_allow_reordered_writeback  == False);
+   vassert(vcon->x86_optimize_callpop_idiom  == True
+           || vcon->x86_optimize_callpop_idiom  == False);
 
    vex_control            = *vcon;
 }
