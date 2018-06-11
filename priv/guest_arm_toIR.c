@@ -20031,7 +20031,7 @@ DisResult disInstr_THUMB_WRK (
                         IRConst_U32(toUInt(dst)),
                         OFFB_R15T ));
       if (vex_control.arm_strict_block_end){
-	  llPutIReg(15, mkU32( (guest_R15_curr_instr_notENC + 2) 
+	  llPutIReg(15, mkU32( (guest_R15_curr_instr_notENC + 2)
 			        | 1 /*CPSR.T*/ ));
           dres.jk_StopHere = Ijk_Boring;
           dres.whatNext    = Dis_StopHere;
