@@ -40,12 +40,6 @@ else
 CFLAGS += -O2
 endif
 
-# gcc requires -malign-double to compile consistently
-# old versions of clang error when given this flag
-ifneq ($(shell $(CC) 2>&1 | grep -o clang),clang)
-CFLAGS += -malign-double
-endif
-
 # These are a separate set of defines that compile for parallel environments
 #CC = icc
 #CFLAGS = -g -Wall -wd981 -wd279 -wd1287 -wd869 -wd111 -wd188 -wd186
