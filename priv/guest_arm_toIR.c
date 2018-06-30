@@ -14253,7 +14253,7 @@ static void mk_ldm_stm ( Bool arm,     /* True: ARM, False: Thumb */
    }
 
    /* IDA believes instructions like LDMDB R11, {R4-R7,R11,SP,PC} are rets. */
-   if (rN == 11 && bL == 1 && xReg[0] == 15) {
+   if (rN == 11 && bL == 1 && !bINC && bBEFORE && xReg[0] == 15) {
       jk = Ijk_Ret;
    }
 
