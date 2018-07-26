@@ -13474,6 +13474,9 @@ DisResult disInstr_X86_WRK (
                IRConst_U32(d32),
                OFFB_EIP
             ));
+       if (vex_control.strict_block_end) {
+          jmp_lit(&dres, Ijk_Boring, ((Addr32)guest_EIP_bbstart)+delta);
+       }
        DIP("jcxz 0x%x\n", d32);
        goto decode_success;
    }
@@ -13996,6 +13999,9 @@ DisResult disInstr_X86_WRK (
             IRConst_U32(d32),
             OFFB_EIP
           ));
+      if (vex_control.strict_block_end) {
+         jmp_lit(&dres, Ijk_Boring, ((Addr32)guest_EIP_bbstart)+delta);
+      }
       DIP("jecxz 0x%x\n", d32);
       break;
 
@@ -14036,6 +14042,10 @@ DisResult disInstr_X86_WRK (
 	    vassert(0);
       }
       stmt( IRStmt_Exit(cond, Ijk_Boring, IRConst_U32(d32), OFFB_EIP) );
+
+      if (vex_control.strict_block_end) {
+         jmp_lit(&dres, Ijk_Boring, ((Addr32)guest_EIP_bbstart)+delta);
+      }
 
       DIP("loop%s 0x%x\n", xtra, d32);
       break;
