@@ -378,6 +378,11 @@ IRSB *LibVEX_Lift (  VexTranslateArgs *vta,
 
    vex_traceflags = vta->traceflags;
 
+   /* KLUDGE: export hwcaps. */
+   if (vta->arch_host == VexArchS390X) {
+      s390_host_hwcaps = vta->archinfo_host.hwcaps;
+   }
+
    /* First off, check that the guest and host insn sets
       are supported. */
 
@@ -963,8 +968,6 @@ void LibVEX_Codegen (   VexTranslateArgs *vta,
 
       case VexArchS390X:
          mode64       = True;
-         /* KLUDGE: export hwcaps. */
-         s390_host_hwcaps = vta->archinfo_host.hwcaps;
          rRegUniv     = S390FN(getRRegUniverse_S390());
          isMove       = CAST_AS(isMove) S390FN(isMove_S390Instr);
          getRegUsage  
