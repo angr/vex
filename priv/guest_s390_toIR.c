@@ -16870,9 +16870,6 @@ disInstr_S390(IRSB        *irsb_IN,
 {
    vassert(guest_arch == VexArchS390X);
 
-   /* The instruction decoder requires a big-endian machine. */
-   vassert(host_endness == VexEndnessBE);
-
    /* Set globals (see top of this file) */
    guest_IA_curr_instr = guest_IP;
    irsb = irsb_IN;
