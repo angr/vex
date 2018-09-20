@@ -2087,9 +2087,11 @@ static void check_hwcaps ( VexArch arch, UInt hwcaps )
          return;
 
       case VexArchS390X:
+#if defined(__s390x__)
          if (! s390_host_has_ldisp)
             invalid_hwcaps(arch, hwcaps,
                            "Host does not have long displacement facility.\n");
+#endif
          return;
 
       case VexArchMIPS32:
