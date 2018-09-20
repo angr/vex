@@ -14213,8 +14213,13 @@ s390_decode_2byte_and_irgen(const UChar *bytes)
 
    vassert(sizeof(formats) == 2);
 
+#if defined(VG_BIGENDIAN)
    ((UChar *)(&ovl.value))[0] = bytes[0];
    ((UChar *)(&ovl.value))[1] = bytes[1];
+#else
+   ((UChar *)(&ovl.value))[0] = bytes[1];
+   ((UChar *)(&ovl.value))[1] = bytes[0];
+#endif
 
    switch (ovl.value & 0xffff) {
    case 0x0101: /* PR */ goto unimplemented;
@@ -14419,10 +14424,17 @@ s390_decode_4byte_and_irgen(const UChar *bytes)
 
    vassert(sizeof(formats) == 4);
 
+#if defined(VG_BIGENDIAN)
    ((UChar *)(&ovl.value))[0] = bytes[0];
    ((UChar *)(&ovl.value))[1] = bytes[1];
    ((UChar *)(&ovl.value))[2] = bytes[2];
    ((UChar *)(&ovl.value))[3] = bytes[3];
+#else
+   ((UChar *)(&ovl.value))[0] = bytes[3];
+   ((UChar *)(&ovl.value))[1] = bytes[2];
+   ((UChar *)(&ovl.value))[2] = bytes[1];
+   ((UChar *)(&ovl.value))[3] = bytes[0];
+#endif
 
    switch ((ovl.value & 0xff0f0000) >> 16) {
    case 0xa500: s390_format_RI_RU(s390_irgen_IIHH, ovl.fmt.RI.r1,
@@ -15566,6 +15578,7 @@ s390_decode_6byte_and_irgen(const UChar *bytes)
 
    vassert(sizeof(formats) == 6);
 
+#if defined(VG_BIGENDIAN)
    ((UChar *)(&ovl.value))[0] = bytes[0];
    ((UChar *)(&ovl.value))[1] = bytes[1];
    ((UChar *)(&ovl.value))[2] = bytes[2];
@@ -15574,6 +15587,16 @@ s390_decode_6byte_and_irgen(const UChar *bytes)
    ((UChar *)(&ovl.value))[5] = bytes[5];
    ((UChar *)(&ovl.value))[6] = 0x0;
    ((UChar *)(&ovl.value))[7] = 0x0;
+#else
+   ((UChar *)(&ovl.value))[0] = 0x0;
+   ((UChar *)(&ovl.value))[1] = 0x0;
+   ((UChar *)(&ovl.value))[2] = bytes[5];
+   ((UChar *)(&ovl.value))[3] = bytes[4];
+   ((UChar *)(&ovl.value))[4] = bytes[3];
+   ((UChar *)(&ovl.value))[5] = bytes[2];
+   ((UChar *)(&ovl.value))[6] = bytes[1];
+   ((UChar *)(&ovl.value))[7] = bytes[0];
+#endif
 
    switch ((ovl.value >> 16) & 0xff00000000ffULL) {
    case 0xe30000000002ULL: s390_format_RXY_RRRD(s390_irgen_LTG, ovl.fmt.RXY.r1,
