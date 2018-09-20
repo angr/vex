@@ -48,7 +48,7 @@
 /*------------------------------------------------------------*/
 /*--- Forward declarations                                 ---*/
 /*------------------------------------------------------------*/
-static UInt s390_decode_and_irgen(const UChar *, UInt, DisResult *);
+static UInt s390_decode_and_irgen(const UChar *, UInt, DisResult *, VexEndness);
 static void s390_irgen_xonc(IROp, IRTemp, IRTemp, IRTemp);
 static void s390_irgen_CLC_EX(IRTemp, IRTemp, IRTemp);
 
@@ -11091,7 +11091,7 @@ s390_irgen_EX_SS(UChar r, IRTemp addr2,
 }
 
 static const HChar *
-s390_irgen_EX(UChar r1, IRTemp addr2)
+s390_irgen_EX(UChar r1, IRTemp addr2, VexEndness host_endness)
 {
    switch(last_execute_target & 0xff00000000000000ULL) {
    case 0:
@@ -11190,7 +11190,7 @@ s390_irgen_EX(UChar r1, IRTemp addr2)
       /* Now comes the actual translation */
       bytes = (UChar *) &last_execute_target;
       s390_decode_and_irgen(bytes, ((((bytes[0] >> 6) + 1) >> 1) + 1) << 1,
-                            dis_res);
+                            dis_res, host_endness);
       if (UNLIKELY(vex_traceflags & VEX_TRACE_FE))
          vex_printf("    which was executed by\n");
       /* dont make useless translations in the next execute */
@@ -11201,7 +11201,19 @@ s390_irgen_EX(UChar r1, IRTemp addr2)
 }
 
 static const HChar *
-s390_irgen_EXRL(UChar r1, UInt offset)
+s390_irgen_EX_BE(UChar r1, IRTemp addr2)
+{
+  return s390_irgen_EX(r1, addr2, VexEndnessBE);
+}
+
+static const HChar *
+s390_irgen_EX_LE(UChar r1, IRTemp addr2)
+{
+  return s390_irgen_EX(r1, addr2, VexEndnessLE);
+}
+
+static const HChar *
+s390_irgen_EXRL(UChar r1, UInt offset, VexEndness host_endness)
 {
    IRTemp addr = newTemp(Ity_I64);
    /* we might save one round trip because we know the target */
@@ -11209,8 +11221,20 @@ s390_irgen_EXRL(UChar r1, UInt offset)
       last_execute_target = *(ULong *)(HWord)
                              (guest_IA_curr_instr + offset * 2UL);
    assign(addr, mkU64(guest_IA_curr_instr + offset * 2UL));
-   s390_irgen_EX(r1, addr);
+   s390_irgen_EX(r1, addr, host_endness);
    return "exrl";
+}
+
+static const HChar *
+s390_irgen_EXRL_BE(UChar r1, UInt offset)
+{
+  return s390_irgen_EXRL(r1, offset, VexEndnessBE);
+}
+
+static const HChar *
+s390_irgen_EXRL_LE(UChar r1, UInt offset)
+{
+  return s390_irgen_EXRL(r1, offset, VexEndnessLE);
 }
 
 static const HChar *
@@ -14190,7 +14214,7 @@ s390_irgen_call_noredir(void)
 
 
 static s390_decode_t
-s390_decode_2byte_and_irgen(const UChar *bytes)
+s390_decode_2byte_and_irgen(const UChar *bytes, VexEndness host_endness)
 {
    typedef union {
       struct {
@@ -14213,8 +14237,13 @@ s390_decode_2byte_and_irgen(const UChar *bytes)
 
    vassert(sizeof(formats) == 2);
 
-   ((UChar *)(&ovl.value))[0] = bytes[0];
-   ((UChar *)(&ovl.value))[1] = bytes[1];
+   if (host_endness == VexEndnessBE) {
+      ((UChar *)(&ovl.value))[0] = bytes[0];
+      ((UChar *)(&ovl.value))[1] = bytes[1];
+   } else {
+      ((UChar *)(&ovl.value))[0] = bytes[1];
+      ((UChar *)(&ovl.value))[1] = bytes[0];
+   }
 
    switch (ovl.value & 0xffff) {
    case 0x0101: /* PR */ goto unimplemented;
@@ -14323,7 +14352,7 @@ unimplemented:
 }
 
 static s390_decode_t
-s390_decode_4byte_and_irgen(const UChar *bytes)
+s390_decode_4byte_and_irgen(const UChar *bytes, VexEndness host_endness)
 {
    typedef union {
       struct {
@@ -14419,10 +14448,17 @@ s390_decode_4byte_and_irgen(const UChar *bytes)
 
    vassert(sizeof(formats) == 4);
 
-   ((UChar *)(&ovl.value))[0] = bytes[0];
-   ((UChar *)(&ovl.value))[1] = bytes[1];
-   ((UChar *)(&ovl.value))[2] = bytes[2];
-   ((UChar *)(&ovl.value))[3] = bytes[3];
+   if (host_endness == VexEndnessBE) {
+      ((UChar *)(&ovl.value))[0] = bytes[0];
+      ((UChar *)(&ovl.value))[1] = bytes[1];
+      ((UChar *)(&ovl.value))[2] = bytes[2];
+      ((UChar *)(&ovl.value))[3] = bytes[3];
+   } else {
+      ((UChar *)(&ovl.value))[0] = bytes[3];
+      ((UChar *)(&ovl.value))[1] = bytes[2];
+      ((UChar *)(&ovl.value))[2] = bytes[1];
+      ((UChar *)(&ovl.value))[3] = bytes[0];
+   }
 
    switch ((ovl.value & 0xff0f0000) >> 16) {
    case 0xa500: s390_format_RI_RU(s390_irgen_IIHH, ovl.fmt.RI.r1,
@@ -15228,7 +15264,7 @@ s390_decode_4byte_and_irgen(const UChar *bytes)
                                   ovl.fmt.RX.b2, ovl.fmt.RX.d2);  goto ok;
    case 0x43: s390_format_RX_RRRD(s390_irgen_IC, ovl.fmt.RX.r1, ovl.fmt.RX.x2,
                                   ovl.fmt.RX.b2, ovl.fmt.RX.d2);  goto ok;
-   case 0x44: s390_format_RX_RRRD(s390_irgen_EX, ovl.fmt.RX.r1, ovl.fmt.RX.x2,
+   case 0x44: s390_format_RX_RRRD(host_endness == VexEndnessBE ? s390_irgen_EX_BE : s390_irgen_EX_LE, ovl.fmt.RX.r1, ovl.fmt.RX.x2,
                                   ovl.fmt.RX.b2, ovl.fmt.RX.d2);  goto ok;
    case 0x45: /* BAL */ goto unimplemented;
    case 0x46: s390_format_RX_RRRD(s390_irgen_BCT, ovl.fmt.RX.r1, ovl.fmt.RX.x2,
@@ -15385,7 +15421,7 @@ unimplemented:
 }
 
 static s390_decode_t
-s390_decode_6byte_and_irgen(const UChar *bytes)
+s390_decode_6byte_and_irgen(const UChar *bytes, VexEndness host_endness)
 {
    typedef union {
       struct {
@@ -15566,14 +15602,25 @@ s390_decode_6byte_and_irgen(const UChar *bytes)
 
    vassert(sizeof(formats) == 6);
 
-   ((UChar *)(&ovl.value))[0] = bytes[0];
-   ((UChar *)(&ovl.value))[1] = bytes[1];
-   ((UChar *)(&ovl.value))[2] = bytes[2];
-   ((UChar *)(&ovl.value))[3] = bytes[3];
-   ((UChar *)(&ovl.value))[4] = bytes[4];
-   ((UChar *)(&ovl.value))[5] = bytes[5];
-   ((UChar *)(&ovl.value))[6] = 0x0;
-   ((UChar *)(&ovl.value))[7] = 0x0;
+   if (host_endness == VexEndnessBE) {
+      ((UChar *)(&ovl.value))[0] = bytes[0];
+      ((UChar *)(&ovl.value))[1] = bytes[1];
+      ((UChar *)(&ovl.value))[2] = bytes[2];
+      ((UChar *)(&ovl.value))[3] = bytes[3];
+      ((UChar *)(&ovl.value))[4] = bytes[4];
+      ((UChar *)(&ovl.value))[5] = bytes[5];
+      ((UChar *)(&ovl.value))[6] = 0x0;
+      ((UChar *)(&ovl.value))[7] = 0x0;
+   } else {
+      ((UChar *)(&ovl.value))[0] = 0x0;
+      ((UChar *)(&ovl.value))[1] = 0x0;
+      ((UChar *)(&ovl.value))[2] = bytes[5];
+      ((UChar *)(&ovl.value))[3] = bytes[4];
+      ((UChar *)(&ovl.value))[4] = bytes[3];
+      ((UChar *)(&ovl.value))[5] = bytes[2];
+      ((UChar *)(&ovl.value))[6] = bytes[1];
+      ((UChar *)(&ovl.value))[7] = bytes[0];
+   }
 
    switch ((ovl.value >> 16) & 0xff00000000ffULL) {
    case 0xe30000000002ULL: s390_format_RXY_RRRD(s390_irgen_LTG, ovl.fmt.RXY.r1,
@@ -16527,7 +16574,7 @@ s390_decode_6byte_and_irgen(const UChar *bytes)
                                       ovl.fmt.RIL.i2);  goto ok;
    case 0xc40fULL: s390_format_RIL_RP(s390_irgen_STRL, ovl.fmt.RIL.r1,
                                       ovl.fmt.RIL.i2);  goto ok;
-   case 0xc600ULL: s390_format_RIL_RP(s390_irgen_EXRL, ovl.fmt.RIL.r1,
+   case 0xc600ULL: s390_format_RIL_RP(host_endness == VexEndnessBE ? s390_irgen_EXRL_BE : s390_irgen_EXRL_LE, ovl.fmt.RIL.r1,
                                       ovl.fmt.RIL.i2);  goto ok;
    case 0xc602ULL: s390_format_RIL_UP(s390_irgen_PFDRL, ovl.fmt.RIL.r1,
                                       ovl.fmt.RIL.i2);  goto ok;
@@ -16715,7 +16762,7 @@ s390_decode_special_and_irgen(const UChar *bytes)
 
 /* Function returns # bytes that were decoded or 0 in case of failure */
 static UInt
-s390_decode_and_irgen(const UChar *bytes, UInt insn_length, DisResult *dres)
+s390_decode_and_irgen(const UChar *bytes, UInt insn_length, DisResult *dres, VexEndness host_endness)
 {
    s390_decode_t status;
 
@@ -16741,15 +16788,15 @@ s390_decode_and_irgen(const UChar *bytes, UInt insn_length, DisResult *dres)
       /* Handle normal instructions. */
       switch (insn_length) {
       case 2:
-         status = s390_decode_2byte_and_irgen(bytes);
+         status = s390_decode_2byte_and_irgen(bytes, host_endness);
          break;
 
       case 4:
-         status = s390_decode_4byte_and_irgen(bytes);
+         status = s390_decode_4byte_and_irgen(bytes, host_endness);
          break;
 
       case 6:
-         status = s390_decode_6byte_and_irgen(bytes);
+         status = s390_decode_6byte_and_irgen(bytes, host_endness);
          break;
 
       default:
@@ -16806,7 +16853,7 @@ s390_decode_and_irgen(const UChar *bytes, UInt insn_length, DisResult *dres)
 
 /* Disassemble a single instruction INSN into IR. */
 static DisResult
-disInstr_S390_WRK(const UChar *insn)
+disInstr_S390_WRK(const UChar *insn, VexEndness host_endness)
 {
    UChar byte;
    UInt  insn_length;
@@ -16836,7 +16883,7 @@ disInstr_S390_WRK(const UChar *insn)
    /* fixs390: consider chasing of conditional jumps */
 
    /* Normal and special instruction handling starts here. */
-   if (s390_decode_and_irgen(insn, insn_length, &dres) == 0) {
+   if (s390_decode_and_irgen(insn, insn_length, &dres, host_endness) == 0) {
       /* All decode failures end up here. The decoder has already issued an
          error message.
          Tell the dispatcher that this insn cannot be decoded, and so has
@@ -16911,7 +16958,7 @@ disInstr_S390(IRSB        *irsb_IN,
    resteer_data = callback_opaque;
    sigill_diag = sigill_diag_IN;
 
-   return disInstr_S390_WRK(guest_code + delta);
+   return disInstr_S390_WRK(guest_code + delta, host_endness);
 }
 
 /*---------------------------------------------------------------*/
