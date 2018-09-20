@@ -11268,18 +11268,6 @@ s390_irgen_EX_SS(UChar r, IRTemp addr2,
                  void (*irgen)(IRTemp length, IRTemp start1, IRTemp start2),
                  UInt lensize)
 {
-   struct SS {
-      unsigned int op :  8;
-      unsigned int l  :  8;
-      unsigned int b1 :  4;
-      unsigned int d1 : 12;
-      unsigned int b2 :  4;
-      unsigned int d2 : 12;
-   };
-   union {
-      struct SS dec;
-      unsigned long bytes;
-   } ss;
    IRTemp cond;
    IRDirty *d;
    IRTemp torun;
@@ -11305,13 +11293,12 @@ s390_irgen_EX_SS(UChar r, IRTemp addr2,
    stmt(IRStmt_Put(S390X_GUEST_OFFSET(guest_CMLEN), mkU64(4)));
    restart_if(mkexpr(cond));
 
-   ss.bytes = last_execute_target;
-   assign(start1, binop(Iop_Add64, mkU64(ss.dec.d1),
-          ss.dec.b1 != 0 ? get_gpr_dw0(ss.dec.b1) : mkU64(0)));
-   assign(start2, binop(Iop_Add64, mkU64(ss.dec.d2),
-          ss.dec.b2 != 0 ? get_gpr_dw0(ss.dec.b2) : mkU64(0)));
+   assign(start1, binop(Iop_Add64, mkU64(SS_d1(last_execute_target)),
+          SS_b1(last_execute_target) != 0 ? get_gpr_dw0(SS_b1(last_execute_target)) : mkU64(0)));
+   assign(start2, binop(Iop_Add64, mkU64(SS_d2(last_execute_target)),
+          SS_b2(last_execute_target) != 0 ? get_gpr_dw0(SS_b2(last_execute_target)) : mkU64(0)));
    assign(len, unop(lensize == 64 ? Iop_8Uto64 : Iop_8Uto32, binop(Iop_Or8,
-          r != 0 ? get_gpr_b7(r): mkU8(0), mkU8(ss.dec.l))));
+          r != 0 ? get_gpr_b7(r): mkU8(0), mkU8(SS_l(last_execute_target)))));
    irgen(len, start1, start2);
 
    last_execute_target = 0;
