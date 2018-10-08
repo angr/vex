@@ -21405,7 +21405,6 @@ Long dis_ESC_NONE (
       /* We treat them as NOP */
       return delta;
    case 0xF4: /* hlt */
-      ++delta;
       jmp_lit(dres, Ijk_SigTRAP, guest_RIP_bbstart + delta);
       vassert(dres->whatNext == Dis_StopHere);
       DIP("hlt\n");
