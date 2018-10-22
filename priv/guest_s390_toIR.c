@@ -11426,14 +11426,29 @@ s390_irgen_EX_LE(UChar r1, IRTemp addr2)
   return s390_irgen_EX(r1, addr2, VexEndnessLE);
 }
 
+static const UChar *exrl_bytes;
+
 static const HChar *
 s390_irgen_EXRL(UChar r1, UInt offset, VexEndness host_endness)
 {
+   const UChar *exrl_target;
    IRTemp addr = newTemp(Ity_I64);
    /* we might save one round trip because we know the target */
-   if (!last_execute_target)
-      last_execute_target = *(ULong *)(HWord)
-                             (guest_IA_curr_instr + offset * 2UL);
+   if (!last_execute_target) {
+      exrl_target = exrl_bytes + offset * 2UL;
+      if (host_endness == VexEndnessBE)
+        last_execute_target = *(ULong *)exrl_target;
+      else {
+        ((UChar *)&last_execute_target)[0] = exrl_target[7];
+        ((UChar *)&last_execute_target)[1] = exrl_target[6];
+        ((UChar *)&last_execute_target)[2] = exrl_target[5];
+        ((UChar *)&last_execute_target)[3] = exrl_target[4];
+        ((UChar *)&last_execute_target)[4] = exrl_target[3];
+        ((UChar *)&last_execute_target)[5] = exrl_target[2];
+        ((UChar *)&last_execute_target)[6] = exrl_target[1];
+        ((UChar *)&last_execute_target)[7] = exrl_target[0];
+      }
+   }
    assign(addr, mkU64(guest_IA_curr_instr + offset * 2UL));
    s390_irgen_EX(r1, addr, host_endness);
    return "exrl";
@@ -16496,7 +16511,8 @@ s390_decode_6byte_and_irgen(const UChar *bytes, VexEndness host_endness)
                                       RIL_i2(ovl));  goto ok;
    case 0xc40fULL: s390_format_RIL_RP(s390_irgen_STRL, RIL_r1(ovl),
                                       RIL_i2(ovl));  goto ok;
-   case 0xc600ULL: s390_format_RIL_RP(host_endness == VexEndnessBE ? s390_irgen_EXRL_BE : s390_irgen_EXRL_LE, RIL_r1(ovl),
+   case 0xc600ULL: exrl_bytes = bytes;
+                   s390_format_RIL_RP(host_endness == VexEndnessBE ? s390_irgen_EXRL_BE : s390_irgen_EXRL_LE, RIL_r1(ovl),
                                       RIL_i2(ovl));  goto ok;
    case 0xc602ULL: s390_format_RIL_UP(s390_irgen_PFDRL, RIL_r1(ovl),
                                       RIL_i2(ovl));  goto ok;
