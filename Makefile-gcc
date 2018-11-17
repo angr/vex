@@ -69,12 +69,12 @@ pub/libvex_guest_offsets.h: $(PUB_HEADERS) auxprogs/genoffsets.c
 %.o: %.c $(ALL_HEADERS)
 	$(CC) -c -o $@ $(CFLAGS) $<
 
-$(STATIC_LIBRARY_FILE): $(LIB_OBJS)
+$(STATIC_LIBRARY_FILE): $(LIB_OBJS) priv/main_main.c
 	$(RM) $@
-	$(AR) -crs $@ $^
+	$(AR) -crs $@ $(LIB_OBJS)
 
-$(DYNAMIC_LIBRARY_FILE): $(LIB_OBJS)
-	$(CC) -o $@ -shared $(CFLAGS) $^
+$(DYNAMIC_LIBRARY_FILE): $(LIB_OBJS) priv/main_main.c
+	$(CC) -o $@ -shared $(CFLAGS) $(LIB_OBJS)
 
 
 
