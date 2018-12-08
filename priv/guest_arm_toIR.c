@@ -20387,8 +20387,13 @@ DisResult disInstr_THUMB_WRK (
       /* rD = align4(PC) + imm8 * 4 */
       UInt rD   = INSN0(10,8);
       UInt imm8 = INSN0(7,0);
+      /* EDG says: Per the ARM Docs, PC-rel instructions need a +4 here! */
       putIRegT(rD, binop(Iop_Add32, 
-                         binop(Iop_And32, getIRegT(15), mkU32(~3U)),
+                         binop(Iop_And32, 
+				 binop(Iop_Add32, 
+					 getIRegT(15), 
+					 mkU32(4U)), 
+				 mkU32(~3U)),
                          mkU32(imm8 * 4)),
                    condT);
       DIP("add r%u, pc, #%u\n", rD, imm8 * 4);
