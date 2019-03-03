@@ -14256,6 +14256,18 @@ static void mk_ldm_stm ( Bool arm,     /* True: ARM, False: Thumb */
    if (rN == 11 && bL == 1 && !bINC && bBEFORE && xReg[0] == 15) {
       jk = Ijk_Ret;
    }
+   /* IDA believes instructions like LDMFD SP, {R11, SP, PC} are rets. */
+   /* SP is R13 */
+   if (rN == 13 && bL == 1 && bINC && !bBEFORE) {
+      int bHasSP = 0, bHasPC = 0;
+      for (i = 0; i < nX; ++i) {
+          if (xReg[i] == 13) bHasSP = 1;
+          else if (xReg[i] == 15) bHasPC = 1;
+      }
+      if (bHasSP && bHasPC) {
+          jk = Ijk_Ret;
+      }
+   }
 
    /* Actually generate the transfers */
    for (i = 0; i < nX; i++) {
