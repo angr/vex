@@ -78,6 +78,7 @@ NORMAL_OBJS = \
 	priv/host_generic_simd128.o	\
 	priv/host_generic_simd256.o	\
 	priv/host_generic_reg_alloc2.o	\
+	priv/host_generic_reg_alloc3.o	\
 	priv/guest_generic_x87.o	\
 	priv/guest_generic_bb_to_IR.o	\
 	priv/guest_x86_helpers.o	\

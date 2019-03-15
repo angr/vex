@@ -492,6 +492,11 @@ typedef
       /* EXPERIMENTAL: chase across conditional branches?  Not all
          front ends honour this.  Default: NO. */
       Bool guest_chase_cond;
+      /* Register allocator version. Allowed values are:
+         - '2': previous, good and slow implementation.
+         - '3': current, faster implementation; perhaps producing slightly worse
+                spilling decisions. */
+      UInt regalloc_version;
       /* Should the arm-thumb lifter be allowed to look before the
          current instruction pointer in order to check if there are no
          IT instructions so that it can optimize the IR? Default: YES */
