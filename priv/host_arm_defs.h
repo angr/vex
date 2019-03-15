@@ -1059,7 +1059,6 @@ extern void ppARMInstr ( const ARMInstr* );
    of the underlying instruction set. */
 extern void getRegUsage_ARMInstr ( HRegUsage*, const ARMInstr*, Bool );
 extern void mapRegs_ARMInstr     ( HRegRemap*, ARMInstr*, Bool );
-extern Bool isMove_ARMInstr      ( const ARMInstr*, HReg*, HReg* );
 extern Int  emit_ARMInstr        ( /*MB_MOD*/Bool* is_profInc,
                                    UChar* buf, Int nbuf, const ARMInstr* i, 
                                    Bool mode64,

@@ -751,7 +751,6 @@ void LibVEX_Codegen (   VexTranslateArgs *vta,
    /* This the bundle of functions we need to do the back-end stuff
       (insn selection, reg-alloc, assembly) whilst being insulated
       from the target instruction set. */
-   Bool         (*isMove)       ( const HInstr*, HReg*, HReg* );
    void         (*getRegUsage)  ( HRegUsage*, const HInstr*, Bool );
    void         (*mapRegs)      ( HRegRemap*, HInstr*, Bool );
    void         (*genSpill)     ( HInstr**, HInstr**, HReg, Int, Bool );
@@ -781,7 +780,6 @@ void LibVEX_Codegen (   VexTranslateArgs *vta,
    HInstrArray*    vcode;
    HInstrArray*    rcode;
 
-   isMove                  = NULL;
    getRegUsage             = NULL;
    mapRegs                 = NULL;
    genSpill                = NULL;
@@ -907,8 +905,7 @@ void LibVEX_Codegen (   VexTranslateArgs *vta,
       case VexArchX86:
          mode64       = False;
          rRegUniv     = X86FN(getRRegUniverse_X86());
-         isMove       = CAST_AS(isMove) X86FN(isMove_X86Instr);
-         getRegUsage  
+         getRegUsage
             = CAST_AS(getRegUsage) X86FN(getRegUsage_X86Instr);
          mapRegs      = CAST_AS(mapRegs) X86FN(mapRegs_X86Instr);
          genSpill     = CAST_AS(genSpill) X86FN(genSpill_X86);
@@ -925,8 +922,7 @@ void LibVEX_Codegen (   VexTranslateArgs *vta,
       case VexArchAMD64:
          mode64       = True;
          rRegUniv     = AMD64FN(getRRegUniverse_AMD64());
-         isMove       = CAST_AS(isMove) AMD64FN(isMove_AMD64Instr);
-         getRegUsage  
+         getRegUsage
             = CAST_AS(getRegUsage) AMD64FN(getRegUsage_AMD64Instr);
          mapRegs      = CAST_AS(mapRegs) AMD64FN(mapRegs_AMD64Instr);
          genSpill     = CAST_AS(genSpill) AMD64FN(genSpill_AMD64);
@@ -942,8 +938,7 @@ void LibVEX_Codegen (   VexTranslateArgs *vta,
       case VexArchPPC32:
          mode64       = False;
          rRegUniv     = PPC32FN(getRRegUniverse_PPC(mode64));
-         isMove       = CAST_AS(isMove) PPC32FN(isMove_PPCInstr);
-         getRegUsage  
+         getRegUsage
             = CAST_AS(getRegUsage) PPC32FN(getRegUsage_PPCInstr);
          mapRegs      = CAST_AS(mapRegs) PPC32FN(mapRegs_PPCInstr);
          genSpill     = CAST_AS(genSpill) PPC32FN(genSpill_PPC);
@@ -959,8 +954,7 @@ void LibVEX_Codegen (   VexTranslateArgs *vta,
       case VexArchPPC64:
          mode64       = True;
          rRegUniv     = PPC64FN(getRRegUniverse_PPC(mode64));
-         isMove       = CAST_AS(isMove) PPC64FN(isMove_PPCInstr);
-         getRegUsage  
+         getRegUsage
             = CAST_AS(getRegUsage) PPC64FN(getRegUsage_PPCInstr);
          mapRegs      = CAST_AS(mapRegs) PPC64FN(mapRegs_PPCInstr);
          genSpill     = CAST_AS(genSpill) PPC64FN(genSpill_PPC);
@@ -977,8 +971,7 @@ void LibVEX_Codegen (   VexTranslateArgs *vta,
       case VexArchS390X:
          mode64       = True;
          rRegUniv     = S390FN(getRRegUniverse_S390());
-         isMove       = CAST_AS(isMove) S390FN(isMove_S390Instr);
-         getRegUsage  
+         getRegUsage
             = CAST_AS(getRegUsage) S390FN(getRegUsage_S390Instr);
          mapRegs      = CAST_AS(mapRegs) S390FN(mapRegs_S390Instr);
          genSpill     = CAST_AS(genSpill) S390FN(genSpill_S390);
@@ -995,8 +988,7 @@ void LibVEX_Codegen (   VexTranslateArgs *vta,
       case VexArchARM:
          mode64       = False;
          rRegUniv     = ARMFN(getRRegUniverse_ARM());
-         isMove       = CAST_AS(isMove) ARMFN(isMove_ARMInstr);
-         getRegUsage  
+         getRegUsage
             = CAST_AS(getRegUsage) ARMFN(getRegUsage_ARMInstr);
          mapRegs      = CAST_AS(mapRegs) ARMFN(mapRegs_ARMInstr);
          genSpill     = CAST_AS(genSpill) ARMFN(genSpill_ARM);
@@ -1012,8 +1004,7 @@ void LibVEX_Codegen (   VexTranslateArgs *vta,
       case VexArchARM64:
          mode64       = True;
          rRegUniv     = ARM64FN(getRRegUniverse_ARM64());
-         isMove       = CAST_AS(isMove) ARM64FN(isMove_ARM64Instr);
-         getRegUsage  
+         getRegUsage
             = CAST_AS(getRegUsage) ARM64FN(getRegUsage_ARM64Instr);
          mapRegs      = CAST_AS(mapRegs) ARM64FN(mapRegs_ARM64Instr);
          genSpill     = CAST_AS(genSpill) ARM64FN(genSpill_ARM64);
@@ -1029,8 +1020,7 @@ void LibVEX_Codegen (   VexTranslateArgs *vta,
       case VexArchMIPS32:
          mode64       = False;
          rRegUniv     = MIPS32FN(getRRegUniverse_MIPS(mode64));
-         isMove       = CAST_AS(isMove) MIPS32FN(isMove_MIPSInstr);
-         getRegUsage  
+         getRegUsage
             = CAST_AS(getRegUsage) MIPS32FN(getRegUsage_MIPSInstr);
          mapRegs      = CAST_AS(mapRegs) MIPS32FN(mapRegs_MIPSInstr);
          genSpill     = CAST_AS(genSpill) MIPS32FN(genSpill_MIPS);
@@ -1047,8 +1037,7 @@ void LibVEX_Codegen (   VexTranslateArgs *vta,
       case VexArchMIPS64:
          mode64       = True;
          rRegUniv     = MIPS64FN(getRRegUniverse_MIPS(mode64));
-         isMove       = CAST_AS(isMove) MIPS64FN(isMove_MIPSInstr);
-         getRegUsage  
+         getRegUsage
             = CAST_AS(getRegUsage) MIPS64FN(getRegUsage_MIPSInstr);
          mapRegs      = CAST_AS(mapRegs) MIPS64FN(mapRegs_MIPSInstr);
          genSpill     = CAST_AS(genSpill) MIPS64FN(genSpill_MIPS);
@@ -1065,7 +1054,6 @@ void LibVEX_Codegen (   VexTranslateArgs *vta,
       case VexArchTILEGX:
          mode64      = True;
          rRegUniv    = TILEGXFN(getRRegUniverse_TILEGX());
-         isMove      = CAST_AS(isMove) TILEGXFN(isMove_TILEGXInstr);
          getRegUsage =
             CAST_AS(getRegUsage) TILEGXFN(getRegUsage_TILEGXInstr);
          mapRegs     = CAST_AS(mapRegs) TILEGXFN(mapRegs_TILEGXInstr);
@@ -1147,11 +1135,10 @@ void LibVEX_Codegen (   VexTranslateArgs *vta,
 
    /* Register allocate. */
    RegAllocControl con = {
-      .univ = rRegUniv, .isMove = isMove, .getRegUsage = getRegUsage,
-      .mapRegs = mapRegs, .genSpill = genSpill, .genReload = genReload,
-      .genMove = genMove, .directReload = directReload,
-      .guest_sizeB = guest_sizeB, .ppInstr = ppInstr, .ppReg = ppReg,
-      .mode64 = mode64};
+      .univ = rRegUniv, .getRegUsage = getRegUsage, .mapRegs = mapRegs,
+      .genSpill = genSpill, .genReload = genReload, .genMove = genMove,
+      .directReload = directReload, .guest_sizeB = guest_sizeB,
+      .ppInstr = ppInstr, .ppReg = ppReg, .mode64 = mode64};
    switch (vex_control.regalloc_version) {
    case 2:
       rcode = doRegisterAllocation_v2(vcode, &con);
