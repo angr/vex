@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright IBM Corp. 2010-2015
+   Copyright IBM Corp. 2010-2017
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -99,8 +99,11 @@
 #define S390_FAC_DFPZC   48  // DFP zoned-conversion
 #define S390_FAC_MISC    49  // miscellaneous insn
 #define S390_FAC_CTREXE  50  // constrained transactional execution
+#define S390_FAC_LSC2    53  // load/store on condition 2 and load and zero rightmost byte
+#define S390_FAC_MSA5    57  // message-security-assist 5
 #define S390_FAC_TREXE   73  // transactional execution
 #define S390_FAC_MSA4    77  // message-security-assist 4
+#define S390_FAC_VX      129 // vector facility
 
 
 /*--------------------------------------------------------------*/
@@ -111,7 +114,7 @@
 #define S390_NUM_GPRPARMS 5
 
 /* Number of double words needed to store all facility bits. */
-#define S390_NUM_FACILITY_DW 2
+#define S390_NUM_FACILITY_DW 3
 
 #endif /* __LIBVEX_PUB_S390X_H */
 

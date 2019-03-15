@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright IBM Corp. 2010-2015
+   Copyright IBM Corp. 2010-2017
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -42,9 +42,11 @@
 const HChar *s390_hreg_as_string(HReg);
 HReg s390_hreg_gpr(UInt regno);
 HReg s390_hreg_fpr(UInt regno);
+HReg s390_hreg_vr(UInt regno);
 
 /* Dedicated registers */
 HReg s390_hreg_guest_state_pointer(void);
+HReg s390_hreg_stack_pointer(void);
 
 
 /* Given the index of a function argument, return the number of the
@@ -86,6 +88,7 @@ s390_amode *s390_amode_b20(Int d, HReg b);
 s390_amode *s390_amode_bx12(Int d, HReg b, HReg x);
 s390_amode *s390_amode_bx20(Int d, HReg b, HReg x);
 s390_amode *s390_amode_for_guest_state(Int d);
+s390_amode *s390_amode_for_stack_pointer(Int d);
 Bool        s390_amode_is_sane(const s390_amode *);
 
 const HChar *s390_amode_as_string(const s390_amode *);
@@ -160,7 +163,12 @@ typedef enum {
    S390_INSN_XINDIR,      /* indirect transfer to guest address */
    S390_INSN_XASSISTED,   /* assisted transfer to guest address */
    S390_INSN_EVCHECK,     /* Event check */
-   S390_INSN_PROFINC      /* 64-bit profile counter increment */
+   S390_INSN_PROFINC,     /* 64-bit profile counter increment */
+   S390_INSN_VEC_AMODEOP,
+   S390_INSN_VEC_AMODEINTOP,
+   S390_INSN_VEC_UNOP,
+   S390_INSN_VEC_BINOP,
+   S390_INSN_VEC_TRIOP
 } s390_insn_tag;
 
 
@@ -186,7 +194,19 @@ typedef enum {
    S390_SIGN_EXTEND_8,
    S390_SIGN_EXTEND_16,
    S390_SIGN_EXTEND_32,
-   S390_NEGATE
+   S390_NEGATE,
+   S390_VEC_FILL,
+   S390_VEC_DUPLICATE,
+   S390_VEC_UNPACKLOWS,
+   S390_VEC_UNPACKLOWU,
+   S390_VEC_ABS,
+   S390_VEC_COUNT_LEADING_ZEROES,
+   S390_VEC_COUNT_TRAILING_ZEROES,
+   S390_VEC_COUNT_ONES,
+   S390_VEC_FLOAT_NEG,
+   S390_VEC_FLOAT_ABS,
+   S390_VEC_FLOAT_SQRT,
+   S390_UNOP_T_INVALID
 } s390_unop_t;
 
 /* The kind of ternary BFP operations */
@@ -322,6 +342,79 @@ typedef enum {
    S390_DFP_COMPARE,
    S390_DFP_COMPARE_EXP,
 } s390_dfp_cmp_t;
+
+/* The vector operations with 2 operands one of them being amode */
+typedef enum {
+   S390_VEC_GET_ELEM,
+   S390_VEC_ELEM_SHL_INT,
+   S390_VEC_ELEM_SHRA_INT,
+   S390_VEC_ELEM_SHRL_INT,
+   S390_VEC_AMODEOP_T_INVALID
+} s390_vec_amodeop_t;
+
+/* The vector operations with three (vector, amode and integer) operands */
+typedef enum {
+   S390_VEC_SET_ELEM
+} s390_vec_amodeintop_t;
+
+/* The vector operations with two operands */
+typedef enum {
+   S390_VEC_PACK,
+   S390_VEC_PACK_SATURS,
+   S390_VEC_PACK_SATURU,
+   S390_VEC_COMPARE_EQUAL,
+   S390_VEC_OR,
+   S390_VEC_XOR,
+   S390_VEC_AND,
+   S390_VEC_MERGEL,
+   S390_VEC_MERGEH,
+   S390_VEC_NOR,
+   S390_VEC_INT_ADD,
+   S390_VEC_INT_SUB,
+   S390_VEC_MAXU,
+   S390_VEC_MAXS,
+   S390_VEC_MINU,
+   S390_VEC_MINS,
+   S390_VEC_AVGU,
+   S390_VEC_AVGS,
+   S390_VEC_COMPARE_GREATERS,
+   S390_VEC_COMPARE_GREATERU,
+   S390_VEC_INT_MUL_HIGHS,
+   S390_VEC_INT_MUL_HIGHU,
+   S390_VEC_INT_MUL_LOW,
+   S390_VEC_INT_MUL_EVENS,
+   S390_VEC_INT_MUL_EVENU,
+   S390_VEC_ELEM_SHL_V,
+   S390_VEC_ELEM_SHRA_V,
+   S390_VEC_ELEM_SHRL_V,
+   S390_VEC_ELEM_ROLL_V,
+
+   /* host_s390_isel depends on this order. */
+   S390_VEC_SHL_BITS, S390_VEC_SHL_BYTES,
+   S390_VEC_SHRL_BITS, S390_VEC_SHRL_BYTES,
+   S390_VEC_SHRA_BITS, S390_VEC_SHRA_BYTES,
+
+   S390_VEC_PWSUM_W,
+   S390_VEC_PWSUM_DW,
+   S390_VEC_PWSUM_QW,
+
+   S390_VEC_INIT_FROM_GPRS,
+   S390_VEC_FLOAT_ADD,
+   S390_VEC_FLOAT_SUB,
+   S390_VEC_FLOAT_MUL,
+   S390_VEC_FLOAT_DIV,
+   S390_VEC_FLOAT_COMPARE_EQUAL,
+   S390_VEC_FLOAT_COMPARE_LESS_OR_EQUAL,
+   S390_VEC_FLOAT_COMPARE_LESS,
+   S390_VEC_BINOP_T_INVALID
+} s390_vec_binop_t;
+
+/* The vector operations with three operands */
+typedef enum {
+   S390_VEC_PERM,
+   S390_VEC_FLOAT_MADD,
+   S390_VEC_FLOAT_MSUB
+} s390_vec_triop_t;
 
 /* The details of a CDAS insn. Carved out to keep the size of
    s390_insn low */
@@ -618,9 +711,32 @@ typedef struct {
          /* No fields.  The address of the counter to increment is
             installed later, post-translation, by patching it in,
             as it is not known at translation time. */
-		Int nop;
       } profinc;
-
+      struct {
+         s390_vec_amodeop_t tag;
+         HReg          dst;    /* 64-bit result */
+         HReg          op1;    /* 128-bit operand */
+         s390_amode   *op2;    /* amode operand */
+      } vec_amodeop;
+      struct {
+         s390_vec_amodeintop_t tag;
+         HReg          dst;    /* 128-bit result */
+         s390_amode   *op2;    /* amode operand */
+         HReg          op3;    /* integer operand */
+      } vec_amodeintop;
+      struct {
+         s390_vec_binop_t tag;
+         HReg          dst;    /* 128-bit result */
+         HReg          op1;    /* 128-bit first operand */
+         HReg          op2;    /* 128-bit second operand */
+      } vec_binop;
+      struct {
+         s390_vec_triop_t tag;
+         HReg          dst;    /* 128-bit result */
+         HReg          op1;    /* 128-bit first operand */
+         HReg          op2;    /* 128-bit second operand */
+         HReg          op3;    /* 128-bit third operand */
+      } vec_triop;
    } variant;
 } s390_insn;
 
@@ -728,6 +844,14 @@ s390_insn *s390_insn_xassisted(s390_cc_t cond, HReg dst, s390_amode *guest_IA,
                                IRJumpKind kind);
 s390_insn *s390_insn_evcheck(s390_amode *counter, s390_amode *fail_addr);
 s390_insn *s390_insn_profinc(void);
+s390_insn *s390_insn_vec_amodeop(UChar size, s390_vec_amodeop_t, HReg dst,
+                                 HReg op1, s390_amode* op2);
+s390_insn *s390_insn_vec_amodeintop(UChar size, s390_vec_amodeintop_t, HReg dst,
+                                    s390_amode* op2, HReg op3);
+s390_insn *s390_insn_vec_binop(UChar size, s390_vec_binop_t, HReg dst, HReg op1,
+                               HReg op2);
+s390_insn *s390_insn_vec_triop(UChar size, s390_vec_triop_t, HReg dst, HReg op1,
+                               HReg op2, HReg op3);
 
 const HChar *s390_insn_as_string(const s390_insn *);
 
@@ -737,19 +861,19 @@ const HChar *s390_insn_as_string(const s390_insn *);
 
 void ppS390AMode(const s390_amode *);
 void ppS390Instr(const s390_insn *, Bool mode64);
-void ppHRegS390(HReg);
+UInt ppHRegS390(HReg);
 
 /* Some functions that insulate the register allocator from details
    of the underlying instruction set. */
 void  getRegUsage_S390Instr( HRegUsage *, const s390_insn *, Bool );
 void  mapRegs_S390Instr    ( HRegRemap *, s390_insn *, Bool );
-Bool  isMove_S390Instr     ( const s390_insn *, HReg *, HReg * );
 Int   emit_S390Instr       ( Bool *, UChar *, Int, const s390_insn *, Bool,
                              VexEndness, const void *, const void *,
                              const void *, const void *);
 const RRegUniverse *getRRegUniverse_S390( void );
 void  genSpill_S390        ( HInstr **, HInstr **, HReg , Int , Bool );
 void  genReload_S390       ( HInstr **, HInstr **, HReg , Int , Bool );
+extern s390_insn* genMove_S390(HReg from, HReg to, Bool mode64);
 HInstrArray *iselSB_S390   ( const IRSB *, VexArch, const VexArchInfo *,
                              const VexAbiInfo *, Int, Int, Bool, Bool, Addr);
 
@@ -800,7 +924,10 @@ extern UInt s390_host_hwcaps;
                       (s390_host_hwcaps & (VEX_HWCAPS_S390X_LSC))
 #define s390_host_has_pfpo \
                       (s390_host_hwcaps & (VEX_HWCAPS_S390X_PFPO))
-
+#define s390_host_has_vx \
+                      (s390_host_hwcaps & (VEX_HWCAPS_S390X_VX))
+#define s390_host_has_msa5 \
+                      (s390_host_hwcaps & (VEX_HWCAPS_S390X_MSA5))
 #endif /* ndef __VEX_HOST_S390_DEFS_H */
 
 /*---------------------------------------------------------------*/
