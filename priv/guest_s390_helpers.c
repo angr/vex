@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright IBM Corp. 2010-2015
+   Copyright IBM Corp. 2010-2017
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -68,26 +68,48 @@ LibVEX_GuestS390X_initialise(VexGuestS390XState *state)
    state->guest_a15 = 0;
 
 /*------------------------------------------------------------*/
-/*--- Initialise fpr registers                             ---*/
+/*--- Initialise vr registers                             ---*/
 /*------------------------------------------------------------*/
 
-   state->guest_f0 = 0;
-   state->guest_f1 = 0;
-   state->guest_f2 = 0;
-   state->guest_f3 = 0;
-   state->guest_f4 = 0;
-   state->guest_f5 = 0;
-   state->guest_f6 = 0;
-   state->guest_f7 = 0;
-   state->guest_f8 = 0;
-   state->guest_f9 = 0;
-   state->guest_f10 = 0;
-   state->guest_f11 = 0;
-   state->guest_f12 = 0;
-   state->guest_f13 = 0;
-   state->guest_f14 = 0;
-   state->guest_f15 = 0;
+#define VRZERO(vr) \
+   do { \
+      vr.w64[0] = vr.w64[1] = 0ULL; \
+   } while(0);
 
+   VRZERO(state->guest_v0)
+   VRZERO(state->guest_v1)
+   VRZERO(state->guest_v2)
+   VRZERO(state->guest_v3)
+   VRZERO(state->guest_v4)
+   VRZERO(state->guest_v5)
+   VRZERO(state->guest_v6)
+   VRZERO(state->guest_v7)
+   VRZERO(state->guest_v8)
+   VRZERO(state->guest_v9)
+   VRZERO(state->guest_v10)
+   VRZERO(state->guest_v11)
+   VRZERO(state->guest_v12)
+   VRZERO(state->guest_v13)
+   VRZERO(state->guest_v14)
+   VRZERO(state->guest_v15)
+   VRZERO(state->guest_v16)
+   VRZERO(state->guest_v17)
+   VRZERO(state->guest_v18)
+   VRZERO(state->guest_v19)
+   VRZERO(state->guest_v20)
+   VRZERO(state->guest_v21)
+   VRZERO(state->guest_v22)
+   VRZERO(state->guest_v23)
+   VRZERO(state->guest_v24)
+   VRZERO(state->guest_v25)
+   VRZERO(state->guest_v26)
+   VRZERO(state->guest_v27)
+   VRZERO(state->guest_v28)
+   VRZERO(state->guest_v29)
+   VRZERO(state->guest_v30)
+   VRZERO(state->guest_v31)
+
+#undef VRZERO
 /*------------------------------------------------------------*/
 /*--- Initialise gpr registers                             ---*/
 /*------------------------------------------------------------*/
@@ -343,6 +365,7 @@ s390x_dirtyhelper_STFLE(VexGuestS390XState *guest_state, ULong *addr)
    s390_set_facility_bit(addr, S390_FAC_GIE,    1);
    s390_set_facility_bit(addr, S390_FAC_EXEXT,  1);
    s390_set_facility_bit(addr, S390_FAC_HIGHW,  1);
+   s390_set_facility_bit(addr, S390_FAC_LSC2,   1);
 
    s390_set_facility_bit(addr, S390_FAC_HFPMAS, 0);
    s390_set_facility_bit(addr, S390_FAC_HFPUNX, 0);
@@ -1818,6 +1841,13 @@ isC64(const IRExpr *expr)
    return expr->tag == Iex_Const && expr->Iex.Const.con->tag == Ico_U64;
 }
 
+static inline Bool
+isC64_exactly(const IRExpr *expr, ULong n)
+{
+   return expr->tag == Iex_Const && expr->Iex.Const.con->tag == Ico_U64
+          && expr->Iex.Const.con->Ico.U64 == n;
+}
+
 
 /* The returned expression is NULL if no specialization was found. In that
    case the helper function will be called. Otherwise, the expression has
@@ -1888,6 +1918,14 @@ guest_s390x_spechelper(const HChar *function_name, IRExpr **args,
             return unop(Iop_1Uto32, binop(Iop_CmpNE64, cc_dep1, cc_dep2));
          }
          if (cond == 4 || cond == 4 + 1) {
+            if (isC64_exactly(cc_dep2, 0)) {
+               /*     dep1 <signed 0
+                  --> m.s.bit of dep1 == 1 */
+               return unop(Iop_64to32,
+                           binop(Iop_And64,
+                                 binop(Iop_Shr64, cc_dep1, mkU8(63)),
+                                 mkU64(1)));
+            }
             return unop(Iop_1Uto32, binop(Iop_CmpLT64S, cc_dep1, cc_dep2));
          }
          if (cond == 8 + 4 || cond == 8 + 4 + 1) {
@@ -1895,9 +1933,25 @@ guest_s390x_spechelper(const HChar *function_name, IRExpr **args,
          }
          /* cc_dep1 > cc_dep2  ---->  cc_dep2 < cc_dep1 */
          if (cond == 2 || cond == 2 + 1) {
+            /* If we ever need the counterpart of the bug387712 fix just
+               below, then here is the place.  We'll need to give an
+               alternative expression for the case "cc_dep2 <s 0".  From a
+               bit of simple testing, I've yet to see any such cases,
+               however. */
             return unop(Iop_1Uto32, binop(Iop_CmpLT64S, cc_dep2, cc_dep1));
          }
          if (cond == 8 + 2 || cond == 8 + 2 + 1) {
+            if (isC64_exactly(cc_dep2, 0)) {
+               /*     0    <=signed dep1
+                  --> dep1 >=signed 0
+                  --> m.s.bit of dep1 == 0 */
+               /* See bug 387712.  This is an old trick from gcc to extract
+                  the most significant bit of a word. */
+               return unop(Iop_64to32,
+                           binop(Iop_Xor64,
+                                 binop(Iop_Shr64, cc_dep1, mkU8(63)),
+                                 mkU64(1)));
+            }
             return unop(Iop_1Uto32, binop(Iop_CmpLE64S, cc_dep2, cc_dep1));
          }
          if (cond == 8 + 4 + 2 || cond == 8 + 4 + 2 + 1) {
@@ -2411,6 +2465,282 @@ missed:
    return NULL;
 }
 
+/*------------------------------------------------------------*/
+/*--- Dirty helper for vector instructions                 ---*/
+/*------------------------------------------------------------*/
+
+#if defined(VGA_s390x)
+ULong
+s390x_dirtyhelper_vec_op(VexGuestS390XState *guest_state,
+                         const ULong serialized)
+{
+   UInt psw;
+   s390x_vec_op_details_t details;
+   const s390x_vec_op_details_t* d = (const s390x_vec_op_details_t*) &details;
+
+   details.serialized = serialized;
+
+   vassert(d->op > S390_VEC_OP_INVALID && d->op < S390_VEC_OP_LAST);
+   static const UChar opcodes[][2] = {
+      {0x00, 0x00}, /* invalid */
+      {0xe7, 0x97}, /* VPKS */
+      {0xe7, 0x95}, /* VPKLS */
+      {0xe7, 0x82}, /* VFAE */
+      {0xe7, 0x80}, /* VFEE */
+      {0xe7, 0x81}, /* VFENE */
+      {0xe7, 0x5c}, /* VISTR */
+      {0xe7, 0x8a}, /* VSTRC */
+      {0xe7, 0xf8}, /* VCEQ */
+      {0xe7, 0xd8}, /* VTM */
+      {0xe7, 0xb4}, /* VGFM */
+      {0xe7, 0xbc}, /* VGFMA */
+      {0xe7, 0xab}, /* VMAH */
+      {0xe7, 0xa9}, /* VMALH */
+      {0xe7, 0xfb}, /* VCH */
+      {0xe7, 0xf9}, /* VCHL */
+      {0xe7, 0xe8}, /* VFCE */
+      {0xe7, 0xeb}, /* VFCH */
+      {0xe7, 0xea}, /* VFCHE */
+      {0xe7, 0x4a}  /* VFTCI */
+   };
+
+   union {
+      struct {
+        unsigned int op1 : 8;
+        unsigned int v1  : 4;
+        unsigned int v2  : 4;
+        unsigned int v3  : 4;
+        unsigned int     : 4;
+        unsigned int m5  : 4;
+        unsigned int     : 4;
+        unsigned int m4  : 4;
+        unsigned int rxb : 4;
+        unsigned int op2 : 8;
+      } VRR;
+      struct {
+        unsigned int op1 : 8;
+        unsigned int v1  : 4;
+        unsigned int v2  : 4;
+        unsigned int v3  : 4;
+        unsigned int m5  : 4;
+        unsigned int m6  : 4;
+        unsigned int     : 4;
+        unsigned int v4  : 4;
+        unsigned int rxb : 4;
+        unsigned int op2 : 8;
+      } VRRd;
+      struct {
+         UInt op1 : 8;
+         UInt v1  : 4;
+         UInt v2  : 4;
+         UInt v3  : 4;
+         UInt     : 4;
+         UInt m6  : 4;
+         UInt m5  : 4;
+         UInt m4  : 4;
+         UInt rxb : 4;
+         UInt op2 : 8;
+      } VRRc;
+      struct {
+         UInt op1 : 8;
+         UInt v1  : 4;
+         UInt v2  : 4;
+         UInt i3  : 12;
+         UInt m5  : 4;
+         UInt m4  : 4;
+         UInt rxb : 4;
+         UInt op2 : 8;
+      } VRIe;
+      UChar bytes[6];
+   } the_insn;
+
+   the_insn.VRR.op1 = opcodes[d->op][0];
+   the_insn.bytes[1] = the_insn.bytes[2]
+      = the_insn.bytes[3] = the_insn.bytes[4] = 0;
+   the_insn.VRR.op2 = opcodes[d->op][1];
+
+   switch(d->op) {
+   case S390_VEC_OP_VISTR:
+      the_insn.VRR.v1 = 1;
+      the_insn.VRR.v2 = 2;
+      the_insn.VRR.rxb = 0b1100;
+      the_insn.VRR.m4 = d->m4;
+      the_insn.VRR.m5 = d->m5;
+      break;
+
+   case S390_VEC_OP_VTM:
+      the_insn.VRR.v1 = 2;
+      the_insn.VRR.v2 = 3;
+      the_insn.VRR.rxb = 0b1100;
+      break;
+
+   case S390_VEC_OP_VPKS:
+   case S390_VEC_OP_VPKLS:
+   case S390_VEC_OP_VFAE:
+   case S390_VEC_OP_VFEE:
+   case S390_VEC_OP_VFENE:
+   case S390_VEC_OP_VCEQ:
+   case S390_VEC_OP_VGFM:
+   case S390_VEC_OP_VCH:
+   case S390_VEC_OP_VCHL:
+      the_insn.VRR.v1 = 1;
+      the_insn.VRR.v2 = 2;
+      the_insn.VRR.v3 = 3;
+      the_insn.VRR.rxb = 0b1110;
+      the_insn.VRR.m4 = d->m4;
+      the_insn.VRR.m5 = d->m5;
+      break;
+
+   case S390_VEC_OP_VSTRC:
+   case S390_VEC_OP_VGFMA:
+   case S390_VEC_OP_VMAH:
+   case S390_VEC_OP_VMALH:
+      the_insn.VRRd.v1 = 1;
+      the_insn.VRRd.v2 = 2;
+      the_insn.VRRd.v3 = 3;
+      the_insn.VRRd.v4 = 4;
+      the_insn.VRRd.rxb = 0b1111;
+      the_insn.VRRd.m5 = d->m4;
+      the_insn.VRRd.m6 = d->m5;
+      break;
+
+   case S390_VEC_OP_VFCE:
+   case S390_VEC_OP_VFCH:
+   case S390_VEC_OP_VFCHE:
+      the_insn.VRRc.v1 = 1;
+      the_insn.VRRc.v2 = 2;
+      the_insn.VRRc.v3 = 3;
+      the_insn.VRRc.rxb = 0b1110;
+      the_insn.VRRc.m4 = d->m4;
+      the_insn.VRRc.m5 = d->m5;
+      the_insn.VRRc.m6 = d->m6;
+      break;
+
+   case S390_VEC_OP_VFTCI:
+      the_insn.VRIe.v1 = 1;
+      the_insn.VRIe.v2 = 2;
+      the_insn.VRIe.rxb = 0b1100;
+      the_insn.VRIe.i3 = d->i3;
+      the_insn.VRIe.m4 = d->m4;
+      the_insn.VRIe.m5 = d->m5;
+      break;
+
+   default:
+      vex_printf("operation = %d\n", d->op);
+      vpanic("s390x_dirtyhelper_vec_op: unknown operation");
+   }
+
+   const V128* guest_v = &(guest_state->guest_v0);
+   __asm__ volatile (
+      "lgr %%r10, %[arg1]\n"
+      VL(2, 0, a, 000, 8)
+      "lgr %%r10, %[arg2]\n"
+      VL(3, 0, a, 000, 8)
+      "lgr %%r10, %[arg3]\n"
+      VL(4, 0, a, 000, 8)
+      "ex %[zero], %[insn]\n"
+
+      "cijne %[read_only], 0, return_cc\n"
+      "lgr %%r10, %[res]\n"
+      VST(1, 0, a, 000, 8)
+
+      "return_cc: "
+      "ipm %[psw]\n\t"
+         : [psw] "=d" (psw)
+
+         : [res]  "r" (&guest_v[d->v1]),
+           [arg1] "r" (&guest_v[d->v2]),
+           [arg2] "r" (&guest_v[d->v3]),
+           [arg3] "r" (&guest_v[d->v4]),
+
+           [zero] "r" (0ULL),
+           [insn] "m" (the_insn),
+           [read_only] "r" (d->read_only)
+
+         : "cc", "r10", "v16", "v17", "v18", "v19"
+      );
+
+   return psw >> 28;   /* cc */
+}
+
+#else
+
+ULong
+s390x_dirtyhelper_vec_op(VexGuestS390XState *guest_state,
+                         const ULong serialized)
+{ return 0; }
+
+#endif
+
+/*-----------------------------------------------------------------*/
+/*--- Dirty helper for Perform Pseudorandom number instruction  ---*/
+/*-----------------------------------------------------------------*/
+
+/* Dummy helper that is needed to indicate load of parameter block.
+   We have to use it because dirty helper cannot have two memory side
+   effects.
+ */
+void s390x_dirtyhelper_PPNO_sha512_load_param_block( void )
+{
+}
+
+#if defined(VGA_s390x)
+
+/* IMPORTANT!
+   We return here bit mask where only supported functions are set to one.
+   If you implement new functions don't forget the supported array.
+ */
+void
+s390x_dirtyhelper_PPNO_query(VexGuestS390XState *guest_state, ULong r1, ULong r2)
+{
+   ULong supported[2] = {0x9000000000000000ULL, 0x0000000000000000ULL};
+   ULong *result = (ULong*) guest_state->guest_r1;
+
+   result[0] = supported[0];
+   result[1] = supported[1];
+}
+
+ULong
+s390x_dirtyhelper_PPNO_sha512(VexGuestS390XState *guest_state, ULong r1, ULong r2)
+{
+   ULong* op1 = (ULong*) (((ULong)(&guest_state->guest_r0)) + r1 * sizeof(ULong));
+   ULong* op2 = (ULong*) (((ULong)(&guest_state->guest_r0)) + r2 * sizeof(ULong));
+
+   register ULong reg0 asm("0") = guest_state->guest_r0;
+   register ULong reg1 asm("1") = guest_state->guest_r1;
+   register ULong reg2 asm("2") = op1[0];
+   register ULong reg3 asm("3") = op1[1];
+   register ULong reg4 asm("4") = op2[0];
+   register ULong reg5 asm("5") = op2[1];
+
+   ULong cc = 0;
+   asm volatile(".insn rre, 0xb93c0000, %%r2, %%r4\n"
+                "ipm %[cc]\n"
+                "srl %[cc], 28\n"
+                : "+d"(reg0), "+d"(reg1),
+                  "+d"(reg2), "+d"(reg3),
+                  "+d"(reg4), "+d"(reg5),
+                  [cc] "=d"(cc)
+                :
+                : "cc", "memory");
+
+   return cc;
+}
+
+#else
+
+void
+s390x_dirtyhelper_PPNO_query(VexGuestS390XState *guest_state, ULong r1, ULong r2)
+{
+}
+
+ULong
+s390x_dirtyhelper_PPNO_sha512(VexGuestS390XState *guest_state, ULong r1, ULong r2)
+{
+   return 0;
+}
+
+#endif /* VGA_s390x */
 /*---------------------------------------------------------------*/
 /*--- end                                guest_s390_helpers.c ---*/
 /*---------------------------------------------------------------*/
