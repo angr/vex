@@ -30047,6 +30047,7 @@ Long dis_ESC_0F38__VEX (
       if (have66noF2noF3(pfx)) {
          delta = dis_FMA( vbi, pfx, delta, opc );
          *uses_vvvv = True;
+         dres->hint = Dis_HintVerbose;
          goto decode_success;
       }
       break;
@@ -32172,15 +32173,20 @@ Long dis_ESC_0F3A__VEX (
          /* else fall though; dis_PCMPxSTRx failed to decode it */
       }
       break;
+
    case 0x5c: case 0x5d: case 0x5e: case 0x5f:
    case 0x68: case 0x69: case 0x6a: case 0x6b:
    case 0x6c: case 0x6d: case 0x6e: case 0x6f:
    case 0x78: case 0x79: case 0x7a: case 0x7b:
    case 0x7c: case 0x7d: case 0x7e: case 0x7f:
+      /* FIXME: list the instructions decoded here */
       if (have66noF2noF3(pfx) && 0==getVexL(pfx)/*128*/) {
          Long delta0 = delta;
          delta = dis_FMA4( pfx, delta, opc, uses_vvvv, vbi );
-         if (delta > delta0) goto decode_success;
+         if (delta > delta0) {
+            dres->hint = Dis_HintVerbose;
+            goto decode_success;
+         }
          /* else fall though; dis_FMA4 failed to decode it */
       }
       break;
@@ -32293,6 +32299,7 @@ DisResult disInstr_AMD64_WRK (
    dres.len         = 0;
    dres.continueAt  = 0;
    dres.jk_StopHere = Ijk_INVALID;
+   dres.hint        = Dis_HintNone;
    *expect_CAS = False;
 
    vassert(guest_RIP_next_assumed == 0);
