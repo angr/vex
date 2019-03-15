@@ -27401,6 +27401,7 @@ DisResult disInstr_PPC_WRK (
    dres.len         = 0;
    dres.continueAt  = 0;
    dres.jk_StopHere = Ijk_INVALID;
+   dres.hint        = Dis_HintNone;
 
    /* At least this is simple on PPC32: insns are all 4 bytes long, and
       4-aligned.  So just fish the whole thing out of memory right now
@@ -29111,6 +29112,7 @@ DisResult disInstr_PPC ( IRSB*        irsb_IN,
       dres.whatNext    = Dis_StopHere;
       dres.jk_StopHere = Ijk_NoDecode;
       dres.continueAt   = 0;
+      dres.hint        = Dis_HintNone;
       return dres;
    }
 
