@@ -12062,6 +12062,7 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
    dres.len = 0;
    dres.continueAt = 0;
    dres.jk_StopHere = Ijk_INVALID;
+   dres.hint        = Dis_HintNone;
 
    delay_slot_branch = likely_delay_slot = delay_slot_jump = False;
 
