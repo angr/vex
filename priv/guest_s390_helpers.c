@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -992,6 +990,16 @@ decode_bfp_rounding_mode(UInt irrm)
    psw >> 28;   /* cc */ \
 })
 
+#define S390_CC_FOR_TERNARY(opcode,cc_dep1,cc_dep2) \
+({ \
+   __asm__ volatile ( \
+        opcode ",%[op1],%[op1],%[op2],0\n\t" \
+        "ipm %[psw]\n\t"           : [psw] "=d"(psw), [op1] "+d"(cc_dep1) \
+                                   : [op2] "d"(cc_dep2) \
+                                   : "cc");\
+   psw >> 28;   /* cc */ \
+})
+
 #define S390_CC_FOR_TERNARY_SUBB(opcode,cc_dep1,cc_dep2,cc_ndep) \
 ({ \
    /* Recover the original DEP2 value. See comment near s390_cc_thunk_put3 \
@@ -1803,6 +1811,12 @@ s390_calculate_cc(ULong cc_op, ULong cc_dep1, ULong cc_dep2, ULong cc_ndep)
                                         : "r0", "r1", "f0", "f2", "f4", "f6");
       return psw >> 28;  /* cc */
    }
+
+   case S390_CC_OP_MUL_32:
+      return S390_CC_FOR_TERNARY(".insn rrf,0xb9fd0000", cc_dep1, cc_dep2);
+
+   case S390_CC_OP_MUL_64:
+      return S390_CC_FOR_TERNARY(".insn rrf,0xb9ed0000", cc_dep1, cc_dep2);
 
    default:
       break;

@@ -22,9 +22,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -1020,6 +1018,8 @@ s390_isel_int128_expr_wrk(HReg *dst_hi, HReg *dst_lo, ISelEnv *env,
          goto do_multiply64;
 
       case Iop_MullS64:
+         if (!(env->hwcaps & VEX_HWCAPS_S390X_MI2))
+            goto irreducible;
          is_signed_multiply = True;
          goto do_multiply64;
 
@@ -1127,7 +1127,10 @@ s390_isel_int128_expr_wrk(HReg *dst_hi, HReg *dst_lo, ISelEnv *env,
       }
    }
 
-   vpanic("s390_isel_int128_expr");
+   /* We get here if no pattern matched. */
+ irreducible:
+   ppIRExpr(expr);
+   vpanic("s390_isel_int128_expr: cannot reduce tree");
 }
 
 
