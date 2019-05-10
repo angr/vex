@@ -384,6 +384,11 @@ IRSB *LibVEX_Lift (  VexTranslateArgs *vta,
    if (vta->arch_host == VexArchS390X) {
       s390_host_hwcaps = vta->archinfo_host.hwcaps;
    }
+#ifdef PYVEX
+   if (vta->arch_guest == VexArchS390X) {
+      s390_host_hwcaps |= VEX_HWCAPS_S390X_LDISP | VEX_HWCAPS_S390X_VX;
+   }
+#endif
 
    /* First off, check that the guest and host insn sets
       are supported. */
