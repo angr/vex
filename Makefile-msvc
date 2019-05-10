@@ -19,7 +19,7 @@ STATIC_LIBRARY_FILE = libvex.lib
 DYNAMIC_LIBRARY_FILE = libvex.dll
 EXTRA_CLEAN_FILES = auxprogs/genoffsets.exe genoffsets.obj
 
-CCFLAGS = /Ipub /Ipriv $(EXTRA_CFLAGS) /O2 /wd4715
+CCFLAGS = /Ipub /Ipriv $(EXTRA_CFLAGS) /O2 /wd4715 /DPYVEX
 
 all: vex
 
