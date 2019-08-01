@@ -120,6 +120,24 @@ typedef
       U256  guest_YMM15;
       U256  guest_YMM16;
 
+      // Control registers
+      ULong guest_CR0;
+      ULong guest_CR1;
+      ULong guest_CR2;
+      ULong guest_CR3;
+      ULong guest_CR4;
+      ULong guest_CR5;
+      ULong guest_CR6;
+      ULong guest_CR7;
+      ULong guest_CR8;
+      ULong guest_CR9;
+      ULong guest_CR10;
+      ULong guest_CR11;
+      ULong guest_CR12;
+      ULong guest_CR13;
+      ULong guest_CR14;
+      ULong guest_CR15;
+
       /* FPU */
       /* Note.  Setting guest_FTOP to be ULong messes up the
          delicately-balanced PutI/GetI optimisation machinery.

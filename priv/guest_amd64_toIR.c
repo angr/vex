@@ -448,6 +448,23 @@ static void unimplemented ( const HChar* str )
 #define OFFB_YMM15     offsetof(VexGuestAMD64State,guest_YMM15)
 #define OFFB_YMM16     offsetof(VexGuestAMD64State,guest_YMM16)
 
+#define OFFB_CR0       offsetof(VexGuestAMD64State,guest_CR0)
+#define OFFB_CR1       offsetof(VexGuestAMD64State,guest_CR1)
+#define OFFB_CR2       offsetof(VexGuestAMD64State,guest_CR2)
+#define OFFB_CR3       offsetof(VexGuestAMD64State,guest_CR3)
+#define OFFB_CR4       offsetof(VexGuestAMD64State,guest_CR4)
+#define OFFB_CR5       offsetof(VexGuestAMD64State,guest_CR5)
+#define OFFB_CR6       offsetof(VexGuestAMD64State,guest_CR6)
+#define OFFB_CR7       offsetof(VexGuestAMD64State,guest_CR7)
+#define OFFB_CR8       offsetof(VexGuestAMD64State,guest_CR8)
+#define OFFB_CR9       offsetof(VexGuestAMD64State,guest_CR9)
+#define OFFB_CR10      offsetof(VexGuestAMD64State,guest_CR10)
+#define OFFB_CR11      offsetof(VexGuestAMD64State,guest_CR11)
+#define OFFB_CR12      offsetof(VexGuestAMD64State,guest_CR12)
+#define OFFB_CR13      offsetof(VexGuestAMD64State,guest_CR13)
+#define OFFB_CR14      offsetof(VexGuestAMD64State,guest_CR14)
+#define OFFB_CR15      offsetof(VexGuestAMD64State,guest_CR15)
+
 #define OFFB_EMNOTE    offsetof(VexGuestAMD64State,guest_EMNOTE)
 #define OFFB_CMSTART   offsetof(VexGuestAMD64State,guest_CMSTART)
 #define OFFB_CMLEN     offsetof(VexGuestAMD64State,guest_CMLEN)
@@ -486,6 +503,23 @@ static void unimplemented ( const HChar* str )
 #define R_FS 4
 #define R_GS 5
 
+/* This is the AMD64 register encoding -- control regs. */
+#define R_CR0 0
+#define R_CR1 1
+#define R_CR2 2
+#define R_CR3 3
+#define R_CR4 4
+#define R_CR5 5
+#define R_CR6 6
+#define R_CR7 7
+#define R_CR8 8
+#define R_CR9 9
+#define R_CR10 10
+#define R_CR11 11
+#define R_CR12 12
+#define R_CR13 13
+#define R_CR14 14
+#define R_CR15 15
 
 /* Various simple conversions */
 
