@@ -22829,16 +22829,8 @@ Long dis_ESC_0F20 (
 {
 
    Long   delta = deltaIN;
-//   UChar  opc   = getUChar(delta);
    UChar  rm   = getUChar(delta);
    Int size = sz;
-
-//   switch (opc) {
-//
-//   default:
-//      break;
-//
-//   }
 
    if (epartIsReg(rm)) {
       putIRegE(size, pfx, rm, getControlRegG(size, pfx, rm));
@@ -22876,16 +22868,8 @@ Long dis_ESC_0F22 (
 
 
    Long   delta = deltaIN;
-//   UChar  opc   = getUChar(delta);
    UChar  rm   = getUChar(delta);
    Int size = sz;
-
-//   switch (opc) {
-//
-//   default:
-//      break;
-//
-//   }
 
    if (epartIsReg(rm)) {
       putControlRegG(size, pfx, rm, getIRegE(size, pfx, rm));
