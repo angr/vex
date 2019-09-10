@@ -20,6 +20,13 @@ CC_NATIVE ?= cc
 AR ?= ar
 RM ?= rm -f
 
+# Don't worry about Windows not having shell, Makefile-msvc will deal
+# with it`
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S), Darwin)
+	AR = /usr/bin/ar 
+endif
+
 STATIC_LIBRARY_FILE = libvex.a
 DYNAMIC_LIBRARY_FILE = libvex.so
 EXTRA_CLEAN_FILES = TAG-* auxprogs/genoffsets
