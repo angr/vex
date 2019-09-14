@@ -449,21 +449,10 @@ static void unimplemented ( const HChar* str )
 #define OFFB_YMM16     offsetof(VexGuestAMD64State,guest_YMM16)
 
 #define OFFB_CR0       offsetof(VexGuestAMD64State,guest_CR0)
-#define OFFB_CR1       offsetof(VexGuestAMD64State,guest_CR1)
 #define OFFB_CR2       offsetof(VexGuestAMD64State,guest_CR2)
 #define OFFB_CR3       offsetof(VexGuestAMD64State,guest_CR3)
 #define OFFB_CR4       offsetof(VexGuestAMD64State,guest_CR4)
-#define OFFB_CR5       offsetof(VexGuestAMD64State,guest_CR5)
-#define OFFB_CR6       offsetof(VexGuestAMD64State,guest_CR6)
-#define OFFB_CR7       offsetof(VexGuestAMD64State,guest_CR7)
 #define OFFB_CR8       offsetof(VexGuestAMD64State,guest_CR8)
-#define OFFB_CR9       offsetof(VexGuestAMD64State,guest_CR9)
-#define OFFB_CR10      offsetof(VexGuestAMD64State,guest_CR10)
-#define OFFB_CR11      offsetof(VexGuestAMD64State,guest_CR11)
-#define OFFB_CR12      offsetof(VexGuestAMD64State,guest_CR12)
-#define OFFB_CR13      offsetof(VexGuestAMD64State,guest_CR13)
-#define OFFB_CR14      offsetof(VexGuestAMD64State,guest_CR14)
-#define OFFB_CR15      offsetof(VexGuestAMD64State,guest_CR15)
 
 #define OFFB_EMNOTE    offsetof(VexGuestAMD64State,guest_EMNOTE)
 #define OFFB_CMSTART   offsetof(VexGuestAMD64State,guest_CMSTART)
@@ -505,21 +494,10 @@ static void unimplemented ( const HChar* str )
 
 /* This is the AMD64 register encoding -- control regs. */
 #define R_CR0 0
-#define R_CR1 1
 #define R_CR2 2
 #define R_CR3 3
 #define R_CR4 4
-#define R_CR5 5
-#define R_CR6 6
-#define R_CR7 7
 #define R_CR8 8
-#define R_CR9 9
-#define R_CR10 10
-#define R_CR11 11
-#define R_CR12 12
-#define R_CR13 13
-#define R_CR14 14
-#define R_CR15 15
 
 /* Various simple conversions */
 
@@ -1431,21 +1409,10 @@ static Int controlGuestRegOffset ( UInt reg )
 {
    switch (reg) {
       case R_CR0:  return OFFB_CR0;
-      case R_CR1:  return OFFB_CR1;
       case R_CR2:  return OFFB_CR2;
       case R_CR3:  return OFFB_CR3;
       case R_CR4:  return OFFB_CR4;
-      case R_CR5:  return OFFB_CR5;
-      case R_CR6:  return OFFB_CR6;
-      case R_CR7:  return OFFB_CR7;
       case R_CR8:  return OFFB_CR8;
-      case R_CR9:  return OFFB_CR9;
-      case R_CR10: return OFFB_CR10;
-      case R_CR11: return OFFB_CR11;
-      case R_CR12: return OFFB_CR12;
-      case R_CR13: return OFFB_CR13;
-      case R_CR14: return OFFB_CR14;
-      case R_CR15: return OFFB_CR15;
       default: vpanic("controlGuestRegOffset(amd64)");
    }
 }
@@ -1454,7 +1421,7 @@ static Int controlGuestRegOffset ( UInt reg )
 static
 Int offsetControlReg ( UInt reg )
 {
-   vassert(reg < 16);
+   vassert(reg == 0 || reg == 2 || reg == 3 || reg == 4 || reg == 8);
    return controlGuestRegOffset(reg);
 }
 
@@ -1501,11 +1468,9 @@ IRExpr* getControlRegG ( Int sz, Prefix pfx, UChar mod_reg_rm )
 static const HChar* nameControlReg ( Int reg )
 {
    static const HChar* control_reg_names[16]
-     = { "%cr0",  "%cr1",  "%cr2",  "%cr3",
-         "%cr4",  "%cr5",  "%cr6",  "%cr7",
-         "%cr8",  "%cr9",  "%cr10", "%cr11",
-         "%cr12", "%cr13", "%cr14", "%cr15" };
-   if (reg < 0 || reg > 15) vpanic("nameControlReg(amd64)");
+     = { "%cr0",  "%cr2",  "%cr3",
+         "%cr4",  "%cr8", };
+   if (reg != 0 || reg != 2 || reg != 3 || reg != 4 || reg != 8) vpanic("nameControlReg(amd64)");
    return control_reg_names[reg];
 }
 

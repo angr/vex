@@ -4278,21 +4278,10 @@ void LibVEX_GuestAMD64_initialise ( /*OUT*/VexGuestAMD64State* vex_state )
    vex_state->guest_ACFLAG  = 0;
 
    vex_state->guest_CR0  = 0;
-   vex_state->guest_CR1  = 0;
    vex_state->guest_CR2  = 0;
    vex_state->guest_CR3  = 0;
    vex_state->guest_CR4  = 0;
-   vex_state->guest_CR5  = 0;
-   vex_state->guest_CR6  = 0;
-   vex_state->guest_CR7  = 0;
    vex_state->guest_CR8  = 0;
-   vex_state->guest_CR9  = 0;
-   vex_state->guest_CR10 = 0;
-   vex_state->guest_CR11 = 0;
-   vex_state->guest_CR12 = 0;
-   vex_state->guest_CR13 = 0;
-   vex_state->guest_CR14 = 0;
-   vex_state->guest_CR15 = 0;
 
    /* HACK: represent the offset associated with a constant %fs. 
       Typically, on linux, this assumes that %fs is only ever zero (main
