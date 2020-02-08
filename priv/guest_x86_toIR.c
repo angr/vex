@@ -15177,12 +15177,16 @@ DisResult disInstr_X86_WRK (
 
    /* -------------------------- CLI/STI ------------------- */
    /* We treat them as NOP */
-   case 0xFA: { /* CLI */
-      break;
+   case 0xFA: {
+      DIP("cli\n");
+      /* vvv fallthrough */
    }
-   case 0xFB: { /* STI */
+   case 0xFB:
+      DIP("sti\n");
+      /* Treated as nop for now. could add actual behavior based on whatever or just an emnote */
+      jmp_lit(&dres, Ijk_Privileged, ((Addr32)guest_EIP_bbstart) + delta);
+      vassert(dres.whatNext == Dis_StopHere);
       break;
-   }
 
    /* -------------------------- halt ---------------------- */
    case 0xF4: { /* hlt */

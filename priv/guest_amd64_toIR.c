@@ -21603,8 +21603,11 @@ Long dis_ESC_NONE (
       DIP("jmp-8 0x%llx\n", (ULong)d64);
       return delta;
    case 0xFA:
+      DIP("cli\n");
    case 0xFB: /* CLI / STI */
-      /* We treat them as NOP */
+      DIP("sti\n");
+      /* Treated as nop for now. could add actual behavior based on whatever or just an emnote */
+      jmp_lit(dres, Ijk_Privileged, guest_RIP_bbstart + delta);
       return delta;
    case 0xF4: /* hlt */
       jmp_lit(dres, Ijk_SigTRAP, guest_RIP_bbstart + delta);
