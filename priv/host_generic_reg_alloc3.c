@@ -169,6 +169,7 @@ typedef
 
 
 #ifdef _MSC_VER
+#ifdef _M_AMD64
 static inline int __builtin_clzll(unsigned long long x) {
     return (int)__lzcnt64(x);
 }
@@ -178,6 +179,27 @@ static inline int __builtin_ctzll(unsigned long long x) {
     _BitScanForward64(&ret, x);
     return (int)ret;
 }
+#else
+static inline int __builtin_clzll(unsigned long long x) {
+   int out = 0;
+   if (x == 0) return 64;
+   while ((long long)x > 0) {
+      x <<= 1;
+      out++;
+   }
+   return out;
+}
+
+static inline int __builtin_ctzll(unsigned long long x) {
+   int out = 0;
+   if (x == 0) return 64;
+   while (x & 1 == 0) {
+      x >>= 1;
+      out++;
+   }
+   return out;
+}
+#endif
 #endif
 
 /* Compute the index of the highest and lowest 1 in a ULong, respectively.
