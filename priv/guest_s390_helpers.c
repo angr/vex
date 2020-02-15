@@ -1823,6 +1823,7 @@ s390_calculate_cc(ULong cc_op, ULong cc_dep1, ULong cc_dep2, ULong cc_ndep)
    }
 #endif
    vpanic("s390_calculate_cc");
+   return 0;  /* Make MSVC happy */
 }
 
 
