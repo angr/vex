@@ -59,6 +59,15 @@
 
 #define my_offsetof(__type,__field) (&((__type*)0)->__field)
 
+#ifdef _WIN64
+#define GENOFFSET(_structUppercase,_structLowercase,_fieldname)  \
+      printf("#define OFFSET_%s_%s %#llx\n", \
+      VG_STRINGIFY(_structLowercase), \
+      VG_STRINGIFY(_fieldname), \
+         (long long)(my_offsetof(VexGuest##_structUppercase##State, \
+          guest_##_fieldname)) \
+   )
+#else
 #define GENOFFSET(_structUppercase,_structLowercase,_fieldname)  \
       printf("#define OFFSET_%s_%s %#lx\n", \
       VG_STRINGIFY(_structLowercase), \
@@ -66,6 +75,8 @@
          (long)(my_offsetof(VexGuest##_structUppercase##State, \
           guest_##_fieldname)) \
    )
+#endif
+
 
 int main(int argc, char **argv)
 {

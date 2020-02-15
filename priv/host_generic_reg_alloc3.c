@@ -88,6 +88,10 @@ typedef
    }
    VRegState;
 
+#define Free 0      /* Not bound to any vreg. */
+#define Bound 1     /* Bound to a vreg, viz vreg. */
+#define Reserved 2  /* Reserved for an instruction. */
+
 /* The allocator also maintains a redundant array of indexes (rreg_state) from
    rreg numbers back to entries in vreg_state. It is redundant because iff
    rreg_state[r] == v then hregNumber(vreg_state[v].rreg) == r -- that is, the
@@ -102,10 +106,7 @@ typedef
 typedef
    struct {
       /* What is its current disposition? */
-      enum { Free,     /* Not bound to any vreg. */
-             Bound,    /* Bound to a vreg, viz vreg. */
-             Reserved  /* Reserved for an instruction. */
-           } disp;
+      UInt disp;  /* Free, Bound, Reserved */
 
       /* If .disp == Bound, what vreg is it bound to? */
       HReg vreg;
@@ -166,6 +167,18 @@ typedef
       (r)->eq_spill_slot = False;         \
    } while (0)
 
+
+#ifdef _MSC_VER
+static inline int __builtin_clzll(unsigned long long x) {
+    return (int)__lzcnt64(x);
+}
+
+static inline int __builtin_ctzll(unsigned long long x) {
+    unsigned long ret;
+    _BitScanForward64(&ret, x);
+    return (int)ret;
+}
+#endif
 
 /* Compute the index of the highest and lowest 1 in a ULong, respectively.
    Results are undefined if the argument is zero. Don't pass it zero :) */
@@ -551,8 +564,9 @@ HInstrArray* doRegisterAllocation_v3(
 /* Finds an rreg of the correct class.
    If a free rreg is not found, then spills a vreg not used by the current
    instruction and makes free the corresponding rreg. */
-#  define FIND_OR_MAKE_FREE_RREG(_ii, _v_idx, _reg_class, _reserve_phase)      \
-   ({                                                                          \
+#  define FIND_OR_MAKE_FREE_RREG(r, _ii, _v_idx, _reg_class, _reserve_phase)   \
+   UInt (r);                                                                   \
+   {                                                                           \
       Int _r_free_idx = find_free_rreg(                                        \
                       vreg_state, n_vregs, rreg_state, n_rregs, rreg_lr_state, \
                       (_v_idx), (_ii), (_reg_class), (_reserve_phase), con);   \
@@ -570,8 +584,8 @@ HInstrArray* doRegisterAllocation_v3(
                                                                                \
       vassert(IS_VALID_RREGNO(_r_free_idx));                                   \
                                                                                \
-      _r_free_idx;                                                             \
-   })
+      (r) = _r_free_idx;                                                       \
+   }
 
 
    /* --- Stage 0. Initialize the state. --- */
@@ -1141,7 +1155,7 @@ HInstrArray* doRegisterAllocation_v3(
                      }
                   } else {
                      /* Find or make a free rreg where to move this vreg to. */
-                     UInt r_free_idx = FIND_OR_MAKE_FREE_RREG(
+                     FIND_OR_MAKE_FREE_RREG(r_free_idx,
                                   ii, v_idx, vreg_state[v_idx].reg_class, True);
 
                      /* Generate "move" between real registers. */
@@ -1279,8 +1293,9 @@ HInstrArray* doRegisterAllocation_v3(
             vassert(hregIsInvalid(rreg));
 
             /* Find or make a free rreg of the correct class. */
-            r_idx = FIND_OR_MAKE_FREE_RREG(
+            FIND_OR_MAKE_FREE_RREG(r_idx_,
                                  ii, v_idx, vreg_state[v_idx].reg_class, False);
+            r_idx = r_idx_;
             rreg = con->univ->regs[r_idx];
 
             /* Generate reload only if the vreg is spilled and is about to being
