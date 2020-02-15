@@ -88,6 +88,10 @@ typedef
    }
    VRegState;
 
+#define Free 0      /* Not bound to any vreg. */
+#define Bound 1     /* Bound to a vreg, viz vreg. */
+#define Reserved 2  /* Reserved for an instruction. */
+
 /* The allocator also maintains a redundant array of indexes (rreg_state) from
    rreg numbers back to entries in vreg_state. It is redundant because iff
    rreg_state[r] == v then hregNumber(vreg_state[v].rreg) == r -- that is, the
@@ -102,10 +106,7 @@ typedef
 typedef
    struct {
       /* What is its current disposition? */
-      enum { Free,     /* Not bound to any vreg. */
-             Bound,    /* Bound to a vreg, viz vreg. */
-             Reserved  /* Reserved for an instruction. */
-           } disp;
+      UInt disp;  /* Free, Bound, Reserved */
 
       /* If .disp == Bound, what vreg is it bound to? */
       HReg vreg;
