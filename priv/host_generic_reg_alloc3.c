@@ -168,6 +168,18 @@ typedef
    } while (0)
 
 
+#ifdef _MSC_VER
+static inline int __builtin_clzll(unsigned long long x) {
+    return (int)__lzcnt64(x);
+}
+
+static inline int __builtin_ctzll(unsigned long long x) {
+    unsigned long ret;
+    _BitScanForward64(&ret, x);
+    return (int)ret;
+}
+#endif
+
 /* Compute the index of the highest and lowest 1 in a ULong, respectively.
    Results are undefined if the argument is zero. Don't pass it zero :) */
 static inline UInt ULong__maxIndex ( ULong w64 ) {
