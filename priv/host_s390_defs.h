@@ -709,6 +709,7 @@ typedef struct {
          /* No fields.  The address of the counter to increment is
             installed later, post-translation, by patching it in,
             as it is not known at translation time. */
+         HReg dummy; /* so MSVC does not complain */
       } profinc;
       struct {
          s390_vec_amodeop_t tag;
