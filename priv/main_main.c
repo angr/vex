@@ -336,19 +336,21 @@ UInt s390_host_hwcaps;
 
 /* Exported to library client. */
 
-VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
+VexTranslateResult LibVEX_Translate (
+                     VexTranslateArgs* vta,
+                     /*INOUT*/ VexRegisterUpdates* pxControl
+                  )
 {
    VexTranslateResult res;
-   VexRegisterUpdates pxControl;
 
-   IRSB *irsb = LibVEX_Lift(vta, &res, &pxControl);
-   LibVEX_Codegen(vta, &res, irsb, pxControl);
+   IRSB *irsb = LibVEX_Lift(vta, &res, pxControl);
+   LibVEX_Codegen(vta, &res, irsb, *pxControl);
    return res;
 }
 
 IRSB *LibVEX_Lift (  VexTranslateArgs *vta,
                      /*OUT*/ VexTranslateResult *res,
-                     /*OUT*/ VexRegisterUpdates *pxControl)
+                     /*INOUT*/ VexRegisterUpdates *pxControl)
 {
    IRExpr*      (*specHelper)   ( const HChar*, IRExpr**, IRStmt**, Int );
    Bool (*preciseMemExnsFn) ( Int, Int, VexRegisterUpdates );
@@ -602,9 +604,8 @@ IRSB *LibVEX_Lift (  VexTranslateArgs *vta,
                    " Front end "
                    "------------------------\n\n");
 
-   *pxControl = vex_control.iropt_register_updates_default;
    vassert(*pxControl >= VexRegUpdSpAtMemAccess
-           && *pxControl <= VexRegUpdAllregsAtEachInsn);
+           && *pxControl <= VexRegUpdLdAllregsAtEachInsn);
 
    irsb = bb_to_IR ( vta->guest_extents,
                      &res->n_sc_extents,
@@ -644,7 +645,7 @@ IRSB *LibVEX_Lift (  VexTranslateArgs *vta,
 
    /* bb_to_IR() could have caused pxControl to change. */
    vassert(*pxControl >= VexRegUpdSpAtMemAccess
-           && *pxControl <= VexRegUpdAllregsAtEachInsn);
+           && *pxControl <= VexRegUpdLdAllregsAtEachInsn);
 
    /* If debugging, show the raw guest bytes for this bb. */
    if (0 || (vex_traceflags & VEX_TRACE_FE)) {

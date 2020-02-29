@@ -90,6 +90,12 @@
    * If iropt_register_updates == VexRegUpdAllregsAtEachInsn :
      Guest state is up to date at each instruction.
 
+   * If iropt_register_updates == VexRegUpdLdAllregsAtEachInsn :
+     Guest state is up to date at each instruction. Additionally,
+     cross-instruction temporary variable reuse is disabled except
+     for cc_X registers. This mode is designed for static analyzers
+     to acquire accurate instruction-level behaviors.
+
    The relative order of loads and stores (including loads/stores of
    guest memory done by dirty helpers annotated as such) is not
    changed.  However, the relative order of loads with no intervening
@@ -611,7 +617,10 @@ static void invalidateOverlaps ( HashHW* h, UInt k_lo, UInt k_hi )
 }
 
 
-static void redundant_get_removal_BB ( IRSB* bb )
+static void redundant_get_removal_BB (
+               IRSB* bb,
+               VexRegisterUpdates pxControl
+            )
 {
    HashHW* env = newHHW();
    UInt    key = 0; /* keep gcc -O happy */
@@ -691,6 +700,13 @@ static void redundant_get_removal_BB ( IRSB* bb )
             for (j = 0; j < env->used; j++)
                env->inuse[j] = False;
             if (0) vex_printf("rGET: trash env due to dirty helper\n");
+         }
+      }
+      else
+      if (pxControl >= VexRegUpdLdAllregsAtEachInsn && st->tag == Ist_IMark) {
+         /* clears the entire env */
+         for (j = 0; j < env->used; j++) {
+            env->inuse[j] = False;
          }
       }
 
@@ -814,7 +830,13 @@ static void handle_gets_Stmt (
          break;
 
       case Ist_NoOp:
+         break;
       case Ist_IMark:
+         break;
+         /* clears the entire env */
+         for (j = 0; j < env->used; j++) {
+            env->inuse[j] = False;
+         }
          break;
 
       default:
@@ -831,6 +853,7 @@ static void handle_gets_Stmt (
          at least the stack pointer. */
       switch (pxControl) {
          case VexRegUpdAllregsAtMemAccess:
+         case VexRegUpdLdAllregsAtEachInsn:
             /* Precise exceptions required at mem access.
                Flush all guest state. */
             for (j = 0; j < env->used; j++)
@@ -893,7 +916,8 @@ static void redundant_put_removal_BB (
    IRStmt* st;
    UInt    key = 0; /* keep gcc -O happy */
 
-   vassert(pxControl < VexRegUpdAllregsAtEachInsn);
+   vassert(pxControl < VexRegUpdAllregsAtEachInsn ||
+            pxControl == VexRegUpdLdAllregsAtEachInsn);
 
    HashHW* env = newHHW();
 
@@ -938,6 +962,15 @@ static void redundant_put_removal_BB (
          /* (3) */
          //if (0 && re_add) 
          //   addToHHW(env, (HWord)key, 0);
+         continue;
+      }
+
+      if (pxControl >= VexRegUpdLdAllregsAtEachInsn &&
+            st->tag == Ist_IMark) {
+         /* clears the entire env */
+         for (j = 0; j < env->used; j++) {
+            env->inuse[j] = False;
+         }
          continue;
       }
 
@@ -6398,13 +6431,14 @@ IRSB* cheap_transformations (
          VexRegisterUpdates pxControl
       )
 {
-   redundant_get_removal_BB ( bb );
+   redundant_get_removal_BB ( bb, pxControl );
    if (iropt_verbose) {
       vex_printf("\n========= REDUNDANT GET\n\n" );
       ppIRSB(bb);
    }
 
-   if (pxControl < VexRegUpdAllregsAtEachInsn) {
+   if (pxControl < VexRegUpdAllregsAtEachInsn ||
+         pxControl == VexRegUpdLdAllregsAtEachInsn) {
       redundant_put_removal_BB ( bb, preciseMemExnsFn, pxControl );
    }
    if (iropt_verbose) {

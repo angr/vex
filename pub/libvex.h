@@ -459,7 +459,8 @@ typedef
       VexRegUpdSpAtMemAccess,
       VexRegUpdUnwindregsAtMemAccess,
       VexRegUpdAllregsAtMemAccess,
-      VexRegUpdAllregsAtEachInsn
+      VexRegUpdAllregsAtEachInsn,
+      VexRegUpdLdAllregsAtEachInsn
    }
    VexRegisterUpdates;
 
@@ -809,7 +810,8 @@ typedef
 
 
 extern 
-VexTranslateResult LibVEX_Translate ( VexTranslateArgs* );
+VexTranslateResult LibVEX_Translate ( VexTranslateArgs*,
+                                      VexRegisterUpdates* pxControl );
 extern
 IRSB *LibVEX_Lift ( VexTranslateArgs*,
                     VexTranslateResult*,
