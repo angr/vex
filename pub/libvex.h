@@ -810,8 +810,7 @@ typedef
 
 
 extern 
-VexTranslateResult LibVEX_Translate ( VexTranslateArgs*,
-                                      VexRegisterUpdates* pxControl );
+VexTranslateResult LibVEX_Translate ( VexTranslateArgs* );
 extern
 IRSB *LibVEX_Lift ( VexTranslateArgs*,
                     VexTranslateResult*,
