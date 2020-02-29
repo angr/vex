@@ -336,21 +336,19 @@ UInt s390_host_hwcaps;
 
 /* Exported to library client. */
 
-VexTranslateResult LibVEX_Translate (
-                     VexTranslateArgs* vta,
-                     /*INOUT*/ VexRegisterUpdates* pxControl
-                  )
+VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
 {
    VexTranslateResult res;
+   VexRegisterUpdates pxControl;
 
-   IRSB *irsb = LibVEX_Lift(vta, &res, pxControl);
-   LibVEX_Codegen(vta, &res, irsb, *pxControl);
+   IRSB *irsb = LibVEX_Lift(vta, &res, &pxControl);
+   LibVEX_Codegen(vta, &res, irsb, pxControl);
    return res;
 }
 
 IRSB *LibVEX_Lift (  VexTranslateArgs *vta,
                      /*OUT*/ VexTranslateResult *res,
-                     /*INOUT*/ VexRegisterUpdates *pxControl)
+                     /*OUT*/ VexRegisterUpdates *pxControl)
 {
    IRExpr*      (*specHelper)   ( const HChar*, IRExpr**, IRStmt**, Int );
    Bool (*preciseMemExnsFn) ( Int, Int, VexRegisterUpdates );
