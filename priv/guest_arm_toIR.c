@@ -21064,7 +21064,7 @@ DisResult disInstr_THUMB_WRK (
       UInt bS    = INSN0(4,4);
       UInt rN    = INSN0(3,0);
       UInt rD    = INSN1(11,8);
-      Bool valid = !isBadRegT(rN) && !isBadRegT(rD);
+      Bool valid = !isBadRegT(rN) && rD != 15;
       /* but allow "sub{s}.w reg, sp, #constT 
          this is (T2) of "SUB (SP minus immediate)" */
       if (!valid && !isRSB && rN == 13 && rD != 15)
