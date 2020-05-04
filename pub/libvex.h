@@ -459,7 +459,8 @@ typedef
       VexRegUpdSpAtMemAccess,
       VexRegUpdUnwindregsAtMemAccess,
       VexRegUpdAllregsAtMemAccess,
-      VexRegUpdAllregsAtEachInsn
+      VexRegUpdAllregsAtEachInsn,
+      VexRegUpdLdAllregsAtEachInsn
    }
    VexRegisterUpdates;
 

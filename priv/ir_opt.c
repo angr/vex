@@ -37,6 +37,7 @@
 #include "libvex_basictypes.h"
 #include "libvex_ir.h"
 #include "libvex.h"
+#include "libvex_guest_offsets.h"
 
 #include "main_util.h"
 #include "main_globals.h"
@@ -89,6 +90,12 @@
 
    * If iropt_register_updates == VexRegUpdAllregsAtEachInsn :
      Guest state is up to date at each instruction.
+
+   * If iropt_register_updates == VexRegUpdLdAllregsAtEachInsn :
+     Guest state is up to date at each instruction. Additionally,
+     cross-instruction temporary variable reuse is disabled except
+     for cc_X registers. This mode is designed for static analyzers
+     to acquire accurate instruction-level behaviors.
 
    The relative order of loads and stores (including loads/stores of
    guest memory done by dirty helpers annotated as such) is not
@@ -610,8 +617,108 @@ static void invalidateOverlaps ( HashHW* h, UInt k_lo, UInt k_hi )
    }
 }
 
+/* Determine if a register offset is of a VEX-specific register, and if so,
+   return the length of that register; otherwise return 0. */
 
-static void redundant_get_removal_BB ( IRSB* bb )
+#define CHECK_OFFSET(o, reg, size) \
+   if ((o) >= (reg) && (o) < (reg) + (size)) { \
+      return (reg) + (size) - (o); \
+   }
+
+inline
+static int vex_register_size ( UInt reg_offset, VexArch guest_arch )
+{
+   switch (guest_arch)
+   {
+      case VexArchX86:
+         CHECK_OFFSET(reg_offset, OFFSET_x86_CC_OP, 4)
+         CHECK_OFFSET(reg_offset, OFFSET_x86_CC_DEP1, 4)
+         CHECK_OFFSET(reg_offset, OFFSET_x86_CC_DEP2, 4)
+         CHECK_OFFSET(reg_offset, OFFSET_x86_CC_NDEP, 4)
+         CHECK_OFFSET(reg_offset, OFFSET_x86_IP_AT_SYSCALL, 4)
+         break;
+      case VexArchAMD64:
+         CHECK_OFFSET(reg_offset, OFFSET_amd64_CC_OP, 8)
+         CHECK_OFFSET(reg_offset, OFFSET_amd64_CC_DEP1, 8)
+         CHECK_OFFSET(reg_offset, OFFSET_amd64_CC_DEP2, 8)
+         CHECK_OFFSET(reg_offset, OFFSET_amd64_CC_NDEP, 8)
+         CHECK_OFFSET(reg_offset, OFFSET_amd64_IP_AT_SYSCALL, 8)
+         break;
+      case VexArchPPC32:
+         CHECK_OFFSET(reg_offset, OFFSET_ppc32_IP_AT_SYSCALL, 4)
+         break;
+      case VexArchPPC64:
+         CHECK_OFFSET(reg_offset, OFFSET_ppc64_IP_AT_SYSCALL, 8)
+         break;
+      case VexArchARM:
+         CHECK_OFFSET(reg_offset, OFFSET_arm_CC_OP, 4)
+         CHECK_OFFSET(reg_offset, OFFSET_arm_CC_DEP1, 4)
+         CHECK_OFFSET(reg_offset, OFFSET_arm_CC_DEP2, 4)
+         CHECK_OFFSET(reg_offset, OFFSET_arm_CC_NDEP, 4)
+         CHECK_OFFSET(reg_offset, OFFSET_arm_ITSTATE, 4)
+         CHECK_OFFSET(reg_offset, OFFSET_arm_IP_AT_SYSCALL, 4)
+         break;
+      case VexArchARM64:
+         CHECK_OFFSET(reg_offset, OFFSET_arm64_CC_OP, 8)
+         CHECK_OFFSET(reg_offset, OFFSET_arm64_CC_DEP1, 8)
+         CHECK_OFFSET(reg_offset, OFFSET_arm64_CC_DEP2, 8)
+         CHECK_OFFSET(reg_offset, OFFSET_arm64_CC_NDEP, 8)
+         CHECK_OFFSET(reg_offset, OFFSET_arm64_IP_AT_SYSCALL, 8)
+         break;
+      case VexArchS390X:
+         CHECK_OFFSET(reg_offset, OFFSET_s390x_CC_OP, 8)
+         CHECK_OFFSET(reg_offset, OFFSET_s390x_CC_DEP1, 8)
+         CHECK_OFFSET(reg_offset, OFFSET_s390x_CC_DEP2, 8)
+         CHECK_OFFSET(reg_offset, OFFSET_s390x_CC_NDEP, 8)
+         CHECK_OFFSET(reg_offset, OFFSET_s390x_IP_AT_SYSCALL, 8)
+         break;
+      case VexArchMIPS32:
+         CHECK_OFFSET(reg_offset, OFFSET_mips32_IP_AT_SYSCALL, 4)
+         break;
+      case VexArchMIPS64:
+         CHECK_OFFSET(reg_offset, OFFSET_mips64_IP_AT_SYSCALL, 8)
+         break;
+      case VexArchTILEGX:
+         break;
+      default:
+         /* Unsupported guest architecture */
+         vassert (0);
+         break;
+   }
+   return 0;
+}
+
+/* Clear the env but leaving VEX-specific registers untouched */
+
+static void clear_env ( HashHW* env, VexArch guest_arch )
+{
+   Int i, j;
+   UInt e_lo, e_hi;
+   UInt vex_reg_size;
+
+   /* clears the env that overlaps with any real (non-VEX-specific)
+      registers */
+   for (Int j = 0; j < env->used; j++) {
+      if (!env->inuse[j])
+         continue;
+      e_lo = ((UInt)env->key[j] >> 16) & 0xFFFF;
+      e_hi = ((UInt)env->key[j]) & 0xFFFF;
+      vassert(e_lo <= e_hi);
+      for (Int i = e_lo; i < e_hi; ) {
+         if ((vex_reg_size = vex_register_size(i, guest_arch)) == 0) {
+            env->inuse[j] = False;
+            break;
+         }
+         i += vex_reg_size;
+      }
+   }
+}
+
+static void redundant_get_removal_BB (
+               IRSB* bb,
+               VexRegisterUpdates pxControl,
+               VexArch guest_arch
+            )
 {
    HashHW* env = newHHW();
    UInt    key = 0; /* keep gcc -O happy */
@@ -692,6 +799,10 @@ static void redundant_get_removal_BB ( IRSB* bb )
                env->inuse[j] = False;
             if (0) vex_printf("rGET: trash env due to dirty helper\n");
          }
+      }
+      else
+      if (pxControl >= VexRegUpdLdAllregsAtEachInsn && st->tag == Ist_IMark) {
+         clear_env(env, guest_arch);
       }
 
       /* add this one to the env, if appropriate */
@@ -814,6 +925,7 @@ static void handle_gets_Stmt (
          break;
 
       case Ist_NoOp:
+         break;
       case Ist_IMark:
          break;
 
@@ -831,6 +943,7 @@ static void handle_gets_Stmt (
          at least the stack pointer. */
       switch (pxControl) {
          case VexRegUpdAllregsAtMemAccess:
+         case VexRegUpdLdAllregsAtEachInsn:
             /* Precise exceptions required at mem access.
                Flush all guest state. */
             for (j = 0; j < env->used; j++)
@@ -893,7 +1006,8 @@ static void redundant_put_removal_BB (
    IRStmt* st;
    UInt    key = 0; /* keep gcc -O happy */
 
-   vassert(pxControl < VexRegUpdAllregsAtEachInsn);
+   vassert(pxControl < VexRegUpdAllregsAtEachInsn ||
+            pxControl == VexRegUpdLdAllregsAtEachInsn);
 
    HashHW* env = newHHW();
 
@@ -938,6 +1052,15 @@ static void redundant_put_removal_BB (
          /* (3) */
          //if (0 && re_add) 
          //   addToHHW(env, (HWord)key, 0);
+         continue;
+      }
+
+      if (pxControl >= VexRegUpdLdAllregsAtEachInsn &&
+            st->tag == Ist_IMark) {
+         /* clears the entire env */
+         for (j = 0; j < env->used; j++) {
+            env->inuse[j] = False;
+         }
          continue;
       }
 
@@ -6395,16 +6518,18 @@ IRSB* cheap_transformations (
          IRSB* bb,
          IRExpr* (*specHelper) (const HChar*, IRExpr**, IRStmt**, Int),
          Bool (*preciseMemExnsFn)(Int,Int,VexRegisterUpdates),
-         VexRegisterUpdates pxControl
+         VexRegisterUpdates pxControl,
+         VexArch guest_arch
       )
 {
-   redundant_get_removal_BB ( bb );
+   redundant_get_removal_BB ( bb, pxControl, guest_arch );
    if (iropt_verbose) {
       vex_printf("\n========= REDUNDANT GET\n\n" );
       ppIRSB(bb);
    }
 
-   if (pxControl < VexRegUpdAllregsAtEachInsn) {
+   if (pxControl < VexRegUpdAllregsAtEachInsn ||
+         pxControl == VexRegUpdLdAllregsAtEachInsn) {
       redundant_put_removal_BB ( bb, preciseMemExnsFn, pxControl );
    }
    if (iropt_verbose) {
@@ -6606,7 +6731,8 @@ IRSB* do_iropt_BB(
       If needed, do expensive transformations and then another cheap
       cleanup pass. */
 
-   bb = cheap_transformations( bb, specHelper, preciseMemExnsFn, pxControl );
+   bb = cheap_transformations( bb, specHelper, preciseMemExnsFn, pxControl,
+                               guest_arch );
 
    if (guest_arch == VexArchARM) {
       /* Translating Thumb2 code produces a lot of chaff.  We have to
@@ -6643,12 +6769,14 @@ IRSB* do_iropt_BB(
             vex_printf("***** EXPENSIVE %d %d\n", n_total, n_expensive);
          bb = expensive_transformations( bb, pxControl );
          bb = cheap_transformations( bb, specHelper,
-                                     preciseMemExnsFn, pxControl );
+                                     preciseMemExnsFn, pxControl,
+                                     guest_arch );
          /* Potentially common up GetIs */
          cses = do_cse_BB( bb, False/*!allowLoadsToBeCSEd*/ );
          if (cses)
             bb = cheap_transformations( bb, specHelper,
-                                        preciseMemExnsFn, pxControl );
+                                        preciseMemExnsFn, pxControl,
+                                        guest_arch );
       }
 
       ///////////////////////////////////////////////////////////
@@ -6664,11 +6792,13 @@ IRSB* do_iropt_BB(
       bb2 = maybe_loop_unroll_BB( bb, guest_addr );
       if (bb2) {
          bb = cheap_transformations( bb2, specHelper,
-                                     preciseMemExnsFn, pxControl );
+                                     preciseMemExnsFn, pxControl,
+                                     guest_arch );
          if (hasGetIorPutI) {
             bb = expensive_transformations( bb, pxControl );
             bb = cheap_transformations( bb, specHelper,
-                                        preciseMemExnsFn, pxControl );
+                                        preciseMemExnsFn, pxControl,
+                                        guest_arch );
          } else {
             /* at least do CSE and dead code removal */
             do_cse_BB( bb, False/*!allowLoadsToBeCSEd*/ );
