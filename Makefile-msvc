@@ -42,7 +42,7 @@ pub\libvex_guest_offsets.h: $(PUB_HEADERS) auxprogs/genoffsets.c
 
 scratch: clean all
 
-vex: $(STATIC_LIBRARY_FILE) $(DYNAMIC_LIBRARY_FILE) $(GEN_HEADERS:/=\)
+vex: $(GEN_HEADERS:/=\) $(STATIC_LIBRARY_FILE) $(DYNAMIC_LIBRARY_FILE)
 
 clean:
 	$(RM) $(GEN_HEADERS:/=\) $(NORMAL_OBJS:/=\) $(SINGLEARCH_OBJS:/=\) $(MULTIARCH_OBJS:/=\) \
