@@ -32389,6 +32389,14 @@ DisResult disInstr_AMD64_WRK (
          goto decode_failure;
          /*NOTREACHED*/
       }
+
+      /* endbr: f3 0f 1e fa */
+      if (code[0] == 0xf3 && code[1] == 0x0f
+                          && code[2] == 0x1e
+                          && code[3] == 0xfa) {
+          delta += 4;
+          goto decode_success;
+      }
    }
 
    /* Eat prefixes, summarising the result in pfx and sz, and rejecting
