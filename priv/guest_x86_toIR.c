@@ -14816,6 +14816,19 @@ DisResult disInstr_X86_WRK (
          case 0xBD: /* REP BSR Gv,Ev */
             delta = dis_bs_E_G ( sorb, sz, delta + 1, False );
             break;
+         case 0x1e: /* ENDBR */
+            delta++;
+            switch (getIByte(delta++)) {
+               case 0xfa:
+                  DIP("endbr64");
+                  break;
+               case 0xfb:
+                  DIP("endbr32");
+                  break;
+               default:
+                  goto decode_failure;
+            }
+            break;
          default:
             goto decode_failure;
          }
