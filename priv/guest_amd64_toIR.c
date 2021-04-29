@@ -32328,7 +32328,7 @@ DisResult disInstr_AMD64_WRK (
    DIP("\t0x%llx:  ", guest_RIP_bbstart+delta);
 
    /* Spot "Special" instructions (see comment at top of file). */
-   {
+   if (vex_control.special_instruction_support) {
       const UChar* code = guest_code + delta;
       /* Spot the 16-byte preamble:
          48C1C703   rolq $3,  %rdi

@@ -21841,7 +21841,8 @@ s390_decode_and_irgen(const UChar *bytes, UInt insn_length, DisResult *dres)
                                   1811 lr r1,r1
                                   1822 lr r2,r2
                                   1833 lr r3,r3 */
-   if (bytes[ 0] == 0x18 && bytes[ 1] == 0xff && bytes[ 2] == 0x18 &&
+   if (vex_control.special_instruction_support &&
+       bytes[ 0] == 0x18 && bytes[ 1] == 0xff && bytes[ 2] == 0x18 &&
        bytes[ 3] == 0x11 && bytes[ 4] == 0x18 && bytes[ 5] == 0x22 &&
        bytes[ 6] == 0x18 && bytes[ 7] == 0x33) {
 

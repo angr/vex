@@ -27413,7 +27413,7 @@ DisResult disInstr_PPC_WRK (
    DIP("\t0x%llx:  ", (ULong)guest_CIA_curr_instr);
 
    /* Spot "Special" instructions (see comment at top of file). */
-   {
+   if (vex_control.special_instruction_support) {
       const UChar* code = guest_code + delta;
       /* Spot the 16-byte preamble: 
          32-bit mode:

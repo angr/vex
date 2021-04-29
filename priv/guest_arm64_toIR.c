@@ -14331,7 +14331,7 @@ Bool disInstr_ARM64_WRK (
    /* ----------------------------------------------------------- */
 
    /* Spot "Special" instructions (see comment at top of file). */
-   {
+   if (vex_control.special_instruction_support) {
       const UChar* code = guest_instr;
       /* Spot the 16-byte preamble: 
             93CC0D8C   ror x12, x12, #3

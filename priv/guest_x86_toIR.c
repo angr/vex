@@ -8574,7 +8574,7 @@ DisResult disInstr_X86_WRK (
    DIP("\t0x%x:  ", guest_EIP_bbstart+delta);
 
    /* Spot "Special" instructions (see comment at top of file). */
-   {
+   if (vex_control.special_instruction_support) {
       const UChar* code = guest_code + delta;
       /* Spot the 12-byte preamble:
          C1C703   roll $3,  %edi

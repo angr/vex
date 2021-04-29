@@ -16195,7 +16195,7 @@ DisResult disInstr_ARM_WRK (
    /* ----------------------------------------------------------- */
 
    /* Spot "Special" instructions (see comment at top of file). */
-   {
+   if (vex_control.special_instruction_support) {
       const UChar* code = guest_instr;
       /* Spot the 16-byte preamble: 
 
@@ -19098,7 +19098,7 @@ DisResult disInstr_THUMB_WRK (
 
    /* ----------------------------------------------------------- */
    /* Spot "Special" instructions (see comment at top of file). */
-   {
+   if (vex_control.special_instruction_support) {
       const UChar* code = guest_instr;
       /* Spot the 16-byte preamble: 
 

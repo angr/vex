@@ -518,6 +518,9 @@ typedef
       /* Whether we should lift the x86 code `call $+5; pop xxx` as
          one instruction (True) or two (False). Default: True */
       Bool x86_optimize_callpop_idiom;
+      /* Whether we should decode the vex-specific "special" instructions.
+         Default: YES */
+      Bool special_instruction_support;
    }
    VexControl;
 

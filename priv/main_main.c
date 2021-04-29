@@ -203,6 +203,7 @@ void LibVEX_default_VexControl ( /*OUT*/ VexControl* vcon )
    vcon->arm_allow_optimizing_lookback   = True;
    vcon->arm64_allow_reordered_writeback = True;
    vcon->x86_optimize_callpop_idiom      = True;
+   vcon->special_instruction_support     = True;
 }
 
 
