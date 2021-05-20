@@ -19899,7 +19899,7 @@ DisResult disInstr_THUMB_WRK (
    case BITS8(1,1,0,1,1,1,1,1): {
       /* ---------------- SVC ---------------- */
       UInt imm8 = INSN0(7,0);
-      if (imm8 == 0) {
+      {
          /* A syscall.  We can't do this conditionally, hence: */
          mk_skip_over_T16_if_cond_is_false( condT );
          // FIXME: what if we have to back up and restart this insn?
