@@ -17576,8 +17576,7 @@ DisResult disInstr_ARM_WRK (
    /* --------------------- Svc --------------------- */
    if (BITS8(1,1,1,1,0,0,0,0) == (INSN(27,20) & BITS8(1,1,1,1,0,0,0,0))) {
       UInt imm24 = (insn >> 0) & 0xFFFFFF;
-      if (imm24 < 0xffff ||
-          imm24 == 0x123456 /* semihosting */) {
+      {
          /* A syscall.  We can't do this conditionally, hence: */
          if (condT != IRTemp_INVALID) {
             mk_skip_over_A32_if_cond_is_false( condT );
