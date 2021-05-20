@@ -5104,7 +5104,7 @@ Bool dis_ARM64_load_store(/*MB_OUT*/DisResult* dres, UInt insn)
       // sign extend imm19 
       ULong ea    = guest_PC_curr_instr + sx_to_64(imm19 << 2, 21);
       // put the value in reference register rT
-      putIReg64orZR(rT, loadLE(Ity_I64, mkU64(ea)));
+      putIReg64orZR(rT, unop(Iop_32Sto64, loadLE(Ity_I32, mkU64(ea))));
       DIP("ldrsw %s, 0x%llx (literal)\n", nameIReg64orZR(rT), ea);
       return True;
    }
