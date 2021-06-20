@@ -521,6 +521,9 @@ typedef
       /* Whether we should decode the vex-specific "special" instructions.
          Default: YES */
       Bool special_instruction_support;
+      /* The number of bytes it is legal to poke before the start of the
+         passed instruction data */
+      UInt lookback_amount;
    }
    VexControl;
 

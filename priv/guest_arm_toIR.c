@@ -19227,8 +19227,7 @@ DisResult disInstr_THUMB_WRK (
       UInt pc = guest_R15_curr_instr_notENC;
       vassert(0 == (pc & 1));
 
-      UInt pageoff = pc & 0xFFF;
-      if (pageoff >= 18) {
+      if (vex_control.lookback_amount - 1 >= 18) {
          /* It's safe to poke about in the 9 halfwords preceding this
             insn.  So, have a look at them. */
          guaranteedUnconditional = True; /* assume no 'it' insn found,
