@@ -2481,7 +2481,12 @@ static
 IRExpr* handleAddrOverrides ( const VexAbiInfo* vbi, 
                               Prefix pfx, IRExpr* virtual )
 {
-   /* Note that the below are hacks that relies on the assumption
+
+   /* --- address size override --- */
+   if (haveASO(pfx))
+      virtual = unop(Iop_32Uto64, unop(Iop_64to32, virtual));
+
+  /* Note that the below are hacks that relies on the assumption
       that %fs or %gs are constant.
       Typically, %fs is always 0x63 on linux (in the main thread, it
       stays at value 0), %gs always 0x60 on Darwin, ... */
@@ -2507,10 +2512,6 @@ IRExpr* handleAddrOverrides ( const VexAbiInfo* vbi,
    }
 
    /* cs, ds, es and ss are simply ignored in 64-bit mode. */
-
-   /* --- address size override --- */
-   if (haveASO(pfx))
-      virtual = unop(Iop_32Uto64, unop(Iop_64to32, virtual));
 
    return virtual;
 }
