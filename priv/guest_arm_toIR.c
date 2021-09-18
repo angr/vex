@@ -17576,8 +17576,7 @@ DisResult disInstr_ARM_WRK (
    /* --------------------- Svc --------------------- */
    if (BITS8(1,1,1,1,0,0,0,0) == (INSN(27,20) & BITS8(1,1,1,1,0,0,0,0))) {
       UInt imm24 = (insn >> 0) & 0xFFFFFF;
-      if (imm24 < 0xffff ||
-          imm24 == 0x123456 /* semihosting */) {
+      {
          /* A syscall.  We can't do this conditionally, hence: */
          if (condT != IRTemp_INVALID) {
             mk_skip_over_A32_if_cond_is_false( condT );
@@ -19899,7 +19898,7 @@ DisResult disInstr_THUMB_WRK (
    case BITS8(1,1,0,1,1,1,1,1): {
       /* ---------------- SVC ---------------- */
       UInt imm8 = INSN0(7,0);
-      if (imm8 == 0) {
+      {
          /* A syscall.  We can't do this conditionally, hence: */
          mk_skip_over_T16_if_cond_is_false( condT );
          // FIXME: what if we have to back up and restart this insn?
