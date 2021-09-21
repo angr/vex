@@ -943,12 +943,12 @@ static void handle_gets_Stmt (
          at least the stack pointer. */
       switch (pxControl) {
          case VexRegUpdAllregsAtMemAccess:
-         case VexRegUpdLdAllregsAtEachInsn:
             /* Precise exceptions required at mem access.
                Flush all guest state. */
             for (j = 0; j < env->used; j++)
                env->inuse[j] = False;
             break;
+         case VexRegUpdLdAllregsAtEachInsn:
          case VexRegUpdSpAtMemAccess:
             /* We need to dump the stack pointer
                (needed for stack extension in m_signals.c).
@@ -998,7 +998,8 @@ static void handle_gets_Stmt (
 static void redundant_put_removal_BB ( 
                IRSB* bb,
                Bool (*preciseMemExnsFn)(Int,Int,VexRegisterUpdates),
-               VexRegisterUpdates pxControl
+               VexRegisterUpdates pxControl,
+               VexArch guest_arch
             )
 {
    Int     i, j;
@@ -1057,10 +1058,8 @@ static void redundant_put_removal_BB (
 
       if (pxControl >= VexRegUpdLdAllregsAtEachInsn &&
             st->tag == Ist_IMark) {
-         /* clears the entire env */
-         for (j = 0; j < env->used; j++) {
-            env->inuse[j] = False;
-         }
+         /* clears the env but leaves VEX-only registers untouched */
+         clear_env(env, guest_arch);
          continue;
       }
 
@@ -6530,7 +6529,7 @@ IRSB* cheap_transformations (
 
    if (pxControl < VexRegUpdAllregsAtEachInsn ||
          pxControl == VexRegUpdLdAllregsAtEachInsn) {
-      redundant_put_removal_BB ( bb, preciseMemExnsFn, pxControl );
+      redundant_put_removal_BB ( bb, preciseMemExnsFn, pxControl, guest_arch );
    }
    if (iropt_verbose) {
       vex_printf("\n========= REDUNDANT PUT\n\n" );
@@ -6740,7 +6739,7 @@ IRSB* do_iropt_BB(
       bb = cprop_BB(bb);
       bb = spec_helpers_BB ( bb, specHelper );
       if (pxControl < VexRegUpdAllregsAtEachInsn) {
-         redundant_put_removal_BB ( bb, preciseMemExnsFn, pxControl );
+         redundant_put_removal_BB ( bb, preciseMemExnsFn, pxControl, guest_arch );
       }
       do_cse_BB( bb, False/*!allowLoadsToBeCSEd*/ );
       do_deadcode_BB( bb );
