@@ -1085,6 +1085,15 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
 
       }
 
+      if (isU64(cc_op, AMD64G_CC_OP_ADDL) && isU64(cond, AMD64CondZ)) {
+         /* dep1 + dep2 == 0
+          */
+         return
+            binop(Iop_CmpEQ64,
+                  binop(Iop_Add64, cc_dep1, cc_dep2),
+                  mkU64(0));
+      }
+
       /*---------------- SUBQ ----------------*/
 
       /* 0, */
