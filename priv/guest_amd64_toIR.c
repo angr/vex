@@ -21967,19 +21967,25 @@ Long dis_ESC_0F (
       return delta;
 
    case 0x1E:  /* ENDBR */
-      if (pfx != (PFX_EMPTY | PFX_F3)) goto decode_failure;
-      switch (getUChar(delta++)) {
-         case 0xFA:
-            DIP("endbr64");
-            break;
-         case 0xFB:
-            DIP("endbr32");
-            break;
-         default:
-            goto decode_failure;
+      if (pfx == (PFX_EMPTY | PFX_F3)) {
+        switch (getUChar(delta++)) {
+           case 0xFA:
+              DIP("endbr64");
+              break;
+           case 0xFB:
+              DIP("endbr32");
+              break;
+           default:
+              DIP("rdsspd");
+              break;
+        }
+        return delta;
+      } else if (pfx == (PFX_EMPTY | PFX_F3 | PFX_REX | PFX_REXW)) {
+        delta++;
+        DIP("rdsspq");
+        return delta;
       }
-
-      return delta;
+      goto decode_failure;
 
    case 0x1F:
       if (haveF2orF3(pfx)) goto decode_failure;
