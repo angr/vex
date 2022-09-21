@@ -414,6 +414,12 @@ static void unimplemented ( const HChar* str )
 
 #define OFFB_FS_CONST  offsetof(VexGuestAMD64State,guest_FS_CONST)
 #define OFFB_GS_CONST  offsetof(VexGuestAMD64State,guest_GS_CONST)
+#define OFFB_CS        offsetof(VexGuestAMD64State,guest_CS)
+#define OFFB_DS        offsetof(VexGuestAMD64State,guest_DS)
+#define OFFB_ES        offsetof(VexGuestAMD64State,guest_ES)
+#define OFFB_FS        offsetof(VexGuestAMD64State,guest_FS)
+#define OFFB_GS        offsetof(VexGuestAMD64State,guest_GS)
+#define OFFB_SS        offsetof(VexGuestAMD64State,guest_SS)
 
 #define OFFB_CC_OP     offsetof(VexGuestAMD64State,guest_CC_OP)
 #define OFFB_CC_DEP1   offsetof(VexGuestAMD64State,guest_CC_DEP1)
@@ -927,6 +933,19 @@ static Int integerGuestReg64Offset ( UInt reg )
    }
 }
 
+static Int segmentGuestRegOffset ( UInt sreg )
+{
+   switch (sreg) {
+      case R_ES: return OFFB_ES;
+      case R_CS: return OFFB_CS;
+      case R_SS: return OFFB_SS;
+      case R_DS: return OFFB_DS;
+      case R_FS: return OFFB_FS;
+      case R_GS: return OFFB_GS;
+      default: vpanic("segmentGuestRegOffset(amd64)");
+   }
+}
+
 
 /* Produce the name of an integer register, for printing purposes.
    reg is a number in the range 0 .. 15 that has been generated from a
@@ -1400,6 +1419,21 @@ const HChar* nameIRegE ( Int sz, Prefix pfx, UChar mod_reg_rm )
    return nameIReg( sz, eregOfRexRM(pfx,mod_reg_rm),
                         toBool(sz==1 && !haveREX(pfx)) );
 }
+
+
+/* segment registers */
+
+static IRExpr* getSReg ( UInt sreg )
+{
+   return IRExpr_Get( segmentGuestRegOffset(sreg), Ity_I16 );
+}
+
+static void putSReg ( UInt sreg, IRExpr* e )
+{
+   vassert(typeOfIRExpr(irsb->tyenv,e) == Ity_I16);
+   stmt( IRStmt_Put( segmentGuestRegOffset(sreg), e ) );
+}
+
 
 /*------------------------------------------------------------*/
 /*--- For dealing with control registers                   ---*/
@@ -8832,105 +8866,55 @@ ULong dis_xadd_G_E ( /*OUT*/Bool* decode_ok,
    vassert(0);
 }
 
-//.. /* Move 16 bits from Ew (ireg or mem) to G (a segment register). */
-//.. 
-//.. static
-//.. UInt dis_mov_Ew_Sw ( UChar sorb, Long delta0 )
-//.. {
-//..    Int    len;
-//..    IRTemp addr;
-//..    UChar  rm  = getUChar(delta0);
-//..    HChar  dis_buf[50];
-//.. 
-//..    if (epartIsReg(rm)) {
-//..       putSReg( gregOfRM(rm), getIReg(2, eregOfRM(rm)) );
-//..       DIP("movw %s,%s\n", nameIReg(2,eregOfRM(rm)), nameSReg(gregOfRM(rm)));
-//..       return 1+delta0;
-//..    } else {
-//..       addr = disAMode ( &len, sorb, delta0, dis_buf );
-//..       putSReg( gregOfRM(rm), loadLE(Ity_I16, mkexpr(addr)) );
-//..       DIP("movw %s,%s\n", dis_buf, nameSReg(gregOfRM(rm)));
-//..       return len+delta0;
-//..    }
-//.. }
-//.. 
-//.. /* Move 16 bits from G (a segment register) to Ew (ireg or mem).  If
-//..    dst is ireg and sz==4, zero out top half of it.  */
-//.. 
-//.. static
-//.. UInt dis_mov_Sw_Ew ( UChar sorb,
-//..                      Int   sz,
-//..                      UInt  delta0 )
-//.. {
-//..    Int    len;
-//..    IRTemp addr;
-//..    UChar  rm  = getUChar(delta0);
-//..    HChar  dis_buf[50];
-//.. 
-//..    vassert(sz == 2 || sz == 4);
-//.. 
-//..    if (epartIsReg(rm)) {
-//..       if (sz == 4)
-//..          putIReg(4, eregOfRM(rm), unop(Iop_16Uto32, getSReg(gregOfRM(rm))));
-//..       else
-//..          putIReg(2, eregOfRM(rm), getSReg(gregOfRM(rm)));
-//.. 
-//..       DIP("mov %s,%s\n", nameSReg(gregOfRM(rm)), nameIReg(sz,eregOfRM(rm)));
-//..       return 1+delta0;
-//..    } else {
-//..       addr = disAMode ( &len, sorb, delta0, dis_buf );
-//..       storeLE( mkexpr(addr), getSReg(gregOfRM(rm)) );
-//..       DIP("mov %s,%s\n", nameSReg(gregOfRM(rm)), dis_buf);
-//..       return len+delta0;
-//..    }
-//.. }
+/* Move 16 bits from Ew (ireg or mem) to G (a segment register). */
 
-/* Handle move instructions of the form
-      mov S, E  meaning
-      mov sreg, reg-or-mem
-   Is passed the a ptr to the modRM byte, and the data size.  Returns
-   the address advanced completely over this instruction.
-
-   VEX does not currently simulate segment registers on AMD64 which means that
-   instead of moving a value of a segment register, zero is moved to the
-   destination.  The zero value represents a null (unused) selector.  This is
-   not correct (especially for the %cs, %fs and %gs registers) but it seems to
-   provide a sufficient simulation for currently seen programs that use this
-   instruction.  If some program actually decides to use the obtained segment
-   selector for something meaningful then the zero value should be a clear
-   indicator that there is some problem.
-
-   S(src) is sreg.
-   E(dst) is reg-or-mem
-
-   If E is reg, -->    PUT $0, %E
-
-   If E is mem, -->    (getAddr E) -> tmpa
-                       ST $0, (tmpa)
-*/
 static
-ULong dis_mov_S_E ( const VexAbiInfo* vbi,
-                    Prefix      pfx,
-                    Int         size,
-                    Long        delta0 )
+UInt dis_mov_Ew_Sw ( const VexAbiInfo *vbi, Prefix pfx, Int sz, UInt delta0 )
 {
-   Int   len;
-   UChar rm = getUChar(delta0);
-   HChar dis_buf[50];
+   Int    len;
+   IRTemp addr;
+   UChar  rm  = getUChar(delta0);
+   HChar  dis_buf[50];
 
    if (epartIsReg(rm)) {
-      putIRegE(size, pfx, rm, mkU(szToITy(size), 0));
-      DIP("mov %s,%s\n", nameSReg(gregOfRexRM(pfx, rm)),
-                         nameIRegE(size, pfx, rm));
+      putSReg( gregLO3ofRM(rm), getIRegE(2, pfx, rm) );
+      DIP("movw %s,%s\n", nameIRegE(2, pfx, rm), nameSReg(gregLO3ofRM(rm)));
       return 1+delta0;
+   } else {
+      addr = disAMode ( &len, vbi, pfx, delta0, dis_buf, 0 );
+      putSReg( gregLO3ofRM(rm), loadLE(Ity_I16, mkexpr(addr)) );
+      DIP("movw %s,%s\n", dis_buf, nameSReg(gregLO3ofRM(rm)));
+      return len+delta0;
    }
+}
 
-   /* E refers to memory */
-   {
-      IRTemp addr = disAMode(&len, vbi, pfx, delta0, dis_buf, 0);
-      storeLE(mkexpr(addr), mkU16(0));
-      DIP("mov %s,%s\n", nameSReg(gregOfRexRM(pfx, rm)),
-                         dis_buf);
+/* Move 16 bits from G (a segment register) to Ew (ireg or mem).  If
+   dst is ireg and sz==4 or 8, zero out top half of it.  */
+
+static
+UInt dis_mov_Sw_Ew ( const VexAbiInfo *vbi, Prefix pfx, Int sz, UInt delta0 )
+{
+   Int    len;
+   IRTemp addr;
+   UChar  rm  = getUChar(delta0);
+   HChar  dis_buf[50];
+
+   vassert(sz == 2 || sz == 4 || sz == 8);
+
+   if (epartIsReg(rm)) {
+      if (sz == 8)
+         putIRegE(8, pfx, rm, unop(Iop_16Uto64, getSReg(gregLO3ofRM(rm))));
+      else if (sz == 4)
+         putIRegE(4, pfx, rm, unop(Iop_16Uto32, getSReg(gregLO3ofRM(rm))));
+      else
+         putIRegE(2, pfx, rm, getSReg(gregLO3ofRM(rm)));
+
+      DIP("mov %s,%s\n", nameSReg(gregLO3ofRM(rm)), nameIRegE(sz, pfx, rm));
+      return 1+delta0;
+   } else {
+      addr = disAMode ( &len, vbi, pfx, delta0, dis_buf, 0 );
+      storeLE( mkexpr(addr), getSReg(gregLO3ofRM(rm)) );
+      DIP("mov %s,%s\n", nameSReg(gregLO3ofRM(rm)), dis_buf);
       return len+delta0;
    }
 }
@@ -20637,7 +20621,7 @@ Long dis_ESC_NONE (
 
    case 0x8C: /* MOV S,E -- MOV from a SEGMENT REGISTER */
       if (haveF2orF3(pfx)) goto decode_failure;
-      delta = dis_mov_S_E(vbi, pfx, sz, delta);
+      delta = dis_mov_Sw_Ew(vbi, pfx, sz, delta);
       return delta;
 
    case 0x8D: /* LEA M,Gv */
@@ -20662,6 +20646,11 @@ Long dis_ESC_NONE (
               );
       DIP("lea%c %s, %s\n", nameISize(sz), dis_buf, 
                             nameIRegG(sz,pfx,modrm));
+      return delta;
+
+   case 0x8E: /* MOV E,S -- MOV to a SEGMENT REGISTER */
+      if (haveF2orF3(pfx)) goto decode_failure;
+      delta = dis_mov_Ew_Sw(vbi, pfx, sz, delta);
       return delta;
 
    case 0x8F: { /* POPQ m64 / POPW m16 */
