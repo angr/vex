@@ -8964,6 +8964,23 @@ void dis_ret ( /*MOD*/DisResult* dres, const VexAbiInfo* vbi, ULong d64 )
    vassert(dres->whatNext == Dis_StopHere);
 }
 
+static
+void dis_retf ( /*MOD*/DisResult* dres, const VexAbiInfo* vbi, ULong d64 )
+{
+   IRTemp t1 = newTemp(Ity_I64);
+   IRTemp t2 = newTemp(Ity_I64);
+   IRTemp t3 = newTemp(Ity_I64);
+   IRTemp t4 = newTemp(Ity_I64);
+   assign(t1, getIReg64(R_RSP));
+   assign(t2, loadLE(Ity_I64,mkexpr(t1)));
+   assign(t4, loadLE(Ity_I64, binop(Iop_Add64, mkexpr(t1), mkU64(8+d64))));
+   assign(t3, binop(Iop_Add64, mkexpr(t1), mkU64(16+d64)));
+   putIReg64(R_RSP, mkexpr(t3));
+   putSReg(R_CS, mkexpr(t4));
+   make_redzone_AbiHint(vbi, t1, t2/*nia*/, "ret");
+   jmp_treg(dres, Ijk_Ret, t2);
+   vassert(dres->whatNext == Dis_StopHere);
+}
 
 /*------------------------------------------------------------*/
 /*--- SSE/SSE2/SSE3 helpers                                ---*/
@@ -21230,6 +21247,23 @@ Long dis_ESC_NONE (
       putIReg64(R_RBP, mkexpr(t2));
       putIReg64(R_RSP, binop(Iop_Add64, mkexpr(t1), mkU64(8)) );
       DIP("leave\n");
+      return delta;
+
+   case 0xCA: /* RET imm16 */
+      if (have66orF3(pfx)) goto decode_failure;
+      if (haveF2(pfx)) DIP("bnd ; "); /* MPX bnd prefix. */
+      d64 = getUDisp16(delta);
+      delta += 2;
+      dis_retf(dres, vbi, d64);
+      DIP("ret $%lld\n", d64);
+      return delta;
+
+   case 0xCB: /* RET */
+      if (have66(pfx)) goto decode_failure;
+      /* F3 is acceptable on AMD. */
+      if (haveF2(pfx)) DIP("bnd ; "); /* MPX bnd prefix. */
+      dis_retf(dres, vbi, 0);
+      DIP(haveF3(pfx) ? "rep ; ret\n" : "ret\n");
       return delta;
 
    case 0xCC: /* INT 3 */
