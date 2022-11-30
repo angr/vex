@@ -21249,7 +21249,7 @@ Long dis_ESC_NONE (
       DIP("leave\n");
       return delta;
 
-   case 0xCA: /* RET imm16 */
+   case 0xCA: /* RETF imm16 */
       if (have66orF3(pfx)) goto decode_failure;
       if (haveF2(pfx)) DIP("bnd ; "); /* MPX bnd prefix. */
       d64 = getUDisp16(delta);
@@ -21258,7 +21258,7 @@ Long dis_ESC_NONE (
       DIP("ret $%lld\n", d64);
       return delta;
 
-   case 0xCB: /* RET */
+   case 0xCB: /* RETF */
       if (have66(pfx)) goto decode_failure;
       /* F3 is acceptable on AMD. */
       if (haveF2(pfx)) DIP("bnd ; "); /* MPX bnd prefix. */
