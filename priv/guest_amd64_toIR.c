@@ -8970,11 +8970,11 @@ void dis_retf ( /*MOD*/DisResult* dres, const VexAbiInfo* vbi, ULong d64 )
    IRTemp t1 = newTemp(Ity_I64);
    IRTemp t2 = newTemp(Ity_I64);
    IRTemp t3 = newTemp(Ity_I64);
-   IRTemp t4 = newTemp(Ity_I64);
+   IRTemp t4 = newTemp(Ity_I16);
    assign(t1, getIReg64(R_RSP));
    assign(t2, loadLE(Ity_I64,mkexpr(t1)));
-   assign(t4, loadLE(Ity_I64, binop(Iop_Add64, mkexpr(t1), mkU64(8+d64))));
-   assign(t3, binop(Iop_Add64, mkexpr(t1), mkU64(16+d64)));
+   assign(t4, loadLE(Ity_I16, binop(Iop_Add64, mkexpr(t1), mkU64(8+d64))));
+   assign(t3, binop(Iop_Add64, mkexpr(t1), mkU64(10+d64)));
    putIReg64(R_RSP, mkexpr(t3));
    putSReg(R_CS, mkexpr(t4));
    make_redzone_AbiHint(vbi, t1, t2/*nia*/, "ret");
