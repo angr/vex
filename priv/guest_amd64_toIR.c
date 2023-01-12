@@ -6009,6 +6009,10 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                put_ST_UNCHECKED(r_src, mkexpr(t1));
                break;
 
+            case 0xD0: /* FNOP */
+               DIP("fnop\n");
+               break;
+
             case 0xE0: /* FCHS */
                DIP("fchs\n");
                put_ST_UNCHECKED(0, unop(Iop_NegF64, get_ST(0)));
