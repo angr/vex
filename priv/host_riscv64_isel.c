@@ -629,10 +629,8 @@ static HReg iselIntExpr_R_wrk(ISelEnv* env, IRExpr* e)
       case Iop_Xor32:
       case Iop_Or64:
       case Iop_Or32:
-      case Iop_Or1:
       case Iop_And64:
       case Iop_And32:
-      case Iop_And1:
       case Iop_Shl64:
       case Iop_Shl32:
       case Iop_Shr64:
@@ -665,12 +663,10 @@ static HReg iselIntExpr_R_wrk(ISelEnv* env, IRExpr* e)
             break;
          case Iop_Or64:
          case Iop_Or32:
-         case Iop_Or1:
             op = RISCV64op_OR;
             break;
          case Iop_And64:
          case Iop_And32:
-         case Iop_And1:
             op = RISCV64op_AND;
             break;
          case Iop_Shl64:
@@ -805,7 +801,7 @@ static HReg iselIntExpr_R_wrk(ISelEnv* env, IRExpr* e)
          addInstr(env, RISCV64Instr_ALU(RISCV64op_OR, dst, hi32, lo32));
          return dst;
       }
-      case Iop_DivModS32to32: {
+      case Iop_DivModS64to32: {
          /* TODO Improve in conjunction with Iop_64HIto32. */
          HReg argL = iselIntExpr_R(env, e->Iex.Binop.arg1);
          HReg argR = iselIntExpr_R(env, e->Iex.Binop.arg2);
@@ -827,7 +823,7 @@ static HReg iselIntExpr_R_wrk(ISelEnv* env, IRExpr* e)
          addInstr(env, RISCV64Instr_ALU(RISCV64op_OR, dst, remw_hi, divw_lo));
          return dst;
       }
-      case Iop_DivModU32to32: {
+      case Iop_DivModU64to32: {
          /* TODO Improve in conjunction with Iop_64HIto32. */
          HReg argL = iselIntExpr_R(env, e->Iex.Binop.arg1);
          HReg argR = iselIntExpr_R(env, e->Iex.Binop.arg2);
@@ -1231,8 +1227,7 @@ static void iselInt128Expr_wrk(HReg* rHi, HReg* rLo, ISelEnv* env, IRExpr* e)
       }
 
       /* 64 x 64 -> (64(rem),64(div)) division */
-      case Iop_DivModS64to64:
-      case Iop_DivModU64to64: {
+      case Iop_DivModS64to64: {
          HReg argL = iselIntExpr_R(env, e->Iex.Binop.arg1);
          HReg argR = iselIntExpr_R(env, e->Iex.Binop.arg2);
          *rHi      = newVRegI(env);
