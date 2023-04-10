@@ -46,15 +46,18 @@
 
 /* Convert one riscv64 insn to IR. See the type DisOneInstrFn in
    guest_generic_bb_to_IR.h. */
-DisResult disInstr_RISCV64(IRSB*              irbb,
-                           const UChar*       guest_code,
-                           Long               delta,
-                           Addr               guest_IP,
-                           VexArch            guest_arch,
+DisResult disInstr_RISCV64(IRSB*        irsb_IN,
+                           Bool         (*resteerOkFn) ( void*, Addr ),
+                           Bool         resteerCisOk,
+                           void*        callback_opaque,
+                           const UChar* guest_code_IN,
+                           Long         delta_IN,
+                           Addr         guest_IP,
+                           VexArch      guest_arch,
                            const VexArchInfo* archinfo,
                            const VexAbiInfo*  abiinfo,
-                           VexEndness         host_endness,
-                           Bool               sigill_diag);
+                           VexEndness   host_endness_IN,
+                           Bool         sigill_diag_IN );
 
 /* Used by the optimiser to specialise calls to helpers. */
 IRExpr* guest_riscv64_spechelper(const HChar* function_name,
