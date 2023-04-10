@@ -679,6 +679,7 @@ static int vex_register_size ( UInt reg_offset, VexArch guest_arch )
          CHECK_OFFSET(reg_offset, OFFSET_mips64_IP_AT_SYSCALL, 8)
          break;
       case VexArchTILEGX:
+      case VexArchRISCV64:
          break;
       default:
          /* Unsupported guest architecture */
