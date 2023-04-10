@@ -418,6 +418,12 @@ typedef
       Bool host_ppc_calls_use_fndescrs;
 
       Bool guest_mips_fp_mode64;
+
+
+      /* Potentially for all guests that use LL/SC: use the fallback
+         (synthesised) implementation rather than passing LL/SC on to
+         the host? */
+      Bool guest__use_fallback_LLSC;
    }
    VexAbiInfo;
 
