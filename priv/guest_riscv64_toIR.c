@@ -3441,6 +3441,9 @@ static Bool disInstr_RISCV64_WRK(/*MB_OUT*/ DisResult* dres,
 /* Disassemble a single instruction into IR. The instruction is located in host
    memory at &guest_code[delta]. */
 DisResult disInstr_RISCV64(IRSB*              irsb,
+                           Bool               (*resteerOkFn) ( void*, Addr ),
+                           Bool               resteerCisOk,
+                           void*              callback_opaque,
                            const UChar*       guest_code,
                            Long               delta,
                            Addr               guest_IP,
