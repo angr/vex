@@ -26,10 +26,13 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
+#include "libvex_basictypes.h"
+#include "libvex.h"
 #include "libvex_trc_values.h"
 
-#include "host_riscv64_defs.h"
 #include "main_util.h"
+#include "host_generic_regs.h"
+#include "host_riscv64_defs.h"
 
 /*------------------------------------------------------------*/
 /*--- Registers                                            ---*/
