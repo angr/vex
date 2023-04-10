@@ -1778,7 +1778,7 @@ static Bool dis_RV64M(/*MB_OUT*/ DisResult* dres,
                break;
             case 0b111:
                expr =
-                  unop(Iop_128HIto64, binop(Iop_DivModU64to64, getIReg64(rs1),
+                  unop(Iop_128HIto64, binop(Iop_DivModS64to64, getIReg64(rs1),
                                             getIReg64(rs2)));
                break;
             default:
@@ -1842,12 +1842,12 @@ static Bool dis_RV64M(/*MB_OUT*/ DisResult* dres,
                expr = binop(Iop_DivU32, getIReg32(rs1), getIReg32(rs2));
                break;
             case 0b110:
-               expr = unop(Iop_64HIto32, binop(Iop_DivModS32to32,
-                                               getIReg32(rs1), getIReg32(rs2)));
+               expr = unop(Iop_64HIto32, binop(Iop_DivModS64to32,
+                                               getIReg64(rs1), getIReg32(rs2)));
                break;
             case 0b111:
-               expr = unop(Iop_64HIto32, binop(Iop_DivModU32to32,
-                                               getIReg32(rs1), getIReg32(rs2)));
+               expr = unop(Iop_64HIto32, binop(Iop_DivModU64to32,
+                                               getIReg64(rs1), getIReg32(rs2)));
                break;
             default:
                vassert(0);
@@ -2485,7 +2485,7 @@ static Bool dis_RV64F(/*MB_OUT*/ DisResult* dres,
                break;
             case 0b000:
                assign(irsb, res,
-                      binop(Iop_Or1,
+                      binop(Iop_Or32,
                             binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_LT)),
                             binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_EQ))));
                break;
@@ -2982,7 +2982,7 @@ static Bool dis_RV64D(/*MB_OUT*/ DisResult* dres,
                break;
             case 0b000:
                assign(irsb, res,
-                      binop(Iop_Or1,
+                      binop(Iop_Or32,
                             binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_LT)),
                             binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_EQ))));
                break;
