@@ -29,10 +29,9 @@
 #ifndef __VEX_HOST_RISCV64_DEFS_H
 #define __VEX_HOST_RISCV64_DEFS_H
 
-#include "libvex.h"
 #include "libvex_basictypes.h"
-
-#include "host_generic_regs.h"
+#include "libvex.h"             /* VexArch */
+#include "host_generic_regs.h"  /* HReg */
 
 /*------------------------------------------------------------*/
 /*--- Registers                                            ---*/
