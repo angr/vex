@@ -26,9 +26,15 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#include "host_riscv64_defs.h"
-#include "main_globals.h"
+#include "libvex_basictypes.h"
+#include "libvex_ir.h"
+#include "libvex.h"
+#include "ir_match.h"
+
 #include "main_util.h"
+#include "main_globals.h"
+#include "host_generic_regs.h"
+#include "host_riscv64_defs.h"
 
 /*------------------------------------------------------------*/
 /*--- ISelEnv                                              ---*/
