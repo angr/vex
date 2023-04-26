@@ -2005,7 +2005,7 @@ static Bool dis_RV64A(/*MB_OUT*/ DisResult* dres,
          if (rd != 0)
             putIReg64(irsb, rd, mkU64(0));
       } else {
-         IRTemp res = newTemp(irsb, Ity_I1);
+         IRTemp res = newTemp(irsb, Ity_I64);
          stmt(irsb, IRStmt_LLSC(Iend_LE, res, getIReg64(rs1),
                                 narrowFrom64(ty, getIReg64(rs2))));
          /* IR semantics: res is 1 if store succeeds, 0 if it fails. Need to set
@@ -2013,7 +2013,7 @@ static Bool dis_RV64A(/*MB_OUT*/ DisResult* dres,
          if (rd != 0)
             putIReg64(
                irsb, rd,
-               binop(Iop_Xor64, unop(Iop_1Uto64, mkexpr(res)), mkU64(1)));
+               binop(Iop_Xor64, unop(Iop_32Uto64, mkexpr(res)), mkU64(1)));
       }
 
       if (aqrl & 0x2)
@@ -2473,7 +2473,7 @@ static Bool dis_RV64F(/*MB_OUT*/ DisResult* dres,
          if (rd != 0) {
             IRTemp cmp = newTemp(irsb, Ity_I32);
             assign(irsb, cmp, binop(Iop_CmpF32, mkexpr(a1), mkexpr(a2)));
-            IRTemp res = newTemp(irsb, Ity_I1);
+            IRTemp res = newTemp(irsb, Ity_I32);
             switch (rm) {
             case 0b010:
                assign(irsb, res,
@@ -2486,13 +2486,13 @@ static Bool dis_RV64F(/*MB_OUT*/ DisResult* dres,
             case 0b000:
                assign(irsb, res,
                       binop(Iop_Or32,
-                            binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_LT)),
-                            binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_EQ))));
+                            unop(Iop_1Uto32, binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_LT))),
+                            unop(Iop_1Uto32, binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_EQ)))));
                break;
             default:
                vassert(0);
             }
-            putIReg64(irsb, rd, unop(Iop_1Uto64, mkexpr(res)));
+            putIReg64(irsb, rd, unop(Iop_32Uto64, mkexpr(res)));
          }
          const HChar* name;
          const HChar* helper_name;
@@ -2970,7 +2970,7 @@ static Bool dis_RV64D(/*MB_OUT*/ DisResult* dres,
          if (rd != 0) {
             IRTemp cmp = newTemp(irsb, Ity_I32);
             assign(irsb, cmp, binop(Iop_CmpF64, mkexpr(a1), mkexpr(a2)));
-            IRTemp res = newTemp(irsb, Ity_I1);
+            IRTemp res = newTemp(irsb, Ity_I32);
             switch (rm) {
             case 0b010:
                assign(irsb, res,
@@ -2983,13 +2983,13 @@ static Bool dis_RV64D(/*MB_OUT*/ DisResult* dres,
             case 0b000:
                assign(irsb, res,
                       binop(Iop_Or32,
-                            binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_LT)),
-                            binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_EQ))));
+                            unop(Iop_1Uto32, binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_LT))),
+                            unop(Iop_1Uto32, binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_EQ)))));
                break;
             default:
                vassert(0);
             }
-            putIReg64(irsb, rd, unop(Iop_1Uto64, mkexpr(res)));
+            putIReg64(irsb, rd, unop(Iop_32Uto64, mkexpr(res)));
          }
          const HChar* name;
          const HChar* helper_name;
