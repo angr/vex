@@ -464,6 +464,7 @@ typedef struct {
       } CAS;
       /* Device I/O and memory fence. */
       struct {
+         Int _placeholder;
       } FENCE;
       /* Conditional-select pseudoinstruction. */
       struct {
@@ -523,6 +524,7 @@ typedef struct {
          /* No fields. The address of the counter to inc is installed later,
             post-translation, by patching it in, as it is not known at
             translation time. */
+         Int _placeholder;
       } ProfInc;
    } RISCV64in;
 } RISCV64Instr;
