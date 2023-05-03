@@ -62,17 +62,23 @@
 /*--- Debugging output                                     ---*/
 /*------------------------------------------------------------*/
 
-#define DIP(format, args...)                                                   \
-   do {                                                                        \
-      if (vex_traceflags & VEX_TRACE_FE)                                       \
-         vex_printf(format, ##args);                                           \
-   } while (0)
+#ifndef _MSC_VER
+#define DIP(format, args...)           \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_printf(format, ## args)
 
-#define DIS(buf, format, args...)                                              \
-   do {                                                                        \
-      if (vex_traceflags & VEX_TRACE_FE)                                       \
-         vex_sprintf(buf, format, ##args);                                     \
-   } while (0)
+#define DIS(buf, format, args...)      \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_sprintf(buf, format, ## args)
+#else
+#define DIP(format, ...)           \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_printf(format, __VA_ARGS__)
+
+#define DIS(buf, format, ...)      \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_sprintf(buf, format, __VA_ARGS__)
+#endif
 
 /*------------------------------------------------------------*/
 /*--- Helper bits and pieces for deconstructing the        ---*/
