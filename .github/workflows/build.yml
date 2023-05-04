@@ -24,7 +24,7 @@ jobs:
           make /f Makefile-msvc
         name: Build VEX (windows)
         shell: cmd
-        if: contains(matrix.os, 'windows')
+        if: ${{ contains(matrix.os, 'windows') }}
       - run: gmake -f Makefile-gcc
         name: Build VEX (nix)
-        if: ! contains(matrix.os, 'windows')
+        if: ${{ ! contains(matrix.os, 'windows') }}
