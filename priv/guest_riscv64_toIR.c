@@ -3283,6 +3283,14 @@ static Bool dis_RV64Zicsr(/*MB_OUT*/ DisResult* dres,
       }
    }
 
+   /* ----------------- wfi ------------------ */
+   if (INSN(6, 0) == 0b1110011 && INSN(14, 12) == 0b000 && INSN(24, 20) == 0b00101) {
+      /* Add a noOp statement to the list held by irsb. */
+      stmt(irsb, IRStmt_NoOp());
+      DIP("wfi\n");
+      return True;
+   }
+
    return False;
 }
 
