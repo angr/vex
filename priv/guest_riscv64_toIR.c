@@ -3485,7 +3485,7 @@ static Bool dis_RV64Zicsr(/*MB_OUT*/ DisResult* dres,
       d->fxState[0].offset = OFFB_X0; /* Should add an MEPC to guest register state to complete implementation*/
       d->fxState[0].size   = 8;
 
-      /* execute the dirty call, dumping the result in val. */
+      /* execute the dirty call, and use the return result as the new PC. */
       stmt(irsb, IRStmt_Dirty(d));
       putPC(irsb, mkexpr(temp));
       DIP("mret\n");
