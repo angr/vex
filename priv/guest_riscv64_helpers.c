@@ -368,6 +368,48 @@ UInt riscv64g_calculate_fflags_fmadd_d(Double a1,
 ULong riscv64g_calculate_fclass_s(Float a1) { CALCULATE_FCLASS("fclass.s"); }
 ULong riscv64g_calculate_fclass_d(Double a1) { CALCULATE_FCLASS("fclass.d"); }
 
+/* CSR helpers for non-FP CSR operations */
+
+/* CALLED FROM GENERATED CODE */
+/* DIRTY HELPERS (non-referentially-transparent) */
+/* Generic implementation for CSR write operations.  Non-FP CSR writes can be intercepted here.
+   These helpers are called with the address of the CSR, whether or not the CSR is written and/or
+   read, and the value to write.  Additionally the guest state is passed in to allow for side effects
+   to be managed for arbitrary CSR operations.
+ */
+
+/*
+  Called for read/write operations on full width values of the CSR.
+ */
+ULong riscv_dirtyhelper_CSR_rw(VexGuestRISCV64State *st, UInt csr, Bool write, Bool read, ULong value)
+{
+  return 0;
+}
+
+/*
+  Called for operations that set a CSR value with a mask, rather than a full-width value.
+ */
+ULong riscv_dirtyhelper_CSR_s(VexGuestRISCV64State *st, UInt csr, Bool write, Bool read, ULong value)
+{
+  return 0;
+}
+
+/*
+  Called for operations that clear a CSR value with a mask, rather than a full-width value.
+ */
+ULong riscv_dirtyhelper_CSR_c(VexGuestRISCV64State *st, UInt csr, Bool write, Bool read, ULong value)
+{
+  return 0;
+}
+
+/*
+  Called for mret instructions.
+ */
+ULong riscv_dirtyhelper_mret(VexGuestRISCV64State *st)
+{
+  return 0;
+}
+
 /*------------------------------------------------------------*/
 /*--- Flag-helpers translation-time function specialisers. ---*/
 /*--- These help iropt specialise calls the above run-time ---*/
