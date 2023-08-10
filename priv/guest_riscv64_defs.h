@@ -132,6 +132,22 @@ UInt riscv64g_calculate_fflags_fmadd_d(Double a1,
 ULong riscv64g_calculate_fclass_s(Float a1);
 ULong riscv64g_calculate_fclass_d(Double a1);
 
+/*
+  Dirty helpers for CSR accesses.
+  riscv_dirtyhelper_CSR_rw is for read/write of full width values. (e.g. csrrw)
+  riscv_dirtyhelper_CSR_s is for setting bits via a mask (e.g. csrrs)
+  riscv_dirtyhelper_CSR_c is for clearing bits via a mask (e.g. csrrc)
+  riscv_dirtyhelper_mret is for the mret instruction
+  Both immediate and non-immediate forms of these instructions flow through these helpers.
+  The 'csr' parameter is the RISCV address of the CSR being operated on.
+  The 'write' parameter is true if the CSR is written by the instruction.  The 'read' parameter
+  is set to true if the CSR is read by the instruction.
+ */
+ULong riscv_dirtyhelper_CSR_rw(VexGuestRISCV64State *st, UInt csr, Bool write, Bool read, ULong value);
+ULong riscv_dirtyhelper_CSR_s(VexGuestRISCV64State *st, UInt csr, Bool write, Bool read, ULong value);
+ULong riscv_dirtyhelper_CSR_c(VexGuestRISCV64State *st, UInt csr, Bool write, Bool read, ULong value);
+ULong riscv_dirtyhelper_mret(VexGuestRISCV64State *st);
+
 #endif /* ndef __VEX_GUEST_RISCV64_DEFS_H */
 
 /*--------------------------------------------------------------------*/
