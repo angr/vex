@@ -213,6 +213,12 @@ typedef  unsigned long HWord;
 #   define VEX_HOST_WORDSIZE 4
 #   define VEX_REGPARM(_n) /* */
 
+#elif defined(__riscv) && defined(__riscv_xlen)
+#   if (__riscv_xlen == 64)
+#       define VEX_HOST_WORDSIZE 8
+#       define VEX_REGPARM(_n) /* */
+#   endif
+
 #elif defined(__tilegx__)
 #   define VEX_HOST_WORDSIZE 8
 #   define VEX_REGPARM(_n) /* */
