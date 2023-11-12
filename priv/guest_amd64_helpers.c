@@ -1089,9 +1089,10 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
          /* dep1 + dep2 == 0
           */
          return
-            binop(Iop_CmpEQ32,
-                  binop(Iop_Add32, unop(Iop_64to32, cc_dep1), unop(Iop_64to32, cc_dep2)),
-                  mkU32(0));
+            unop(Iop_1Uto64,
+               binop(Iop_CmpEQ32,
+                     binop(Iop_Add32, unop(Iop_64to32, cc_dep1), unop(Iop_64to32, cc_dep2)),
+                     mkU32(0)));
       }
 
       /*---------------- SUBQ ----------------*/
