@@ -7,4 +7,5 @@
 vex
 
 auxprogs/genoffsets
+auxprogs/genoffsets.dSYM
 pub/libvex_guest_offsets.h
