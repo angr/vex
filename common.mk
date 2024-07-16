@@ -14,6 +14,7 @@ PUB_HEADERS = \
 	pub/libvex_trc_values.h		\
 	pub/libvex_emnote.h		\
 	pub/libvex_guest_x86.h		\
+	pub/libvex_guest_tilegx.h		\
 	pub/libvex_guest_amd64.h	\
 	pub/libvex_guest_arm.h		\
 	pub/libvex_guest_ppc32.h	\
@@ -27,6 +28,7 @@ PUB_HEADERS = \
 # when any of them change
 PRIV_HEADERS = \
 	priv/host_x86_defs.h		\
+	priv/host_tilegx_defs.h		\
 	priv/host_amd64_defs.h		\
 	priv/host_arm_defs.h		\
 	priv/host_ppc_defs.h		\
@@ -43,6 +45,7 @@ PRIV_HEADERS = \
 	priv/guest_generic_x87.h	\
 	priv/guest_generic_bb_to_IR.h	\
 	priv/guest_x86_defs.h		\
+	priv/guest_tilegx_defs.h		\
 	priv/guest_amd64_defs.h		\
 	priv/guest_arm_defs.h		\
 	priv/guest_ppc_defs.h		\
@@ -61,7 +64,9 @@ NORMAL_OBJS = \
 	priv/main_globals.o		\
 	priv/main_util.o		\
 	priv/s390_disasm.o		\
+	priv/tilegx_disasm.o    \
 	priv/host_x86_defs.o		\
+	priv/host_tilegx_defs.o		\
 	priv/host_amd64_defs.o		\
 	priv/host_arm_defs.o		\
 	priv/host_arm64_defs.o		\
@@ -70,6 +75,7 @@ NORMAL_OBJS = \
 	priv/host_s390_defs.o		\
 	priv/host_mips_defs.o		\
 	priv/host_x86_isel.o		\
+	priv/host_tilegx_isel.o		\
 	priv/host_amd64_isel.o		\
 	priv/host_arm_isel.o		\
 	priv/host_arm64_isel.o		\
@@ -87,6 +93,7 @@ NORMAL_OBJS = \
 	priv/guest_generic_x87.o	\
 	priv/guest_generic_bb_to_IR.o	\
 	priv/guest_x86_helpers.o	\
+	priv/guest_tilegx_helpers.o	\
 	priv/guest_amd64_helpers.o	\
 	priv/guest_arm_helpers.o	\
 	priv/guest_arm64_helpers.o	\
@@ -95,6 +102,7 @@ NORMAL_OBJS = \
 	priv/guest_s390_helpers.o	\
 	priv/guest_mips_helpers.o	\
 	priv/guest_x86_toIR.o		\
+	priv/guest_tilegx_toIR.o		\
 	priv/guest_amd64_toIR.o		\
 	priv/guest_arm_toIR.o		\
 	priv/guest_arm64_toIR.o		\
