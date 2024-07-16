@@ -414,7 +414,7 @@ static DisResult disInstr_TILEGX_WRK ( Bool(*resteerOkFn) (void *, Addr),
 
   /* To decode the given instruction bundle. */
   nr_insn = parse_insn_tilegx((tilegx_bundle_bits)cins,
-                              (ULong)(Addr)code,
+                              (ULong)(Addr)(guest_PC_bbstart + delta),
                               decoded);
 
   if (vex_traceflags & VEX_TRACE_FE)
