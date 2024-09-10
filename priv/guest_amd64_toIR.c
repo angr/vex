@@ -8677,10 +8677,25 @@ ULong dis_cmpxchg_G_E ( /*OUT*/Bool* ok,
       assign( acc, getIRegRAX(size) );
       setFlags_DEP1_DEP2(Iop_Sub8, acc, dest, ty);
       assign( cond, mk_amd64g_calculate_condition(AMD64CondZ) );
-      assign( dest2, IRExpr_ITE(mkexpr(cond), mkexpr(src), mkexpr(dest)) );
-      assign( acc2,  IRExpr_ITE(mkexpr(cond), mkexpr(acc), mkexpr(dest)) );
-      putIRegRAX(size, mkexpr(acc2));
-      putIRegE(size, pfx, rm, mkexpr(dest2));
+
+      if (size == 4) {
+         /* Preserve upper 32b when register should be unmodified. */
+         IRTemp acc64  = newTemp(Ity_I64);
+         IRTemp dest64 = newTemp(Ity_I64);
+         assign( dest64, IRExpr_ITE(mkexpr(cond),
+                                    unop(Iop_32Uto64, mkexpr(src)),
+                                    getIRegE(8, pfx, rm)) );
+         assign( acc64, IRExpr_ITE(mkexpr(cond),
+                                   getIRegRAX(8),
+                                   unop(Iop_32Uto64, mkexpr(dest))) );
+         putIRegRAX(8, mkexpr(acc64));
+         putIRegE(8, pfx, rm, mkexpr(dest64));
+      } else {
+         assign( dest2, IRExpr_ITE(mkexpr(cond), mkexpr(src), mkexpr(dest)) );
+         assign( acc2,  IRExpr_ITE(mkexpr(cond), mkexpr(acc), mkexpr(dest)) );
+         putIRegRAX(size, mkexpr(acc2));
+         putIRegE(size, pfx, rm, mkexpr(dest2));
+      }
       DIP("cmpxchg%c %s,%s\n", nameISize(size),
                                nameIRegG(size,pfx,rm),
                                nameIRegE(size,pfx,rm) );
