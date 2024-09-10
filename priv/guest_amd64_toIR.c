@@ -8163,35 +8163,28 @@ ULong dis_SHLRD_Gv_Ev ( const VexAbiInfo* vbi,
          assign( tmp64,
                  binop(Iop_32HLto64,
                        binop(Iop_16HLto32, mkexpr(esrc), mkexpr(gsrc)),
-                       binop(Iop_16HLto32, mkexpr(gsrc), mkexpr(gsrc))
+                       binop(Iop_16HLto32, mkexpr(esrc), mkexpr(gsrc))
          ));
-         /* result formed by shifting [esrc'gsrc'gsrc'gsrc] */
+         /* result formed by shifting [esrc'gsrc'esrc'gsrc] */
          assign( res64, 
                  binop(Iop_Shr64, 
                        binop(Iop_Shl64, mkexpr(tmp64), mkexpr(tmpSH)),
                        mkU8(48)) );
-         /* subshift formed by shifting [esrc'0000'0000'0000] */
          assign( rss64, 
                  binop(Iop_Shr64, 
-                       binop(Iop_Shl64, 
-                             binop(Iop_Shl64, unop(Iop_16Uto64, mkexpr(esrc)),
-                                              mkU8(48)),
-                             mkexpr(tmpSS)),
+                       binop(Iop_Shl64, mkexpr(tmp64), mkexpr(tmpSS)),
                        mkU8(48)) );
       }
       else
       if (sz == 2 && !left_shift) {
          assign( tmp64,
                  binop(Iop_32HLto64,
-                       binop(Iop_16HLto32, mkexpr(gsrc), mkexpr(gsrc)),
+                       binop(Iop_16HLto32, mkexpr(gsrc), mkexpr(esrc)),
                        binop(Iop_16HLto32, mkexpr(gsrc), mkexpr(esrc))
          ));
-         /* result formed by shifting [gsrc'gsrc'gsrc'esrc] */
+         /* result formed by shifting [gsrc'esrc'gsrc'esrc] */
          assign( res64, binop(Iop_Shr64, mkexpr(tmp64), mkexpr(tmpSH)) );
-         /* subshift formed by shifting [0000'0000'0000'esrc] */
-         assign( rss64, binop(Iop_Shr64, 
-                              unop(Iop_16Uto64, mkexpr(esrc)), 
-                              mkexpr(tmpSS)) );
+         assign( rss64, binop(Iop_Shr64, mkexpr(tmp64), mkexpr(tmpSS)) );
       }
 
    } else {
