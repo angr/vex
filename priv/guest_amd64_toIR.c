@@ -20991,6 +20991,22 @@ Long dis_ESC_NONE (
          dres->whatNext = Dis_StopHere;
          return delta;
       }
+      /* F2 A6/A7: repe cmps/repnz cmps{w,l,q} */
+      if (!haveF3(pfx) && haveF2(pfx)) {
+         if (opc == 0xA6)
+            sz = 1;
+         dis_REP_op ( dres, AMD64CondNZ, dis_CMPS, sz,
+                      guest_RIP_curr_instr,
+                      guest_RIP_bbstart+delta, "repne cmps", pfx );
+         dres->whatNext = Dis_StopHere;
+         return delta;
+      }
+      if (!haveF3(pfx) && !haveF2(pfx)) {
+         if (opc == 0xA6)
+            sz = 1;
+         dis_string_op( dis_CMPS, sz, "cmps", pfx );
+         return delta;
+      }
       goto decode_failure;
 
    case 0xAA:
