@@ -21039,11 +21039,27 @@ Long dis_ESC_NONE (
       delta = dis_op_imm_A( sz, False, Iop_And8, False, delta, "test" );
       return delta;
 
-   case 0xAC: /* LODS, no REP prefix */
+   case 0xAC:
    case 0xAD:
-      dis_string_op( dis_LODS, ( opc == 0xAC ? 1 : sz ), "lods", pfx );
-      return delta;
-
+      /* F2 AC/AD: rep lodsb/rep lods{w,l,q} */
+      /* F3 AC/AD: repne lodsb/repne lods{w,l,q} */
+      if (haveF2(pfx) || haveF3(pfx)) {
+         if (opc == 0xAC)
+            sz = 1;
+         dis_REP_op ( dres, AMD64CondAlways, dis_LODS, sz,
+                      guest_RIP_curr_instr,
+                      guest_RIP_bbstart+delta, "rep lods", pfx );
+         vassert(dres->whatNext == Dis_StopHere);
+         return delta;
+      }
+      /* AC/AD: lodsb/lods{w,l,q} */
+      if (!haveF2(pfx) && !haveF3(pfx)) {
+         if (opc == 0xAC)
+            sz = 1;
+         dis_string_op( dis_LODS, sz, "lods", pfx );
+         return delta;
+      }
+      goto decode_failure;
    case 0xAE:
    case 0xAF:
       /* F2 AE/AF: repne scasb/repne scas{w,l,q} */
