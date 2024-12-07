@@ -21318,7 +21318,7 @@ Long dis_ESC_NONE (
 
    case 0xCD: /* INT imm8 */
       d64 = getUChar(delta); delta++;
-      jmp_lit(dres, Ijk_Sys_syscall, guest_RIP_bbstart + delta);
+      jmp_lit(dres, Ijk_Sys_int, guest_RIP_bbstart + delta);
       vassert(dres->whatNext == Dis_StopHere);
       DIP("int $0x%x\n", d64);
       return delta;
