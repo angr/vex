@@ -13862,8 +13862,8 @@ DisResult disInstr_X86_WRK (
          jump_kind = Ijk_Sys_int210;
          break;
       default:
-         /* none of the above */
-         goto decode_failure;
+         jump_kind = Ijk_Sys_int;
+         break;
       }
 
       stmt( IRStmt_Put( OFFB_IP_AT_SYSCALL,
