@@ -986,7 +986,7 @@ int main(int argc, char **argv)
    GENOFFSET(RISCV64,riscv64,x5);
    GENOFFSET(RISCV64,riscv64,x6);
    GENOFFSET(RISCV64,riscv64,x7);
-   GENOFFSET(RISCV64,riscv64,x9);
+   GENOFFSET(RISCV64,riscv64,x8);
    GENOFFSET(RISCV64,riscv64,x9);
    GENOFFSET(RISCV64,riscv64,x10);
    GENOFFSET(RISCV64,riscv64,x11);
