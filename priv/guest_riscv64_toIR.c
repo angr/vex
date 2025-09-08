@@ -1534,7 +1534,7 @@ static Bool dis_RV64I(/*MB_OUT*/ DisResult* dres,
    }
 
    /* --------------- {add,sub} rd, rs1, rs2 ---------------- */
-   /* ------------- {sll,srl,sra} rd, rs1, rs2 -------------- */
+   /* ----------- {sll,srl,sra} rd, rs1, rs2[5:0]------------ */
    /* --------------- {slt,sltu} rd, rs1, rs2 --------------- */
    /* -------------- {xor,or,and} rd, rs1, rs2 -------------- */
    if (INSN(6, 0) == 0b0110011 && INSN(29, 25) == 0b00000 &&
@@ -1556,7 +1556,7 @@ static Bool dis_RV64I(/*MB_OUT*/ DisResult* dres,
                break;
             case 0b001:
                expr = binop(Iop_Shl64, getIReg64(rs1),
-                            unop(Iop_64to8, getIReg64(rs2)));
+                             binop(Iop_And8, mkU8(0b00111111), unop(Iop_64to8, getIReg64(rs2))));
                break;
             case 0b010:
                expr = unop(Iop_1Uto64,
@@ -1571,7 +1571,7 @@ static Bool dis_RV64I(/*MB_OUT*/ DisResult* dres,
                break;
             case 0b101:
                expr = binop(is_base ? Iop_Shr64 : Iop_Sar64, getIReg64(rs1),
-                            unop(Iop_64to8, getIReg64(rs2)));
+                            binop(Iop_And8, mkU8(0b00111111), unop(Iop_64to8, getIReg64(rs2))));
                break;
             case 0b110:
                expr = binop(Iop_Or64, getIReg64(rs1), getIReg64(rs2));
@@ -1709,7 +1709,7 @@ static Bool dis_RV64I(/*MB_OUT*/ DisResult* dres,
       return True;
    }
 
-   /* ------------------ sllw rd, rs1, rs2 ------------------ */
+   /* --------------- sllw rd, rs1, rs2[4:0] ---------------- */
    if (INSN(6, 0) == 0b0111011 && INSN(14, 12) == 0b001 &&
        INSN(31, 25) == 0b0000000) {
       UInt rd  = INSN(11, 7);
@@ -1718,12 +1718,12 @@ static Bool dis_RV64I(/*MB_OUT*/ DisResult* dres,
       if (rd != 0)
          putIReg32(
             irsb, rd,
-            binop(Iop_Shl32, getIReg32(rs1), unop(Iop_64to8, getIReg64(rs2))));
+            binop(Iop_Shl32, getIReg32(rs1), binop(Iop_And8, mkU8(0b00011111), unop(Iop_64to8, getIReg64(rs2)))));
       DIP("sllw %s, %s, %s\n", nameIReg(rd), nameIReg(rs1), nameIReg(rs2));
       return True;
    }
 
-   /* -------------- {srlw,sraw} rd, rs1, rs2 --------------- */
+   /* ------------ {srlw,sraw} rd, rs1, rs2[4:0] ------------ */
    if (INSN(6, 0) == 0b0111011 && INSN(14, 12) == 0b101 &&
        INSN(29, 25) == 0b00000 && INSN(31, 31) == 0b0) {
       Bool is_log = INSN(30, 30) == 0b0;
@@ -1733,7 +1733,7 @@ static Bool dis_RV64I(/*MB_OUT*/ DisResult* dres,
       if (rd != 0)
          putIReg32(irsb, rd,
                    binop(is_log ? Iop_Shr32 : Iop_Sar32, getIReg32(rs1),
-                         unop(Iop_64to8, getIReg64(rs2))));
+                          binop(Iop_And8, mkU8(0b00011111), unop(Iop_64to8, getIReg64(rs2)))));
       DIP("%s %s, %s, %s\n", is_log ? "srlw" : "sraw", nameIReg(rd),
           nameIReg(rs1), nameIReg(rs2));
       return True;
