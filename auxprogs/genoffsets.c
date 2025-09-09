@@ -1019,7 +1019,7 @@ int main(int argc, char **argv)
    GENOFFSET(RISCV64,riscv64,f5);
    GENOFFSET(RISCV64,riscv64,f6);
    GENOFFSET(RISCV64,riscv64,f7);
-   GENOFFSET(RISCV64,riscv64,f9);
+   GENOFFSET(RISCV64,riscv64,f8);
    GENOFFSET(RISCV64,riscv64,f9);
    GENOFFSET(RISCV64,riscv64,f10);
    GENOFFSET(RISCV64,riscv64,f11);
