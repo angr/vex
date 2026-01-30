@@ -8378,20 +8378,26 @@ ULong dis_bt_G_E ( const VexAbiInfo* vbi,
    }
   
    /* Side effect done; now get selected bit into Carry flag */
-   /* Flags: C=selected bit, O,S,Z,A,P undefined, so are set to zero. */
-   stmt( IRStmt_Put( OFFB_CC_OP,   mkU64(AMD64G_CC_OP_COPY) ));
-   stmt( IRStmt_Put( OFFB_CC_DEP2, mkU64(0) ));
-   stmt( IRStmt_Put( 
-            OFFB_CC_DEP1,
-            binop(Iop_And64,
-                  binop(Iop_Shr64, 
-                        unop(Iop_8Uto64, mkexpr(t_fetched)),
-                        mkexpr(t_bitno2)),
-                  mkU64(1)))
-       );
-   /* Set NDEP even though it isn't used.  This makes redundant-PUT
-      elimination of previous stores to this field work better. */
-   stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
+   /* Flags: C=selected bit, Z=unaffected, O,S,A,P undefined */
+   IRTemp old_cc = newTemp(Ity_I64);
+   assign(old_cc, IRExpr_Get(OFFB_CC_DEP1, Ity_I64));
+
+   IRTemp new_cf = newTemp(Ity_I64);
+   assign(new_cf, binop(Iop_And64,
+                        binop(Iop_Shr64, unop(Iop_8Uto64, mkexpr(t_fetched)),
+                              mkexpr(t_bitno2)),
+                        mkU64(1)));
+
+   /* Replace CF but reserve the old flags (for ZF) */
+   IRTemp merged = newTemp(Ity_I64);
+   assign(merged,
+          binop(Iop_Or64,
+                binop(Iop_And64, mkexpr(old_cc), mkU64(~AMD64G_CC_MASK_C)),
+                mkexpr(new_cf)));
+
+   stmt(IRStmt_Put(OFFB_CC_OP, mkU64(AMD64G_CC_OP_COPY)));
+   stmt(IRStmt_Put(OFFB_CC_DEP1, mkexpr(merged)));
+   stmt(IRStmt_Put(OFFB_CC_DEP2, mkU64(0)));
 
    /* Move reg operand from stack back to reg */
    if (epartIsReg(modrm)) {
