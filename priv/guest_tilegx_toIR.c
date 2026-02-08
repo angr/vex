@@ -2570,7 +2570,7 @@ disInstr_TILEGX ( IRSB* irsb_IN,
   irsb = irsb_IN;
   host_endness = host_endness_IN;
   guest_PC_curr_instr = (Addr64) guest_IP;
-  guest_PC_bbstart = (Addr64) toUInt(guest_IP - delta);
+  guest_PC_bbstart = guest_PC_curr_instr - delta;
 
   dres = disInstr_TILEGX_WRK(resteerOkFn, resteerCisOk,
                              callback_opaque,
