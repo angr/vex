@@ -181,6 +181,10 @@ typedef  unsigned long HWord;
 #   define VEX_HOST_WORDSIZE 4
 #   define VEX_REGPARM(_n) __attribute__((regparm(_n)))
 
+#elif defined(__wasm32__)
+#   define VEX_HOST_WORDSIZE 4
+#   define VEX_REGPARM(_n) /* */
+
 #elif defined(_WIN32) && !defined(_WIN64)
 #   define VEX_HOST_WORDSIZE 4
 #   define VEX_REGPARM(_n) /* ought to be __fastcall */
