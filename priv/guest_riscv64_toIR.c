@@ -1775,27 +1775,49 @@ static Bool dis_RV64M(/*MB_OUT*/ DisResult* dres,
                expr = unop(Iop_128HIto64,
                            binop(Iop_MullU64, getIReg64(rs1), getIReg64(rs2)));
                break;
-            case 0b100:
-               expr = binop(Iop_DivS64, getIReg64(rs1), getIReg64(rs2));
+            /* RISC-V defines division by zero as non-trapping with fixed
+               results (div/divu -> all-ones, rem/remu -> dividend), and the
+               only signed overflow (INT_MIN / -1) as div -> INT_MIN, rem -> 0
+               (handled naturally by the wrapping divmod). We divide by a
+               forced-nonzero divisor and select the defined value when the
+               divisor is zero, so no spurious SIGFPE is raised. */
+            case 0b100: {   /* div */
+               IRExpr* d = getIReg64(rs2);
+               IRExpr* z = binop(Iop_CmpEQ64, d, mkU64(0));
+               expr = IRExpr_ITE(z, mkU64(0xFFFFFFFFFFFFFFFFULL),
+                                 binop(Iop_DivS64, getIReg64(rs1),
+                                       IRExpr_ITE(z, mkU64(1), d)));
                break;
-            case 0b101:
-               expr = binop(Iop_DivU64, getIReg64(rs1), getIReg64(rs2));
+            }
+            case 0b101: {   /* divu */
+               IRExpr* d = getIReg64(rs2);
+               IRExpr* z = binop(Iop_CmpEQ64, d, mkU64(0));
+               expr = IRExpr_ITE(z, mkU64(0xFFFFFFFFFFFFFFFFULL),
+                                 binop(Iop_DivU64, getIReg64(rs1),
+                                       IRExpr_ITE(z, mkU64(1), d)));
                break;
-            case 0b110:
-               expr =
-                  unop(Iop_128HIto64, binop(Iop_DivModS64to64, getIReg64(rs1),
-                                            getIReg64(rs2)));
+            }
+            case 0b110: {   /* rem */
+               IRExpr* d = getIReg64(rs2);
+               IRExpr* z = binop(Iop_CmpEQ64, d, mkU64(0));
+               expr = IRExpr_ITE(z, getIReg64(rs1),
+                                 unop(Iop_128HIto64,
+                                      binop(Iop_DivModS64to64, getIReg64(rs1),
+                                            IRExpr_ITE(z, mkU64(1), d))));
                break;
-            case 0b111:
-               /* remu: unsigned 64-bit remainder. VEX has no DivModU64to64, so
-                  zero-extend rs1 to 128 and use the unsigned 128/64 divmod; the
-                  high 64 bits of the result are the remainder. */
-               expr =
-                  unop(Iop_128HIto64,
-                       binop(Iop_DivModU128to64,
-                             binop(Iop_64HLto128, mkU64(0), getIReg64(rs1)),
-                             getIReg64(rs2)));
+            }
+            case 0b111: {   /* remu: VEX has no DivModU64to64, so zero-extend
+                               rs1 to 128 and use the unsigned 128/64 divmod. */
+               IRExpr* d = getIReg64(rs2);
+               IRExpr* z = binop(Iop_CmpEQ64, d, mkU64(0));
+               expr = IRExpr_ITE(z, getIReg64(rs1),
+                                 unop(Iop_128HIto64,
+                                      binop(Iop_DivModU128to64,
+                                            binop(Iop_64HLto128, mkU64(0),
+                                                  getIReg64(rs1)),
+                                            IRExpr_ITE(z, mkU64(1), d))));
                break;
+            }
             default:
                vassert(0);
             }
@@ -1850,24 +1872,45 @@ static Bool dis_RV64M(/*MB_OUT*/ DisResult* dres,
             case 0b000:
                expr = binop(Iop_Mul32, getIReg32(rs1), getIReg32(rs2));
                break;
-            case 0b100:
-               expr = binop(Iop_DivS32, getIReg32(rs1), getIReg32(rs2));
+            /* Word div/rem: same RISC-V non-trapping div-by-zero semantics
+               as the 64-bit forms; the 32-bit result is sign-extended by
+               putIReg32. Divide by a forced-nonzero divisor and select. */
+            case 0b100: {   /* divw */
+               IRExpr* d = getIReg32(rs2);
+               IRExpr* z = binop(Iop_CmpEQ32, d, mkU32(0));
+               expr = IRExpr_ITE(z, mkU32(0xFFFFFFFF),
+                                 binop(Iop_DivS32, getIReg32(rs1),
+                                       IRExpr_ITE(z, mkU32(1), d)));
                break;
-            case 0b101:
-               expr = binop(Iop_DivU32, getIReg32(rs1), getIReg32(rs2));
+            }
+            case 0b101: {   /* divuw */
+               IRExpr* d = getIReg32(rs2);
+               IRExpr* z = binop(Iop_CmpEQ32, d, mkU32(0));
+               expr = IRExpr_ITE(z, mkU32(0xFFFFFFFF),
+                                 binop(Iop_DivU32, getIReg32(rs1),
+                                       IRExpr_ITE(z, mkU32(1), d)));
                break;
-            case 0b110:
-               expr = unop(Iop_64HIto32,
-                           binop(Iop_DivModS64to32,
-                                 unop(Iop_32Sto64, getIReg32(rs1)),
-                                 getIReg32(rs2)));
+            }
+            case 0b110: {   /* remw */
+               IRExpr* d = getIReg32(rs2);
+               IRExpr* z = binop(Iop_CmpEQ32, d, mkU32(0));
+               expr = IRExpr_ITE(z, getIReg32(rs1),
+                                 unop(Iop_64HIto32,
+                                      binop(Iop_DivModS64to32,
+                                            unop(Iop_32Sto64, getIReg32(rs1)),
+                                            IRExpr_ITE(z, mkU32(1), d))));
                break;
-            case 0b111:
-               expr = unop(Iop_64HIto32,
-                           binop(Iop_DivModU64to32,
-                                 unop(Iop_32Uto64, getIReg32(rs1)),
-                                 getIReg32(rs2)));
+            }
+            case 0b111: {   /* remuw */
+               IRExpr* d = getIReg32(rs2);
+               IRExpr* z = binop(Iop_CmpEQ32, d, mkU32(0));
+               expr = IRExpr_ITE(z, getIReg32(rs1),
+                                 unop(Iop_64HIto32,
+                                      binop(Iop_DivModU64to32,
+                                            unop(Iop_32Uto64, getIReg32(rs1)),
+                                            IRExpr_ITE(z, mkU32(1), d))));
                break;
+            }
             default:
                vassert(0);
             }
