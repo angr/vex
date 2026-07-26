@@ -1787,9 +1787,14 @@ static Bool dis_RV64M(/*MB_OUT*/ DisResult* dres,
                                             getIReg64(rs2)));
                break;
             case 0b111:
+               /* remu: unsigned 64-bit remainder. VEX has no DivModU64to64, so
+                  zero-extend rs1 to 128 and use the unsigned 128/64 divmod; the
+                  high 64 bits of the result are the remainder. */
                expr =
-                  unop(Iop_128HIto64, binop(Iop_DivModS64to64, getIReg64(rs1),
-                                            getIReg64(rs2)));
+                  unop(Iop_128HIto64,
+                       binop(Iop_DivModU128to64,
+                             binop(Iop_64HLto128, mkU64(0), getIReg64(rs1)),
+                             getIReg64(rs2)));
                break;
             default:
                vassert(0);
@@ -1852,12 +1857,16 @@ static Bool dis_RV64M(/*MB_OUT*/ DisResult* dres,
                expr = binop(Iop_DivU32, getIReg32(rs1), getIReg32(rs2));
                break;
             case 0b110:
-               expr = unop(Iop_64HIto32, binop(Iop_DivModS64to32,
-                                               getIReg64(rs1), getIReg32(rs2)));
+               expr = unop(Iop_64HIto32,
+                           binop(Iop_DivModS64to32,
+                                 unop(Iop_32Sto64, getIReg32(rs1)),
+                                 getIReg32(rs2)));
                break;
             case 0b111:
-               expr = unop(Iop_64HIto32, binop(Iop_DivModU64to32,
-                                               getIReg64(rs1), getIReg32(rs2)));
+               expr = unop(Iop_64HIto32,
+                           binop(Iop_DivModU64to32,
+                                 unop(Iop_32Uto64, getIReg32(rs1)),
+                                 getIReg32(rs2)));
                break;
             default:
                vassert(0);
