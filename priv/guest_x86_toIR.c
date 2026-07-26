@@ -7263,10 +7263,14 @@ UInt dis_xadd_G_E ( UChar sorb, Bool locked, Int sz, Int delta0,
       assign( tmpt1, binop(mkSizedOp(ty,Iop_Add8),
                            mkexpr(tmpd), mkexpr(tmpt0)) );
       setFlags_DEP1_DEP2( Iop_Add8, tmpd, tmpt0, ty );
-      putIReg(sz, eregOfRM(rm), mkexpr(tmpt1));
+      /* Write G (the old E value) first, then E (the sum), so that when
+         E and G are the same register (xadd %eax,%eax) the sum wins, as the
+         ISA requires (DEST := TEMP is the last assignment).  cf. the amd64
+         front-end, which already orders these writes G-then-E. */
       putIReg(sz, gregOfRM(rm), mkexpr(tmpd));
+      putIReg(sz, eregOfRM(rm), mkexpr(tmpt1));
       DIP("xadd%c %s, %s\n",
-          nameISize(sz), nameIReg(sz,gregOfRM(rm)), 
+          nameISize(sz), nameIReg(sz,gregOfRM(rm)),
           				 nameIReg(sz,eregOfRM(rm)));
       *decodeOK = True;
       return 1+delta0;
