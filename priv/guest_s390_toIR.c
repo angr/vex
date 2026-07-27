@@ -14932,7 +14932,7 @@ s390_irgen_FLOGR(UChar r1, UChar r2)
 }
 
 static const HChar *
-s390_irgen_POPCNT(UChar r1, UChar r2)
+s390_irgen_POPCNT(UChar m3, UChar r1, UChar r2)
 {
    Int i;
    IRTemp val = newTemp(Ity_I64);
@@ -14956,6 +14956,17 @@ s390_irgen_POPCNT(UChar r1, UChar r2)
                    binop(Iop_And64,
                          binop(Iop_Shr64, mkexpr(val), mkU8(1 << i)),
                          mkexpr(mask[i]))));
+      val = tmp;
+   }
+   if (m3 & 8) {
+      IRTemp tmp = newTemp(Ity_I64);
+
+      /* Horizontally sum the eight per-byte population counts. */
+      assign(tmp,
+             binop(Iop_Shr64,
+                   binop(Iop_Mul64, mkexpr(val),
+                         mkU64(0x0101010101010101ULL)),
+                   mkU8(56)));
       val = tmp;
    }
    s390_cc_thunk_putZ(S390_CC_OP_BITWISE, val);
@@ -19835,8 +19846,8 @@ s390_decode_4byte_and_irgen(const UChar *bytes)
    case 0xb9e0: s390_format_RRF_U0RR(s390_irgen_LOCFHR, RRF3_r3(ovl),
                                      RRF3_r1(ovl), RRF3_r2(ovl),
                                      S390_XMNM_LOCFHR);  goto ok;
-   case 0xb9e1: s390_format_RRE_RR(s390_irgen_POPCNT, RRE_r1(ovl),
-                                   RRE_r2(ovl));  goto ok;
+   case 0xb9e1: s390_format_RRF_M0RERE(s390_irgen_POPCNT, RRF2_m3(ovl),
+                                       RRF2_r1(ovl), RRF2_r2(ovl));  goto ok;
    case 0xb9e2: s390_format_RRF_U0RR(s390_irgen_LOCGR, RRF3_r3(ovl),
                                      RRF3_r1(ovl), RRF3_r2(ovl),
                                      S390_XMNM_LOCGR);  goto ok;
