@@ -10644,17 +10644,31 @@ static Bool decode_V6MEDIA_instruction (
            putIRegA( regD, ire_result, condT, Ijk_Boring );
 
         if (isAD) {
+           IRTemp irt_wide = newTemp(Ity_I64);
+
+           assign(
+              irt_wide,
+              binop(
+                 Iop_Add64,
+                 binop(Iop_Add64,
+                       unop(Iop_32Sto64, mkexpr(irt_prod_lo)),
+                       unop(Iop_32Sto64, mkexpr(irt_prod_hi))),
+                 unop(Iop_32Sto64, mkexpr(irt_regA))
+              )
+           );
            or_into_QFLAG32(
-              signed_overflow_after_Add32( mkexpr(irt_sum),
-                                           irt_prod_lo, irt_prod_hi ),
+              unop(Iop_1Uto32,
+                   binop(Iop_CmpNE64,
+                         mkexpr(irt_wide),
+                         unop(Iop_32Sto64, ire_result))),
+              condT
+           );
+        } else {
+           or_into_QFLAG32(
+              signed_overflow_after_Add32( ire_result, irt_sum, irt_regA ),
               condT
            );
         }
-
-        or_into_QFLAG32(
-           signed_overflow_after_Add32( ire_result, irt_sum, irt_regA ),
-           condT
-        );
 
         DIP("sml%cd%s%s r%u, r%u, r%u, r%u\n",
             isAD ? 'a' : 's',
