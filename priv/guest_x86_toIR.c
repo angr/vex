@@ -2883,19 +2883,24 @@ UInt dis_Grp8_Imm ( UChar sorb,
       }
    }
 
-   /* Copy relevant bit from t2 into the carry flag. */
-   /* Flags: C=selected bit, O,S,Z,A,P undefined, so are set to zero. */
-   stmt( IRStmt_Put( OFFB_CC_OP,   mkU32(X86G_CC_OP_COPY) ));
-   stmt( IRStmt_Put( OFFB_CC_DEP2, mkU32(0) ));
-   stmt( IRStmt_Put( 
-            OFFB_CC_DEP1,
-            binop(Iop_And32,
-                  binop(Iop_Shr32, mkexpr(t2), mkU8(src_val)),
-                  mkU32(1))
-       ));
-   /* Set NDEP even though it isn't used.  This makes redundant-PUT
-      elimination of previous stores to this field work better. */
-   stmt( IRStmt_Put( OFFB_CC_NDEP, mkU32(0) ));
+   /* Preserve the defined ZF and replace CF with the selected bit. */
+   IRTemp oldflags = newTemp(Ity_I32);
+   assign(oldflags, mk_x86g_calculate_eflags_all());
+
+   IRTemp new_cf = newTemp(Ity_I32);
+   assign(new_cf,
+          binop(Iop_And32,
+                binop(Iop_Shr32, mkexpr(t2), mkU8(src_val)),
+                mkU32(1)));
+
+   stmt(IRStmt_Put(OFFB_CC_OP, mkU32(X86G_CC_OP_COPY)));
+   stmt(IRStmt_Put(OFFB_CC_DEP1,
+                   binop(Iop_Or32,
+                         binop(Iop_And32, mkexpr(oldflags),
+                               mkU32(~X86G_CC_MASK_C)),
+                         mkexpr(new_cf))));
+   stmt(IRStmt_Put(OFFB_CC_DEP2, mkU32(0)));
+   stmt(IRStmt_Put(OFFB_CC_NDEP, mkU32(0)));
 
    return delta;
 }
@@ -6863,21 +6868,25 @@ UInt dis_bt_G_E ( const VexAbiInfo* vbi,
       }
    }
  
-   /* Side effect done; now get selected bit into Carry flag */
-   /* Flags: C=selected bit, O,S,Z,A,P undefined, so are set to zero. */
-   stmt( IRStmt_Put( OFFB_CC_OP,   mkU32(X86G_CC_OP_COPY) ));
-   stmt( IRStmt_Put( OFFB_CC_DEP2, mkU32(0) ));
-   stmt( IRStmt_Put( 
-            OFFB_CC_DEP1,
-            binop(Iop_And32,
-                  binop(Iop_Shr32, 
-                        unop(Iop_8Uto32, mkexpr(t_fetched)),
-                        mkexpr(t_bitno2)),
-                  mkU32(1)))
-       );
-   /* Set NDEP even though it isn't used.  This makes redundant-PUT
-      elimination of previous stores to this field work better. */
-   stmt( IRStmt_Put( OFFB_CC_NDEP, mkU32(0) ));
+   /* Preserve the defined ZF and replace CF with the selected bit. */
+   IRTemp oldflags = newTemp(Ity_I32);
+   assign(oldflags, mk_x86g_calculate_eflags_all());
+
+   IRTemp new_cf = newTemp(Ity_I32);
+   assign(new_cf,
+          binop(Iop_And32,
+                binop(Iop_Shr32, unop(Iop_8Uto32, mkexpr(t_fetched)),
+                      mkexpr(t_bitno2)),
+                mkU32(1)));
+
+   stmt(IRStmt_Put(OFFB_CC_OP, mkU32(X86G_CC_OP_COPY)));
+   stmt(IRStmt_Put(OFFB_CC_DEP1,
+                   binop(Iop_Or32,
+                         binop(Iop_And32, mkexpr(oldflags),
+                               mkU32(~X86G_CC_MASK_C)),
+                         mkexpr(new_cf))));
+   stmt(IRStmt_Put(OFFB_CC_DEP2, mkU32(0)));
+   stmt(IRStmt_Put(OFFB_CC_NDEP, mkU32(0)));
 
    /* Move reg operand from stack back to reg */
    if (epartIsReg(modrm)) {
