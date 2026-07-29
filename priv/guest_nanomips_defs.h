@@ -34,10 +34,12 @@
 #include "guest_generic_bb_to_IR.h"  /* DisResult */
 #include "common_nanomips_defs.h"
 
-#if defined (_MIPSEL)
-   #define MIPS_IEND Iend_LE
-#else
+#if defined (_MIPSEB)
    #define MIPS_IEND Iend_BE
+#else
+   /* nanoMIPS is little-endian only in practice; default to LE on
+      non-MIPS build hosts so cross-host lifting emits correct code. */
+   #define MIPS_IEND Iend_LE
 #endif
 
 /*---------------------------------------------------------*/

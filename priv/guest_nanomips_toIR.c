@@ -63,10 +63,10 @@ static Addr32 guest_PC_curr_instr;
 static inline UShort getUShort(const UChar * p)
 {
    UShort w = 0;
-#if defined (_MIPSEL)
+#if !defined (_MIPSEB) /* LE, incl. non-MIPS build hosts */
    w = (w << 8) | p[1];
    w = (w << 8) | p[0];
-#elif defined (_MIPSEB)
+#else
    w = (w << 8) | p[0];
    w = (w << 8) | p[1];
 #endif
@@ -296,9 +296,9 @@ static void assign(IRTemp dst, IRExpr * e)
 
 static void store(IRExpr * addr, IRExpr * data)
 {
-#if defined (_MIPSEL)
+#if !defined (_MIPSEB) /* LE, incl. non-MIPS build hosts */
    stmt(IRStmt_Store(Iend_LE, addr, data));
-#elif defined (_MIPSEB)
+#else
    stmt(IRStmt_Store(Iend_BE, addr, data));
 #endif
 }
@@ -306,9 +306,9 @@ static void store(IRExpr * addr, IRExpr * data)
 static IRExpr *load(IRType ty, IRExpr * addr)
 {
    IRExpr *load1 = NULL;
-#if defined (_MIPSEL)
+#if !defined (_MIPSEB) /* LE, incl. non-MIPS build hosts */
    load1 = IRExpr_Load(Iend_LE, ty, addr);
-#elif defined (_MIPSEB)
+#else
    load1 = IRExpr_Load(Iend_BE, ty, addr);
 #endif
    return load1;
@@ -2918,9 +2918,9 @@ static Bool check_for_special_requests_nanoMIPS(DisResult *dres,
       } else if (getUInt(code + 16) == 0x21EF7A90 /* or t3, t3, t3 */ ) {
         /* IR injection */
          DIP("IR injection");
-#if defined (_MIPSEL)
+#if !defined (_MIPSEB) /* LE, incl. non-MIPS build hosts */
          vex_inject_ir(irsb, Iend_LE);
-#elif defined (_MIPSEB)
+#else
          vex_inject_ir(irsb, Iend_BE);
 #endif
 

@@ -106,12 +106,6 @@ typedef enum {
    FTINT_UW, FTINT_UD, FFINT_UW, FFINT_UD,
 } msa_flt_op;
 
-#if defined (_MIPSEL)
-   #define MIPS_IEND Iend_LE
-#else
-   #define MIPS_IEND Iend_BE
-#endif
-
 extern HWord mips_dirtyhelper_rdhwr ( UInt rd );
 
 /* Calculate FCSR in fp32 mode. */

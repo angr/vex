@@ -52,6 +52,11 @@
    thought out. */
 static VexEndness host_endness;
 
+/* Whether code we're analyzing comes from a big or little endian machine.
+   Set at each call to disInstr_MIPS from VexArchInfo.endness; also read by
+   the load/store helpers in mips_defs.h (shared with guest_mipsdsp_toIR.c). */
+IREndness guest_endness;
+
 /* Pointer to the guest code area. */
 const UChar *guest_code;
 
@@ -973,17 +978,17 @@ static UInt msaGuestRegOffset(UInt msaRegNo)
 static inline UInt getUInt(const UChar * p)
 {
    UInt w = 0;
-#if defined (_MIPSEL)
-   w = (w << 8) | p[3];
-   w = (w << 8) | p[2];
-   w = (w << 8) | p[1];
-   w = (w << 8) | p[0];
-#elif defined (_MIPSEB)
-   w = (w << 8) | p[0];
-   w = (w << 8) | p[1];
-   w = (w << 8) | p[2];
-   w = (w << 8) | p[3];
-#endif
+   if (guest_endness == Iend_LE) {
+      w = (w << 8) | p[3];
+      w = (w << 8) | p[2];
+      w = (w << 8) | p[1];
+      w = (w << 8) | p[0];
+   } else {
+      w = (w << 8) | p[0];
+      w = (w << 8) | p[1];
+      w = (w << 8) | p[2];
+      w = (w << 8) | p[3];
+   }
    return w;
 }
 
@@ -1934,19 +1939,19 @@ static void putFReg(UInt dregNo, IRExpr * e)
    if (fp_mode64_fre) {
       IRTemp t0 = newTemp(Ity_F32);
       assign(t0, getLoFromF64(ty, e));
-#if defined (_MIPSEL)
-      stmt(IRStmt_Put(floatGuestRegOffset(dregNo), mkexpr(t0)));
+      if (guest_endness == Iend_LE) {
+         stmt(IRStmt_Put(floatGuestRegOffset(dregNo), mkexpr(t0)));
 
-      if (dregNo & 1)
-         stmt(IRStmt_Put(floatGuestRegOffset(dregNo) - 4, mkexpr(t0)));
+         if (dregNo & 1)
+            stmt(IRStmt_Put(floatGuestRegOffset(dregNo) - 4, mkexpr(t0)));
 
-#else
-      stmt(IRStmt_Put(floatGuestRegOffset(dregNo) + 4, mkexpr(t0)));
+      } else {
+         stmt(IRStmt_Put(floatGuestRegOffset(dregNo) + 4, mkexpr(t0)));
 
-      if (dregNo & 1)
-         stmt(IRStmt_Put(floatGuestRegOffset(dregNo & (~1)), mkexpr(t0)));
+         if (dregNo & 1)
+            stmt(IRStmt_Put(floatGuestRegOffset(dregNo & (~1)), mkexpr(t0)));
 
-#endif
+      }
    } else {
       stmt(IRStmt_Put(floatGuestRegOffset(dregNo), e));
    }
@@ -1972,18 +1977,18 @@ static void putDReg(UInt dregNo, IRExpr * e)
 
          if (dregNo & 1) {
             assign(t0, getLoFromF64(ty, e));
-#if defined (_MIPSEL)
-            stmt(IRStmt_Put(floatGuestRegOffset(dregNo) - 4, mkexpr(t0)));
-#else
-            stmt(IRStmt_Put(floatGuestRegOffset(dregNo & (~1)), mkexpr(t0)));
-#endif
+            if (guest_endness == Iend_LE) {
+               stmt(IRStmt_Put(floatGuestRegOffset(dregNo) - 4, mkexpr(t0)));
+            } else {
+               stmt(IRStmt_Put(floatGuestRegOffset(dregNo & (~1)), mkexpr(t0)));
+            }
          } else {
             assign(t0, getHiFromF64(e));
-#if defined (_MIPSEL)
-            stmt(IRStmt_Put(floatGuestRegOffset(dregNo | 1), mkexpr(t0)));
-#else
-            stmt(IRStmt_Put(floatGuestRegOffset(dregNo | 1) + 4, mkexpr(t0)));
-#endif
+            if (guest_endness == Iend_LE) {
+               stmt(IRStmt_Put(floatGuestRegOffset(dregNo | 1), mkexpr(t0)));
+            } else {
+               stmt(IRStmt_Put(floatGuestRegOffset(dregNo | 1) + 4, mkexpr(t0)));
+            }
          }
       }
 
@@ -2864,11 +2869,7 @@ static void mips_load_store32(IRTemp op1addr, IRTemp new_val,
    IRType ty      = mode64 ? Ity_I64 : Ity_I32;
 
    cas = mkIRCAS(IRTemp_INVALID, old_mem,
-#if defined (_MIPSEL)
-                 Iend_LE, mkexpr(op1addr),
-#else /* _MIPSEB */
-                 Iend_BE, mkexpr(op1addr),
-#endif
+                 guest_endness, mkexpr(op1addr),
                  NULL, mkexpr(expd), /* expected value */
                  NULL, mkexpr(new_val)  /* new value */);
    stmt(IRStmt_CAS(cas));
@@ -2889,11 +2890,7 @@ static void mips_load_store64(IRTemp op1addr, IRTemp new_val,
    IRTemp old_mem = newTemp(Ity_I64);
    vassert(mode64);
    cas = mkIRCAS(IRTemp_INVALID, old_mem,
-#if defined (_MIPSEL)
-                 Iend_LE, mkexpr(op1addr),
-#else /* _MIPSEB */
-                 Iend_BE, mkexpr(op1addr),
-#endif
+                 guest_endness, mkexpr(op1addr),
                  NULL, mkexpr(expd), /* expected value */
                  NULL, mkexpr(new_val)  /* new value */);
    stmt(IRStmt_CAS(cas));
@@ -16519,39 +16516,39 @@ static Int msa_MI10_load(UInt cins, UChar wd, UChar ws)   /* MI10 (0x20) */
       case 0x01: { /* LD.H */
          DIP("LD.H w%d, %d(r%d)", wd, ws, i10);
          LOAD_STORE_PATTERN_MSA(i10 << 1);
-#if defined (_MIPSEL)
-         putWReg(wd, load(Ity_V128, mkexpr(t1)));
-#elif defined (_MIPSEB)
-         putWReg(wd,
-                 unop(Iop_Reverse8sIn16_x8,
-                      load(Ity_V128, mkexpr(t1))));
-#endif
+         if (guest_endness == Iend_LE) {
+            putWReg(wd, load(Ity_V128, mkexpr(t1)));
+         } else {
+            putWReg(wd,
+                    unop(Iop_Reverse8sIn16_x8,
+                         load(Ity_V128, mkexpr(t1))));
+         }
          break;
       }
 
       case 0x02: { /* LD.W */
          DIP("LD.W w%d, %d(r%d)", wd, ws, i10);
          LOAD_STORE_PATTERN_MSA(i10 << 2);
-#if defined (_MIPSEL)
-         putWReg(wd, load(Ity_V128, mkexpr(t1)));
-#elif defined (_MIPSEB)
-         putWReg(wd,
-                 unop(Iop_Reverse8sIn32_x4,
-                      load(Ity_V128, mkexpr(t1))));
-#endif
+         if (guest_endness == Iend_LE) {
+            putWReg(wd, load(Ity_V128, mkexpr(t1)));
+         } else {
+            putWReg(wd,
+                    unop(Iop_Reverse8sIn32_x4,
+                         load(Ity_V128, mkexpr(t1))));
+         }
          break;
       }
 
       case 0x03: { /* LD.D */
          DIP("LD.D w%d, %d(r%d)", wd, ws, i10);
          LOAD_STORE_PATTERN_MSA(i10 << 3);
-#if defined (_MIPSEL)
-         putWReg(wd, load(Ity_V128, mkexpr(t1)));
-#elif defined (_MIPSEB)
-         putWReg(wd,
-                 unop(Iop_Reverse8sIn64_x2,
-                      load(Ity_V128, mkexpr(t1))));
-#endif
+         if (guest_endness == Iend_LE) {
+            putWReg(wd, load(Ity_V128, mkexpr(t1)));
+         } else {
+            putWReg(wd,
+                    unop(Iop_Reverse8sIn64_x2,
+                         load(Ity_V128, mkexpr(t1))));
+         }
          break;
       }
 
@@ -16582,36 +16579,36 @@ static Int msa_MI10_store(UInt cins, UChar wd, UChar ws)   /* MI10 (0x24) */
       case 0x01: { /* ST.H */
          DIP("ST.H w%d, %d(r%d)", wd, ws, i10);
          LOAD_STORE_PATTERN_MSA(i10 << 1);
-#if defined (_MIPSEL)
-         store(mkexpr(t1), getWReg(wd));
-#elif defined (_MIPSEB)
-         store(mkexpr(t1),
-               unop(Iop_Reverse8sIn16_x8, getWReg(wd)));
-#endif
+         if (guest_endness == Iend_LE) {
+            store(mkexpr(t1), getWReg(wd));
+         } else {
+            store(mkexpr(t1),
+                  unop(Iop_Reverse8sIn16_x8, getWReg(wd)));
+         }
          break;
       }
 
       case 0x02: { /* ST.W */
          DIP("ST.W w%d, %d(r%d)", wd, ws, i10);
          LOAD_STORE_PATTERN_MSA(i10 << 2);
-#if defined (_MIPSEL)
-         store(mkexpr(t1), getWReg(wd));
-#elif defined (_MIPSEB)
-         store(mkexpr(t1),
-               unop(Iop_Reverse8sIn32_x4, getWReg(wd)));
-#endif
+         if (guest_endness == Iend_LE) {
+            store(mkexpr(t1), getWReg(wd));
+         } else {
+            store(mkexpr(t1),
+                  unop(Iop_Reverse8sIn32_x4, getWReg(wd)));
+         }
          break;
       }
 
       case 0x03: { /* ST.D */
          DIP("ST.D w%d, %d(r%d)", wd, ws, i10);
          LOAD_STORE_PATTERN_MSA(i10 << 3);
-#if defined (_MIPSEL)
-         store(mkexpr(t1), getWReg(wd));
-#elif defined (_MIPSEB)
-         store(mkexpr(t1),
-               unop(Iop_Reverse8sIn64_x2, getWReg(wd)));
-#endif
+         if (guest_endness == Iend_LE) {
+            store(mkexpr(t1), getWReg(wd));
+         } else {
+            store(mkexpr(t1),
+                  unop(Iop_Reverse8sIn64_x2, getWReg(wd)));
+         }
          break;
       }
 
@@ -19610,7 +19607,7 @@ static UInt disInstr_MIPS_WRK_Special3(UInt cins, const VexArchInfo* archinfo,
          assign(t5, mkNarrowTo32(ty, getLLdata()));
 
          stmt(IRStmt_CAS(mkIRCAS(IRTemp_INVALID, t4, /* old_mem */
-                                 MIPS_IEND, mkexpr(t1),                 /* addr */
+                                 guest_endness, mkexpr(t1),                 /* addr */
                                  NULL, mkexpr(t5),                      /* expected value */
                                  NULL, mkexpr(t3)                       /* new value */)));
 
@@ -19652,7 +19649,7 @@ static UInt disInstr_MIPS_WRK_Special3(UInt cins, const VexArchInfo* archinfo,
          assign(t5, getLLdata());
 
          stmt(IRStmt_CAS(mkIRCAS(IRTemp_INVALID, t4, /* old_mem */
-                                 MIPS_IEND, mkexpr(t1),                 /* addr */
+                                 guest_endness, mkexpr(t1),                 /* addr */
                                  NULL, mkexpr(t5),                      /* expected value */
                                  NULL, mkexpr(t3)                       /* new value */)));
 
@@ -23351,14 +23348,14 @@ static UInt disInstr_MIPS_WRK_10(UInt cins, const VexArchInfo* archinfo,
          vassert(mode64);
          DIP("ldl r%u, %u(r%u)", rt, imm, rs);
          /* t1 = addr */
-#if defined (_MIPSEL)
-         t1 = newTemp(Ity_I64);
-         assign(t1, binop(Iop_Add64, getIReg(rs), mkU64(extend_s_16to64(imm))));
-#elif defined (_MIPSEB)
-         t1 = newTemp(Ity_I64);
-         assign(t1, binop(Iop_Xor64, mkU64(0x7), binop(Iop_Add64, getIReg(rs),
-                          mkU64(extend_s_16to64(imm)))));
-#endif
+         if (guest_endness == Iend_LE) {
+            t1 = newTemp(Ity_I64);
+            assign(t1, binop(Iop_Add64, getIReg(rs), mkU64(extend_s_16to64(imm))));
+         } else {
+            t1 = newTemp(Ity_I64);
+            assign(t1, binop(Iop_Xor64, mkU64(0x7), binop(Iop_Add64, getIReg(rs),
+                             mkU64(extend_s_16to64(imm)))));
+         }
          /* t2 = word addr */
          /* t4 = addr mod 8 */
          LWX_SWX_PATTERN64_1;
@@ -23390,14 +23387,14 @@ static UInt disInstr_MIPS_WRK_10(UInt cins, const VexArchInfo* archinfo,
          vassert(mode64);
          DIP("ldr r%u,%u(r%u)", rt, imm, rs);
          /* t1 = addr */
-#if defined (_MIPSEL)
-         t1 = newTemp(Ity_I64);
-         assign(t1, binop(Iop_Add64, getIReg(rs), mkU64(extend_s_16to64(imm))));
-#elif defined (_MIPSEB)
-         t1 = newTemp(Ity_I64);
-         assign(t1, binop(Iop_Xor64, mkU64(0x7), binop(Iop_Add64, getIReg(rs),
-                          mkU64(extend_s_16to64(imm)))));
-#endif
+         if (guest_endness == Iend_LE) {
+            t1 = newTemp(Ity_I64);
+            assign(t1, binop(Iop_Add64, getIReg(rs), mkU64(extend_s_16to64(imm))));
+         } else {
+            t1 = newTemp(Ity_I64);
+            assign(t1, binop(Iop_Xor64, mkU64(0x7), binop(Iop_Add64, getIReg(rs),
+                             mkU64(extend_s_16to64(imm)))));
+         }
          /* t2 = word addr */
          /* t4 = addr mod 8 */
          LWX_SWX_PATTERN64_1;
@@ -23499,15 +23496,15 @@ static UInt disInstr_MIPS_WRK_20(UInt cins)
          if (mode64) {
             /* t1 = addr */
             t1 = newTemp(Ity_I64);
-#if defined (_MIPSEL)
-            assign(t1, binop(Iop_Add64, getIReg(rs), mkU64(extend_s_16to64(imm))));
-#elif defined (_MIPSEB)
-            assign(t1, binop(Iop_Xor64,
-                             mkU64(0x03),
-                             binop(Iop_Add64,
-                                   getIReg(rs),
-                                   mkU64(extend_s_16to64(imm)))));
-#endif
+            if (guest_endness == Iend_LE) {
+               assign(t1, binop(Iop_Add64, getIReg(rs), mkU64(extend_s_16to64(imm))));
+            } else {
+               assign(t1, binop(Iop_Xor64,
+                                mkU64(0x03),
+                                binop(Iop_Add64,
+                                      getIReg(rs),
+                                      mkU64(extend_s_16to64(imm)))));
+            }
             /* t2 = word addr */
             /* t4 = addr mod 4 */
             LWX_SWX_PATTERN64;
@@ -23538,12 +23535,12 @@ static UInt disInstr_MIPS_WRK_20(UInt cins)
          } else {
             /* t1 = addr */
             t1 = newTemp(Ity_I32);
-#if defined (_MIPSEL)
-            assign(t1, binop(Iop_Add32, getIReg(rs), mkU32(extend_s_16to32(imm))));
-#elif defined (_MIPSEB)
-            assign(t1, binop(Iop_Xor32, mkU32(0x3), binop(Iop_Add32, getIReg(rs),
-                             mkU32(extend_s_16to32(imm)))));
-#endif
+            if (guest_endness == Iend_LE) {
+               assign(t1, binop(Iop_Add32, getIReg(rs), mkU32(extend_s_16to32(imm))));
+            } else {
+               assign(t1, binop(Iop_Xor32, mkU32(0x3), binop(Iop_Add32, getIReg(rs),
+                                mkU32(extend_s_16to32(imm)))));
+            }
 
             /* t2 = word addr */
             /* t4 = addr mod 4 */
@@ -23605,15 +23602,15 @@ static UInt disInstr_MIPS_WRK_20(UInt cins)
             /* t1 = addr */
             t1 = newTemp(Ity_I64);
 
-#if defined (_MIPSEL)
-            assign(t1, binop(Iop_Add64, getIReg(rs), mkU64(extend_s_16to64(imm))));
-#elif defined (_MIPSEB)
-            assign(t1, binop(Iop_Xor64,
-                             mkU64(0x3),
-                             binop(Iop_Add64,
-                                   getIReg(rs),
-                                   mkU64(extend_s_16to64(imm)))));
-#endif
+            if (guest_endness == Iend_LE) {
+               assign(t1, binop(Iop_Add64, getIReg(rs), mkU64(extend_s_16to64(imm))));
+            } else {
+               assign(t1, binop(Iop_Xor64,
+                                mkU64(0x3),
+                                binop(Iop_Add64,
+                                      getIReg(rs),
+                                      mkU64(extend_s_16to64(imm)))));
+            }
             /* t2 = word addr */
             /* t4 = addr mod 4 */
             LWX_SWX_PATTERN64;
@@ -23637,12 +23634,12 @@ static UInt disInstr_MIPS_WRK_20(UInt cins)
          } else {
             /* t1 = addr */
             t1 = newTemp(Ity_I32);
-#if defined (_MIPSEL)
-            assign(t1, binop(Iop_Add32, getIReg(rs), mkU32(extend_s_16to32(imm))));
-#elif defined (_MIPSEB)
-            assign(t1, binop(Iop_Xor32, mkU32(0x3), binop(Iop_Add32, getIReg(rs),
-                             mkU32(extend_s_16to32(imm)))));
-#endif
+            if (guest_endness == Iend_LE) {
+               assign(t1, binop(Iop_Add32, getIReg(rs), mkU32(extend_s_16to32(imm))));
+            } else {
+               assign(t1, binop(Iop_Xor32, mkU32(0x3), binop(Iop_Add32, getIReg(rs),
+                                mkU32(extend_s_16to32(imm)))));
+            }
 
             /* t2 = word addr */
             /* t4 = addr mod 4 */
@@ -23716,38 +23713,38 @@ static UInt disInstr_MIPS_WRK_20(UInt cins)
             t3 = newTemp(Ity_I64);
             assign(t3, binop(Iop_And64, mkexpr(t1), mkU64(0x3)));
 
-#if defined (_MIPSEL)
-            /* Calculate X_byte position. */
-            assign(F_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x0)),
-                                     mkU64(0x0),
-                                     mkU64(0x1)));
+            if (guest_endness == Iend_LE) {
+               /* Calculate X_byte position. */
+               assign(F_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x0)),
+                                        mkU64(0x0),
+                                        mkU64(0x1)));
 
-            assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x3)),
-                                     mkU64(0x1),
-                                     mkU64(0x0)));
+               assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x3)),
+                                        mkU64(0x1),
+                                        mkU64(0x0)));
 
-            /* Store X_byte on the right place. */
-            store(mkexpr(t2), mkexpr(H_byte));
-            store(binop(Iop_Add64, mkexpr(t2), mkexpr(G_pos)), mkexpr(G_byte));
-            store(binop(Iop_Sub64, mkexpr(t1), mkexpr(F_pos)), mkexpr(F_byte));
-            store(mkexpr(t1), mkexpr(E_byte));
+               /* Store X_byte on the right place. */
+               store(mkexpr(t2), mkexpr(H_byte));
+               store(binop(Iop_Add64, mkexpr(t2), mkexpr(G_pos)), mkexpr(G_byte));
+               store(binop(Iop_Sub64, mkexpr(t1), mkexpr(F_pos)), mkexpr(F_byte));
+               store(mkexpr(t1), mkexpr(E_byte));
 
-#else    /* _MIPSEB */
-            /* Calculate X_byte position. */
-            assign(F_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x3)),
-                                     mkU64(0x0),
-                                     mkU64(0x1)));
+            } else {
+               /* Calculate X_byte position. */
+               assign(F_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x3)),
+                                        mkU64(0x0),
+                                        mkU64(0x1)));
 
-            assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x0)),
-                                     mkU64(0x2),
-                                     mkU64(0x3)));
+               assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x0)),
+                                        mkU64(0x2),
+                                        mkU64(0x3)));
 
-            store(binop(Iop_Add64, mkexpr(t2), mkU64(3)), mkexpr(H_byte));
-            store(binop(Iop_Add64, mkexpr(t2), mkexpr(G_pos)), mkexpr(G_byte));
-            store(binop(Iop_Add64, mkexpr(t1), mkexpr(F_pos)), mkexpr(F_byte));
-            store(mkexpr(t1), mkexpr(E_byte));
+               store(binop(Iop_Add64, mkexpr(t2), mkU64(3)), mkexpr(H_byte));
+               store(binop(Iop_Add64, mkexpr(t2), mkexpr(G_pos)), mkexpr(G_byte));
+               store(binop(Iop_Add64, mkexpr(t1), mkexpr(F_pos)), mkexpr(F_byte));
+               store(mkexpr(t1), mkexpr(E_byte));
 
-#endif
+            }
          } else {
             IRTemp E_byte = newTemp(Ity_I8);
             IRTemp F_byte = newTemp(Ity_I8);
@@ -23777,38 +23774,38 @@ static UInt disInstr_MIPS_WRK_20(UInt cins)
             t3 = newTemp(Ity_I32);
             assign(t3, binop(Iop_And32, mkexpr(t1), mkU32(0x3)));
 
-#if defined (_MIPSEL)
-            /* Calculate X_byte position. */
-            assign(F_pos, IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0x0)),
-                                     mkU32(0x0),
-                                     mkU32(0x1)));
+            if (guest_endness == Iend_LE) {
+               /* Calculate X_byte position. */
+               assign(F_pos, IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0x0)),
+                                        mkU32(0x0),
+                                        mkU32(0x1)));
 
-            assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0x3)),
-                                     mkU32(0x1),
-                                     mkU32(0x0)));
+               assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0x3)),
+                                        mkU32(0x1),
+                                        mkU32(0x0)));
 
-            /* Store X_byte on the right place. */
-            store(mkexpr(t2), mkexpr(H_byte));
-            store(binop(Iop_Add32, mkexpr(t2), mkexpr(G_pos)), mkexpr(G_byte));
-            store(binop(Iop_Sub32, mkexpr(t1), mkexpr(F_pos)), mkexpr(F_byte));
-            store(mkexpr(t1), mkexpr(E_byte));
+               /* Store X_byte on the right place. */
+               store(mkexpr(t2), mkexpr(H_byte));
+               store(binop(Iop_Add32, mkexpr(t2), mkexpr(G_pos)), mkexpr(G_byte));
+               store(binop(Iop_Sub32, mkexpr(t1), mkexpr(F_pos)), mkexpr(F_byte));
+               store(mkexpr(t1), mkexpr(E_byte));
 
-#else    /* _MIPSEB */
-            /* Calculate X_byte position. */
-            assign(F_pos, IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0x3)),
-                                     mkU32(0x0),
-                                     mkU32(0x1)));
+            } else {
+               /* Calculate X_byte position. */
+               assign(F_pos, IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0x3)),
+                                        mkU32(0x0),
+                                        mkU32(0x1)));
 
-            assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0x0)),
-                                     mkU32(0x2),
-                                     mkU32(0x3)));
+               assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0x0)),
+                                        mkU32(0x2),
+                                        mkU32(0x3)));
 
-            store(binop(Iop_Add32, mkexpr(t2), mkU32(3)), mkexpr(H_byte));
-            store(binop(Iop_Add32, mkexpr(t2), mkexpr(G_pos)), mkexpr(G_byte));
-            store(binop(Iop_Add32, mkexpr(t1), mkexpr(F_pos)), mkexpr(F_byte));
-            store(mkexpr(t1), mkexpr(E_byte));
+               store(binop(Iop_Add32, mkexpr(t2), mkU32(3)), mkexpr(H_byte));
+               store(binop(Iop_Add32, mkexpr(t2), mkexpr(G_pos)), mkexpr(G_byte));
+               store(binop(Iop_Add32, mkexpr(t1), mkexpr(F_pos)), mkexpr(F_byte));
+               store(mkexpr(t1), mkexpr(E_byte));
 
-#endif
+            }
          }
 
          break;
@@ -23866,78 +23863,78 @@ static UInt disInstr_MIPS_WRK_20(UInt cins)
          t3 = newTemp(Ity_I64);
          assign(t3, binop(Iop_And64, mkexpr(t1), mkU64(0x7)));
 
-#if defined (_MIPSEL)
-         /* Calculate X_byte position. */
-         assign(B_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x1)),
-                                  mkU64(0x0),
-                                  mkU64(0x1)));
+         if (guest_endness == Iend_LE) {
+            /* Calculate X_byte position. */
+            assign(B_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x1)),
+                                     mkU64(0x0),
+                                     mkU64(0x1)));
 
-         assign(C_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x2)),
-                                  mkU64(0x0),
-                                  mkU64(0x2)));
+            assign(C_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x2)),
+                                     mkU64(0x0),
+                                     mkU64(0x2)));
 
-         assign(D_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x3)),
-                                  mkU64(0x0),
-                                  mkU64(0x3)));
+            assign(D_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x3)),
+                                     mkU64(0x0),
+                                     mkU64(0x3)));
 
-         assign(E_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x4)),
-                                  mkU64(0x0),
-                                  mkU64(0x4)));
+            assign(E_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x4)),
+                                     mkU64(0x0),
+                                     mkU64(0x4)));
 
-         assign(F_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x5)),
-                                  mkU64(0x0),
-                                  mkU64(0x5)));
+            assign(F_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x5)),
+                                     mkU64(0x0),
+                                     mkU64(0x5)));
 
-         assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x7)),
-                                  mkU64(0x1),
-                                  mkU64(0x0)));
+            assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x7)),
+                                     mkU64(0x1),
+                                     mkU64(0x0)));
 
-         /* Store X_byte on the right place. */
-         store(mkexpr(t2), mkexpr(H_byte));
-         store(binop(Iop_Add64, mkexpr(t2), mkexpr(G_pos)), mkexpr(G_byte));
-         store(binop(Iop_Sub64, mkexpr(t1), mkexpr(F_pos)), mkexpr(F_byte));
-         store(binop(Iop_Sub64, mkexpr(t1), mkexpr(E_pos)), mkexpr(E_byte));
-         store(binop(Iop_Sub64, mkexpr(t1), mkexpr(D_pos)), mkexpr(D_byte));
-         store(binop(Iop_Sub64, mkexpr(t1), mkexpr(C_pos)), mkexpr(C_byte));
-         store(binop(Iop_Sub64, mkexpr(t1), mkexpr(B_pos)), mkexpr(B_byte));
-         store(mkexpr(t1), mkexpr(A_byte));
+            /* Store X_byte on the right place. */
+            store(mkexpr(t2), mkexpr(H_byte));
+            store(binop(Iop_Add64, mkexpr(t2), mkexpr(G_pos)), mkexpr(G_byte));
+            store(binop(Iop_Sub64, mkexpr(t1), mkexpr(F_pos)), mkexpr(F_byte));
+            store(binop(Iop_Sub64, mkexpr(t1), mkexpr(E_pos)), mkexpr(E_byte));
+            store(binop(Iop_Sub64, mkexpr(t1), mkexpr(D_pos)), mkexpr(D_byte));
+            store(binop(Iop_Sub64, mkexpr(t1), mkexpr(C_pos)), mkexpr(C_byte));
+            store(binop(Iop_Sub64, mkexpr(t1), mkexpr(B_pos)), mkexpr(B_byte));
+            store(mkexpr(t1), mkexpr(A_byte));
 
-#else /* _MIPSEB */
-         /* Calculate X_byte position. */
-         assign(B_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x7)),
-                                  mkU64(0x0),
-                                  mkU64(0x1)));
+         } else {
+            /* Calculate X_byte position. */
+            assign(B_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x7)),
+                                     mkU64(0x0),
+                                     mkU64(0x1)));
 
-         assign(C_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x6)),
-                                  mkU64(0x2),
-                                  mkU64(0x0)));
+            assign(C_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x6)),
+                                     mkU64(0x2),
+                                     mkU64(0x0)));
 
-         assign(D_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x5)),
-                                  mkU64(0x3),
-                                  mkU64(0x0)));
+            assign(D_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x5)),
+                                     mkU64(0x3),
+                                     mkU64(0x0)));
 
-         assign(E_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x4)),
-                                  mkU64(0x4),
-                                  mkU64(0x0)));
+            assign(E_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x4)),
+                                     mkU64(0x4),
+                                     mkU64(0x0)));
 
-         assign(F_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x3)),
-                                  mkU64(0x5),
-                                  mkU64(0x0)));
+            assign(F_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkexpr(t3), mkU64(0x3)),
+                                     mkU64(0x5),
+                                     mkU64(0x0)));
 
-         assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x0)),
-                                  mkU64(0x6),
-                                  mkU64(0x7)));
+            assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x0)),
+                                     mkU64(0x6),
+                                     mkU64(0x7)));
 
-         /* Store X_byte on the right place. */
-         store(binop(Iop_Add64, mkexpr(t2), mkU64(0x7)), mkexpr(H_byte));
-         store(binop(Iop_Add64, mkexpr(t2), mkexpr(G_pos)), mkexpr(G_byte));
-         store(binop(Iop_Add64, mkexpr(t1), mkexpr(F_pos)), mkexpr(F_byte));
-         store(binop(Iop_Add64, mkexpr(t1), mkexpr(E_pos)), mkexpr(E_byte));
-         store(binop(Iop_Add64, mkexpr(t1), mkexpr(D_pos)), mkexpr(D_byte));
-         store(binop(Iop_Add64, mkexpr(t1), mkexpr(C_pos)), mkexpr(C_byte));
-         store(binop(Iop_Add64, mkexpr(t1), mkexpr(B_pos)), mkexpr(B_byte));
-         store(mkexpr(t1), mkexpr(A_byte));
-#endif
+            /* Store X_byte on the right place. */
+            store(binop(Iop_Add64, mkexpr(t2), mkU64(0x7)), mkexpr(H_byte));
+            store(binop(Iop_Add64, mkexpr(t2), mkexpr(G_pos)), mkexpr(G_byte));
+            store(binop(Iop_Add64, mkexpr(t1), mkexpr(F_pos)), mkexpr(F_byte));
+            store(binop(Iop_Add64, mkexpr(t1), mkexpr(E_pos)), mkexpr(E_byte));
+            store(binop(Iop_Add64, mkexpr(t1), mkexpr(D_pos)), mkexpr(D_byte));
+            store(binop(Iop_Add64, mkexpr(t1), mkexpr(C_pos)), mkexpr(C_byte));
+            store(binop(Iop_Add64, mkexpr(t1), mkexpr(B_pos)), mkexpr(B_byte));
+            store(mkexpr(t1), mkexpr(A_byte));
+         }
 
          break;
       }
@@ -23990,78 +23987,78 @@ static UInt disInstr_MIPS_WRK_20(UInt cins)
          t3 = newTemp(Ity_I64);
          assign(t3, binop(Iop_And64, mkexpr(t1), mkU64(0x7)));
 
-#if defined (_MIPSEL)
-         /* Calculate X_byte position. */
-         assign(B_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x1), mkexpr(t3)),
-                                  mkU64(0x0),
-                                  mkU64(0x6)));
+         if (guest_endness == Iend_LE) {
+            /* Calculate X_byte position. */
+            assign(B_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x1), mkexpr(t3)),
+                                     mkU64(0x0),
+                                     mkU64(0x6)));
 
-         assign(C_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x2), mkexpr(t3)),
-                                  mkU64(0x0),
-                                  mkU64(0x5)));
+            assign(C_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x2), mkexpr(t3)),
+                                     mkU64(0x0),
+                                     mkU64(0x5)));
 
-         assign(D_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x3), mkexpr(t3)),
-                                  mkU64(0x0),
-                                  mkU64(0x4)));
+            assign(D_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x3), mkexpr(t3)),
+                                     mkU64(0x0),
+                                     mkU64(0x4)));
 
-         assign(E_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x4), mkexpr(t3)),
-                                  mkU64(0x0),
-                                  mkU64(0x3)));
+            assign(E_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x4), mkexpr(t3)),
+                                     mkU64(0x0),
+                                     mkU64(0x3)));
 
-         assign(F_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x5), mkexpr(t3)),
-                                  mkU64(0x0),
-                                  mkU64(0x2)));
+            assign(F_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x5), mkexpr(t3)),
+                                     mkU64(0x0),
+                                     mkU64(0x2)));
 
-         assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x7)),
-                                  mkU64(0x0),
-                                  mkU64(0x1)));
+            assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x7)),
+                                     mkU64(0x0),
+                                     mkU64(0x1)));
 
-         /* Store X_byte on the right place. */
-         store(binop(Iop_Add64, mkexpr(t2), mkU64(0x7)), mkexpr(A_byte));
-         store(binop(Iop_Add64, mkexpr(t1), mkexpr(B_pos)), mkexpr(B_byte));
-         store(binop(Iop_Add64, mkexpr(t1), mkexpr(C_pos)), mkexpr(C_byte));
-         store(binop(Iop_Add64, mkexpr(t1), mkexpr(D_pos)), mkexpr(D_byte));
-         store(binop(Iop_Add64, mkexpr(t1), mkexpr(E_pos)), mkexpr(E_byte));
-         store(binop(Iop_Add64, mkexpr(t1), mkexpr(F_pos)), mkexpr(F_byte));
-         store(binop(Iop_Add64, mkexpr(t1), mkexpr(G_pos)), mkexpr(G_byte));
-         store(mkexpr(t1), mkexpr(H_byte));
+            /* Store X_byte on the right place. */
+            store(binop(Iop_Add64, mkexpr(t2), mkU64(0x7)), mkexpr(A_byte));
+            store(binop(Iop_Add64, mkexpr(t1), mkexpr(B_pos)), mkexpr(B_byte));
+            store(binop(Iop_Add64, mkexpr(t1), mkexpr(C_pos)), mkexpr(C_byte));
+            store(binop(Iop_Add64, mkexpr(t1), mkexpr(D_pos)), mkexpr(D_byte));
+            store(binop(Iop_Add64, mkexpr(t1), mkexpr(E_pos)), mkexpr(E_byte));
+            store(binop(Iop_Add64, mkexpr(t1), mkexpr(F_pos)), mkexpr(F_byte));
+            store(binop(Iop_Add64, mkexpr(t1), mkexpr(G_pos)), mkexpr(G_byte));
+            store(mkexpr(t1), mkexpr(H_byte));
 
-#else /* _MIPSEB */
-         /* Calculate X_byte position. */
-         assign(B_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x5), mkexpr(t3)),
-                                  mkU64(0x6),
-                                  mkU64(0x0)));
+         } else {
+            /* Calculate X_byte position. */
+            assign(B_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x5), mkexpr(t3)),
+                                     mkU64(0x6),
+                                     mkU64(0x0)));
 
-         assign(C_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x4), mkexpr(t3)),
-                                  mkU64(0x5),
-                                  mkU64(0x0)));
+            assign(C_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x4), mkexpr(t3)),
+                                     mkU64(0x5),
+                                     mkU64(0x0)));
 
-         assign(D_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x3), mkexpr(t3)),
-                                  mkU64(0x4),
-                                  mkU64(0x0)));
+            assign(D_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x3), mkexpr(t3)),
+                                     mkU64(0x4),
+                                     mkU64(0x0)));
 
-         assign(E_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x2), mkexpr(t3)),
-                                  mkU64(0x3),
-                                  mkU64(0x0)));
+            assign(E_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x2), mkexpr(t3)),
+                                     mkU64(0x3),
+                                     mkU64(0x0)));
 
-         assign(F_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x1), mkexpr(t3)),
-                                  mkU64(0x2),
-                                  mkU64(0x0)));
+            assign(F_pos, IRExpr_ITE(binop(Iop_CmpLT64U, mkU64(0x1), mkexpr(t3)),
+                                     mkU64(0x2),
+                                     mkU64(0x0)));
 
-         assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x0)),
-                                  mkU64(0x0),
-                                  mkU64(0x1)));
+            assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x0)),
+                                     mkU64(0x0),
+                                     mkU64(0x1)));
 
-         /* Store X_byte on the right place. */
-         store(mkexpr(t2), mkexpr(A_byte));
-         store(binop(Iop_Sub64, mkexpr(t1), mkexpr(B_pos)), mkexpr(B_byte));
-         store(binop(Iop_Sub64, mkexpr(t1), mkexpr(C_pos)), mkexpr(C_byte));
-         store(binop(Iop_Sub64, mkexpr(t1), mkexpr(D_pos)), mkexpr(D_byte));
-         store(binop(Iop_Sub64, mkexpr(t1), mkexpr(E_pos)), mkexpr(E_byte));
-         store(binop(Iop_Sub64, mkexpr(t1), mkexpr(F_pos)), mkexpr(F_byte));
-         store(binop(Iop_Sub64, mkexpr(t1), mkexpr(G_pos)), mkexpr(G_byte));
-         store(mkexpr(t1), mkexpr(H_byte));
-#endif
+            /* Store X_byte on the right place. */
+            store(mkexpr(t2), mkexpr(A_byte));
+            store(binop(Iop_Sub64, mkexpr(t1), mkexpr(B_pos)), mkexpr(B_byte));
+            store(binop(Iop_Sub64, mkexpr(t1), mkexpr(C_pos)), mkexpr(C_byte));
+            store(binop(Iop_Sub64, mkexpr(t1), mkexpr(D_pos)), mkexpr(D_byte));
+            store(binop(Iop_Sub64, mkexpr(t1), mkexpr(E_pos)), mkexpr(E_byte));
+            store(binop(Iop_Sub64, mkexpr(t1), mkexpr(F_pos)), mkexpr(F_byte));
+            store(binop(Iop_Sub64, mkexpr(t1), mkexpr(G_pos)), mkexpr(G_byte));
+            store(mkexpr(t1), mkexpr(H_byte));
+         }
          break;
       }
 
@@ -24097,38 +24094,38 @@ static UInt disInstr_MIPS_WRK_20(UInt cins)
             t3 = newTemp(Ity_I64);
             assign(t3, binop(Iop_And64, mkexpr(t1), mkU64(0x3)));
 
-#if defined (_MIPSEL)
-            /* Calculate X_byte position. */
-            assign(F_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x0)),
-                                     mkU64(0x2),
-                                     mkU64(0x3)));
+            if (guest_endness == Iend_LE) {
+               /* Calculate X_byte position. */
+               assign(F_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x0)),
+                                        mkU64(0x2),
+                                        mkU64(0x3)));
 
-            assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x3)),
-                                     mkU64(0x0),
-                                     mkU64(0x1)));
+               assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x3)),
+                                        mkU64(0x0),
+                                        mkU64(0x1)));
 
-            /* Store X_byte on the right place. */
-            store(binop(Iop_Add64, mkexpr(t2), mkU64(0x3)), mkexpr(E_byte));
-            store(binop(Iop_Add64, mkexpr(t2), mkexpr(F_pos)), mkexpr(F_byte));
-            store(binop(Iop_Add64, mkexpr(t1), mkexpr(G_pos)), mkexpr(G_byte));
-            store(mkexpr(t1), mkexpr(H_byte));
+               /* Store X_byte on the right place. */
+               store(binop(Iop_Add64, mkexpr(t2), mkU64(0x3)), mkexpr(E_byte));
+               store(binop(Iop_Add64, mkexpr(t2), mkexpr(F_pos)), mkexpr(F_byte));
+               store(binop(Iop_Add64, mkexpr(t1), mkexpr(G_pos)), mkexpr(G_byte));
+               store(mkexpr(t1), mkexpr(H_byte));
 
-#else    /* _MIPSEB */
-            /* Calculate X_byte position. */
-            assign(F_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x3)),
-                                     mkU64(0x1),
-                                     mkU64(0x0)));
+            } else {
+               /* Calculate X_byte position. */
+               assign(F_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x3)),
+                                        mkU64(0x1),
+                                        mkU64(0x0)));
 
-            assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x0)),
-                                     mkU64(0x0),
-                                     mkU64(0x1)));
+               assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(t3), mkU64(0x0)),
+                                        mkU64(0x0),
+                                        mkU64(0x1)));
 
-            /* Store X_byte on the right place. */
-            store(mkexpr(t2), mkexpr(E_byte));
-            store(binop(Iop_Add64, mkexpr(t2), mkexpr(F_pos)), mkexpr(F_byte));
-            store(binop(Iop_Sub64, mkexpr(t1), mkexpr(G_pos)), mkexpr(G_byte));
-            store(mkexpr(t1), mkexpr(H_byte));
-#endif
+               /* Store X_byte on the right place. */
+               store(mkexpr(t2), mkexpr(E_byte));
+               store(binop(Iop_Add64, mkexpr(t2), mkexpr(F_pos)), mkexpr(F_byte));
+               store(binop(Iop_Sub64, mkexpr(t1), mkexpr(G_pos)), mkexpr(G_byte));
+               store(mkexpr(t1), mkexpr(H_byte));
+            }
          } else {
             IRTemp E_byte = newTemp(Ity_I8);
             IRTemp F_byte = newTemp(Ity_I8);
@@ -24158,38 +24155,38 @@ static UInt disInstr_MIPS_WRK_20(UInt cins)
             t3 = newTemp(Ity_I32);
             assign(t3, binop(Iop_And32, mkexpr(t1), mkU32(0x3)));
 
-#if defined (_MIPSEL)
-            /* Calculate X_byte position. */
-            assign(F_pos, IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0x0)),
-                                     mkU32(0x2),
-                                     mkU32(0x3)));
+            if (guest_endness == Iend_LE) {
+               /* Calculate X_byte position. */
+               assign(F_pos, IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0x0)),
+                                        mkU32(0x2),
+                                        mkU32(0x3)));
 
-            assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0x3)),
-                                     mkU32(0x0),
-                                     mkU32(0x1)));
+               assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0x3)),
+                                        mkU32(0x0),
+                                        mkU32(0x1)));
 
-            /* Store X_byte on the right place. */
-            store(binop(Iop_Add32, mkexpr(t2), mkU32(0x3)), mkexpr(E_byte));
-            store(binop(Iop_Add32, mkexpr(t2), mkexpr(F_pos)), mkexpr(F_byte));
-            store(binop(Iop_Add32, mkexpr(t1), mkexpr(G_pos)), mkexpr(G_byte));
-            store(mkexpr(t1), mkexpr(H_byte));
+               /* Store X_byte on the right place. */
+               store(binop(Iop_Add32, mkexpr(t2), mkU32(0x3)), mkexpr(E_byte));
+               store(binop(Iop_Add32, mkexpr(t2), mkexpr(F_pos)), mkexpr(F_byte));
+               store(binop(Iop_Add32, mkexpr(t1), mkexpr(G_pos)), mkexpr(G_byte));
+               store(mkexpr(t1), mkexpr(H_byte));
 
-#else    /* _MIPSEB */
-            /* Calculate X_byte position. */
-            assign(F_pos, IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0x3)),
-                                     mkU32(0x1),
-                                     mkU32(0x0)));
+            } else {
+               /* Calculate X_byte position. */
+               assign(F_pos, IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0x3)),
+                                        mkU32(0x1),
+                                        mkU32(0x0)));
 
-            assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0x0)),
-                                     mkU32(0x0),
-                                     mkU32(0x1)));
+               assign(G_pos, IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0x0)),
+                                        mkU32(0x0),
+                                        mkU32(0x1)));
 
-            /* Store X_byte on the right place. */
-            store(mkexpr(t2), mkexpr(E_byte));
-            store(binop(Iop_Add32, mkexpr(t2), mkexpr(F_pos)), mkexpr(F_byte));
-            store(binop(Iop_Sub32, mkexpr(t1), mkexpr(G_pos)), mkexpr(G_byte));
-            store(mkexpr(t1), mkexpr(H_byte));
-#endif
+               /* Store X_byte on the right place. */
+               store(mkexpr(t2), mkexpr(E_byte));
+               store(binop(Iop_Add32, mkexpr(t2), mkexpr(F_pos)), mkexpr(F_byte));
+               store(binop(Iop_Sub32, mkexpr(t1), mkexpr(G_pos)), mkexpr(G_byte));
+               store(mkexpr(t1), mkexpr(H_byte));
+            }
          }
 
          break;
@@ -24229,7 +24226,7 @@ static UInt disInstr_MIPS_WRK_30(UInt cins, const VexArchInfo* archinfo,
             putIReg(rt, mkexpr(t2));
          } else {
             t2 = newTemp(Ity_I32);
-            stmt(IRStmt_LLSC(MIPS_IEND, t2, mkexpr(t1), NULL));
+            stmt(IRStmt_LLSC(guest_endness, t2, mkexpr(t1), NULL));
             putIReg(rt, mkWidenFrom32(ty, mkexpr(t2), True));
          }
 
@@ -24311,7 +24308,7 @@ static UInt disInstr_MIPS_WRK_30(UInt cins, const VexArchInfo* archinfo,
                putLLaddr(mkexpr(t1));
                putLLdata(mkexpr(t2));
             } else {
-               stmt(IRStmt_LLSC(MIPS_IEND, t2, mkexpr(t1), NULL));
+               stmt(IRStmt_LLSC(guest_endness, t2, mkexpr(t1), NULL));
             }
 
             putIReg(rt, mkexpr(t2));
@@ -24417,14 +24414,14 @@ static UInt disInstr_MIPS_WRK_30(UInt cins, const VexArchInfo* archinfo,
             assign(t5, mkNarrowTo32(ty, getLLdata()));
 
             stmt(IRStmt_CAS(mkIRCAS(IRTemp_INVALID, t4, /* old_mem */
-                                    MIPS_IEND, mkexpr(t1),                 /* addr */
+                                    guest_endness, mkexpr(t1),                 /* addr */
                                     NULL, mkexpr(t5),                      /* expected value */
                                     NULL, mkexpr(t3)                       /* new value */)));
 
             putIReg(rt, unop(mode64 ? Iop_1Uto64 : Iop_1Uto32,
                              binop(Iop_CmpEQ32, mkexpr(t4), mkexpr(t5))));
          } else {
-            stmt(IRStmt_LLSC(MIPS_IEND, t2, mkexpr(t1),
+            stmt(IRStmt_LLSC(guest_endness, t2, mkexpr(t1),
                              mkNarrowTo32(ty, getIReg(rt))));
             putIReg(rt, unop(mode64 ? Iop_1Uto64 : Iop_1Uto32, mkexpr(t2)));
          }
@@ -24632,14 +24629,14 @@ static UInt disInstr_MIPS_WRK_30(UInt cins, const VexArchInfo* archinfo,
                assign(t5, getLLdata());
 
                stmt(IRStmt_CAS(mkIRCAS(IRTemp_INVALID, t4, /* old_mem */
-                                       MIPS_IEND, mkexpr(t1),                 /* addr */
+                                       guest_endness, mkexpr(t1),                 /* addr */
                                        NULL, mkexpr(t5),                      /* expected value */
                                        NULL, mkexpr(t3)                       /* new value */)));
 
                putIReg(rt, unop(Iop_1Uto64,
                                 binop(Iop_CmpEQ64, mkexpr(t4), mkexpr(t5))));
             } else {
-               stmt(IRStmt_LLSC(MIPS_IEND, t2, mkexpr(t1), getIReg(rt)));
+               stmt(IRStmt_LLSC(guest_endness, t2, mkexpr(t1), getIReg(rt)));
                putIReg(rt, unop(Iop_1Uto64, mkexpr(t2)));
             }
          } else {
@@ -24866,11 +24863,7 @@ static DisResult disInstr_MIPS_WRK ( Long         delta64,
          } else if (getUInt(code + 16) == 0x016b5825 /* or $11,$11,$11 */ ) {
             /* IR injection */
             DIP("IR injection");
-#if defined (_MIPSEL)
-            vex_inject_ir(irsb, Iend_LE);
-#elif defined (_MIPSEB)
-            vex_inject_ir(irsb, Iend_BE);
-#endif
+            vex_inject_ir(irsb, guest_endness);
 
             if (mode64) {
                stmt(IRStmt_Put(offsetof(VexGuestMIPS64State, guest_CMSTART),
@@ -25084,6 +25077,7 @@ DisResult disInstr_MIPS( IRSB*        irsb_IN,
    guest_code = guest_code_IN;
    irsb = irsb_IN;
    host_endness = host_endness_IN;
+   guest_endness = archinfo->endness == VexEndnessLE ? Iend_LE : Iend_BE;
 #if defined(VGP_mips32_linux)
    guest_PC_curr_instr = (Addr32)guest_IP;
 #elif defined(VGP_mips64_linux)

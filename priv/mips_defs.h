@@ -41,6 +41,10 @@ extern Bool mode64;
 /* Pointer to the guest code area. */
 extern const UChar *guest_code;
 
+/* The endianness of the guest being lifted; set at each call to
+   disInstr_MIPS below (may differ from the host's endianness). */
+extern IREndness guest_endness;
+
 /*------------------------------------------------------------*/
 /*---              DSP to IR function                      ---*/
 /*------------------------------------------------------------*/
@@ -115,13 +119,7 @@ static inline IRExpr *qop ( IROp op, IRExpr * a1, IRExpr * a2, IRExpr * a3,
 
 static inline IRExpr *load(IRType ty, IRExpr * addr)
 {
-   IRExpr *load1 = NULL;
-#if defined (_MIPSEL)
-   load1 = IRExpr_Load(Iend_LE, ty, addr);
-#elif defined (_MIPSEB)
-   load1 = IRExpr_Load(Iend_BE, ty, addr);
-#endif
-   return load1;
+   return IRExpr_Load(guest_endness, ty, addr);
 }
 
 /* Add a statement to the list held by "irsb". */
@@ -137,11 +135,7 @@ static inline void assign(IRTemp dst, IRExpr * e)
 
 static inline void store(IRExpr * addr, IRExpr * data)
 {
-#if defined (_MIPSEL)
-   stmt(IRStmt_Store(Iend_LE, addr, data));
-#elif defined (_MIPSEB)
-   stmt(IRStmt_Store(Iend_BE, addr, data));
-#endif
+   stmt(IRStmt_Store(guest_endness, addr, data));
 }
 
 /* Generate a new temporary of the given type. */
