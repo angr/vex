@@ -24760,7 +24760,14 @@ static DisResult disInstr_MIPS_WRK ( Long         delta64,
    opcode = get_opcode(cins);
    DIP("\t0x%llx:\t0x%08x\t", (Addr64)guest_PC_curr_instr, cins);
 
-   if (delta != 0) {
+   if (delta == 0) {
+      /* A new block: forget any delay-slot state a previous lift may
+         have leaked (e.g. by failing to decode inside a delay slot).
+         The delay-slot recursion below never passes delta 0, so this
+         only triggers for the first instruction of a block. */
+      lastn = NULL;
+      bstmt = NULL;
+   } else {
       if (branch_or_jump(guest_code + delta - 4)
           && (lastn != NULL || bstmt != NULL)) {
          dres.whatNext = Dis_StopHere;
