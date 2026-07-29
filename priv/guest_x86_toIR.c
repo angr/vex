@@ -15341,15 +15341,12 @@ DisResult disInstr_X86_WRK (
    }
 
    /* -------------------------- CLI/STI ------------------- */
-   /* We treat them as NOP */
-   case 0xFA: { /* CLI */
-      DIP("cli\n");
+   case 0xFA: /* CLI */
+   case 0xFB: /* STI */
+      jmp_lit(&dres, Ijk_Privileged, ((Addr32)guest_EIP_bbstart) + delta);
+      vassert(dres.whatNext == Dis_StopHere);
+      DIP("%s\n", opc == 0xFA ? "cli" : "sti");
       break;
-   }
-   case 0xFB: { /* STI */
-      DIP("sti\n");
-      break;
-   }
 
    /* -------------------------- halt ---------------------- */
    case 0xF4: { /* hlt */
