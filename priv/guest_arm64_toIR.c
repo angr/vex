@@ -5259,6 +5259,19 @@ Bool dis_ARM64_load_store(/*MB_OUT*/DisResult* dres, UInt insn,
       DIP("ldr %s, 0x%llx (literal)\n", nameIRegOrZR(bX == 1, rT), ea);
       return True;
    }
+   /* 31 29      23    4
+      10 011 000 imm19 Rt   LDRSW Xt, [PC + sxTo64(imm19 << 2)]
+   */
+   if (INSN(29,24) == BITS6(0,1,1,0,0,0) && INSN(31,30) == BITS2(1,0)) {
+      UInt  imm19 = INSN(23,5);
+      UInt  rT    = INSN(4,0);
+      // sign extend imm19
+      ULong ea    = guest_PC_curr_instr + sx_to_64(imm19 << 2, 21);
+      // put the value in reference register rT
+      putIReg64orZR(rT, unop(Iop_32Sto64, loadLE(Ity_I32, mkU64(ea))));
+      DIP("ldrsw %s, 0x%llx (literal)\n", nameIReg64orZR(rT), ea);
+      return True;
+   }
 
    /* -------------- {LD,ST}R (integer register) --------------- */
    /* 31 29        20 15     12 11 9  4
