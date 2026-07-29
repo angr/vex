@@ -30,6 +30,11 @@
 
 typedef unsigned char bfd_byte;     // uint8_t  originally
 typedef unsigned long long bfd_vma; // uint64_t originally
+
+/* The objdump sources deliberately avoid the VEX headers, so the MSVC
+   compatibility defines from libvex_basictypes.h are not in scope here
+   and equivalents are provided directly. */
+#ifndef _MSC_VER
 typedef unsigned long size_t;
 
 #define ATTRIBUTE_FPTR_PRINTF_2                   \
@@ -39,6 +44,14 @@ typedef unsigned long size_t;
   __attribute__ ((__format__ (__printf__, 3, 4))) \
   __attribute__ ((__nonnull__ (3)))
 #define ATTRIBUTE_UNUSED __attribute__ ((unused))
+#else
+#include <stddef.h>  /* size_t; must not clash with the CRT's typedef */
+
+#define ATTRIBUTE_FPTR_PRINTF_2
+#define ATTRIBUTE_FPTR_PRINTF_3
+#define ATTRIBUTE_UNUSED
+#define __builtin_memset memset
+#endif
 
 /* This is defined in VEX, too. But we want to avoid mixing VEX
    and binutils headers. */
