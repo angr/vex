@@ -24779,6 +24779,15 @@ static DisResult disInstr_MIPS_WRK ( Long         delta64,
                           && branch_or_link_likely(guest_code + delta - 4);
    }
 
+   /* A branch or jump cannot be decoded on its own: its delay slot is
+      lifted with it (see the recursion below), consuming 8 bytes and two
+      instruction slots.  If the budget can never fit the pair, refuse to
+      decode the branch instead of overreading the lift buffer. */
+   if ((vex_control.guest_max_insns == 1 || vex_control.guest_max_bytes < 8)
+       && (branch_or_jump(code) || branch_or_link_likely(code))) {
+      goto decode_failure;
+   }
+
    // Emit an Illegal instruction in case a branch/jump
    // instruction is encountered in the delay slot
    // of an another branch/jump
@@ -25030,11 +25039,29 @@ decode_success:
          break;
    }
 
-   /* On MIPS we need to check if the last instruction in block is branch or
-      jump. */
-   if (((vex_control.guest_max_insns - 1) == (delta + 4) / 4)
-         &&  (dres.whatNext != Dis_StopHere))
-      if (branch_or_jump(guest_code + delta + 4)) {
+   /* On MIPS we need to check that the block does not end on a branch or
+      jump whose delay slot would fall outside the insn/byte budget: the
+      branch and its delay slot are lifted as one unit (8 bytes), so stop
+      the block one instruction early instead.  Also stop when the next
+      instruction itself cannot fully fit within the byte budget, so that
+      neither this check nor the next lift reads past the buffer. */
+   if (dres.whatNext != Dis_StopHere) {
+      Bool stop_now = False;
+
+      if (delta + 8 > vex_control.guest_max_bytes) {
+         /* The next insn is (at least partly) beyond the byte budget;
+            reading it would overrun the lift buffer. */
+         stop_now = True;
+      } else if ((((vex_control.guest_max_insns - 1) == (delta + 4) / 4)
+                  || (delta + 12 > vex_control.guest_max_bytes))
+                 && (branch_or_jump(guest_code + delta + 4)
+                     || branch_or_link_likely(guest_code + delta + 4))) {
+         /* The next insn is a branch or jump but its delay slot would
+            exceed the budget: do not start it. */
+         stop_now = True;
+      }
+
+      if (stop_now) {
          dres.whatNext = Dis_StopHere;
          dres.jk_StopHere = Ijk_Boring;
          if (mode64)
@@ -25042,6 +25069,7 @@ decode_success:
          else
             putPC(mkU32(guest_PC_curr_instr + 4));
       }
+   }
 
    return dres;
 
