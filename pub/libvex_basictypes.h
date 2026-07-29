@@ -34,6 +34,56 @@
 #ifndef __LIBVEX_BASICTYPES_H
 #define __LIBVEX_BASICTYPES_H
 
+/* This is where we bootstrap msvc compatibility.  LIKELY/UNLIKELY/
+   CAST_TO_TYPEOF were adopted upstream (priv/main_util.h) and are no
+   longer defined here. */
+#ifdef _MSC_VER
+#define __builtin_memset memset
+#define __builtin_memcpy memcpy
+#define __PRETTY_FUNCTION__ __FUNCDNAME__
+
+#define __attribute__(x)
+#define __attribute(x)
+#define __inline__
+#define inline
+
+/* Replacements for the GCC bit-scan builtins (used by the register
+   allocators and the riscv64 backend).  The 64-bit bit-scan intrinsics
+   only exist in 64-bit cl.exe, so 32-bit builds use portable loops.
+   Results are undefined for x == 0, as with the GCC builtins. */
+#ifdef _M_AMD64
+static inline int __builtin_clzll(unsigned long long x) {
+    return (int)__lzcnt64(x);
+}
+
+static inline int __builtin_ctzll(unsigned long long x) {
+    unsigned long ret;
+    _BitScanForward64(&ret, x);
+    return (int)ret;
+}
+#else
+static inline int __builtin_clzll(unsigned long long x) {
+   int out = 0;
+   if (x == 0) return 64;
+   while ((long long)x > 0) {
+      x <<= 1;
+      out++;
+   }
+   return out;
+}
+
+static inline int __builtin_ctzll(unsigned long long x) {
+   int out = 0;
+   if (x == 0) return 64;
+   while ((x & 1) == 0) {
+      x >>= 1;
+      out++;
+   }
+   return out;
+}
+#endif
+#endif
+
 /* It is important that the sizes of the following data types (on the
    host) are as stated.  LibVEX_Init therefore checks these at
    startup. */
