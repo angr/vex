@@ -964,9 +964,12 @@ static IRSB* disassemble_basic_block_till_stop(
 
       /* If this instruction would take the block over the maximum
          lift size, roll it back (drop its IMark and stmts) and stop
-         before it.  If it is the first instruction, this yields an
-         empty block. */
+         before it.  If it is the first instruction, complain instead
+         of silently producing an empty block. */
       if ((UInt)*extent_len + dres.len > (UInt)vex_control.guest_max_bytes) {
+         if (*n_instrs == 0) {
+            vpanic("Not enough bytes given to decode even a single instruction");
+         }
          irbb->stmts_used = first_stmt_idx;
          irbb->next = IRExpr_Get(offB_GUEST_IP, guest_word_type);
          /* irbb->jumpkind must already be Ijk_Boring */
