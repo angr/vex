@@ -77,6 +77,16 @@ ULong last_execute_target = Invalid_execute_target;
 /* The guest address to be used as the base for relative addresses. */
 Addr64 guest_IA_rel_base;
 
+#ifdef PYVEX
+/* PYVEX: host bounds of the current lift buffer and host address of the
+   EXRL insn being decoded.  Guest addresses are not dereferenceable when
+   lifting from a buffer; s390_irgen_EXRL uses these to locate the EXRL
+   target inside the buffer instead. */
+static const UChar *lift_buffer_start;
+static const UChar *lift_buffer_end;
+static const UChar *exrl_bytes;
+#endif
+
 /* The possible outcomes of a decoding operation */
 typedef enum {
    S390_DECODE_OK,
@@ -11472,17 +11482,38 @@ s390_irgen_EXRL(UChar r1, UInt offset)
 {
    IRTemp addr = newTemp(Ity_I64);
    Addr64 bytes_addr;
-   UChar *bytes;
+   const UChar *bytes;
    /* we might save one round trip because we know the target */
    if (last_execute_target == Invalid_execute_target) {
       bytes_addr = addr_rel_long(offset);
+#ifdef PYVEX
+      /* PYVEX: locate the target inside the lift buffer instead of
+         dereferencing the guest address.  If it is not fully contained,
+         leave last_execute_target invalid so that s390_irgen_EX falls
+         back to the dirty-helper restart path. */
+      Long rel = (exrl_bytes - lift_buffer_start) + ((Long)(Int)offset << 1);
+      Long avail = lift_buffer_end - lift_buffer_start;
+      bytes = NULL;
+      if (rel >= 0 && rel + 2 <= avail) {
+         bytes = lift_buffer_start + rel;
+         UInt target_len = ((((bytes[0] >> 6) + 1) >> 1) + 1) << 1;
+         if (rel + target_len > avail)
+            bytes = NULL;
+      }
+#else
       bytes = (UChar *)(HWord)bytes_addr;
-      last_execute_target = ((ULong)bytes[0] << 56) | ((ULong)bytes[1] << 48);
-      if (bytes[0] >= 0x40)
-         last_execute_target |= ((ULong)bytes[2] << 40) | ((ULong)bytes[3] << 32);
-      if (bytes[0] >= 0xc0)
-         last_execute_target |= ((ULong)bytes[4] << 24) | ((ULong)bytes[5] << 16);
-      guest_IA_rel_base = bytes_addr;
+#endif
+      if (bytes != NULL) {
+         last_execute_target =
+            ((ULong)bytes[0] << 56) | ((ULong)bytes[1] << 48);
+         if (bytes[0] >= 0x40)
+            last_execute_target |=
+               ((ULong)bytes[2] << 40) | ((ULong)bytes[3] << 32);
+         if (bytes[0] >= 0xc0)
+            last_execute_target |=
+               ((ULong)bytes[4] << 24) | ((ULong)bytes[5] << 16);
+         guest_IA_rel_base = bytes_addr;
+      }
    } else
       bytes_addr = guest_IA_rel_base;
    assign(addr, mkU64(bytes_addr));
@@ -20442,7 +20473,11 @@ s390_decode_6byte_and_irgen(const UChar *bytes)
                    goto ok;
    case 0xc40fULL: s390_irgen_STRL(RIL_r1(ovl), RIL_i2(ovl));
                    goto ok;
-   case 0xc600ULL: s390_irgen_EXRL(RIL_r1(ovl), RIL_i2(ovl));
+   case 0xc600ULL:
+#ifdef PYVEX
+                   exrl_bytes = bytes;
+#endif
+                   s390_irgen_EXRL(RIL_r1(ovl), RIL_i2(ovl));
                    goto ok;
    case 0xc602ULL: s390_irgen_PFDRL();
                    goto ok;
@@ -20806,6 +20841,11 @@ disInstr_S390(IRSB        *irsb_IN,
    guest_IA_curr_instr = guest_IP;
    if (last_execute_target == Invalid_execute_target)
       guest_IA_rel_base = guest_IA_curr_instr;
+#ifdef PYVEX
+   /* PYVEX: guest_max_bytes is set per-lift to the size of the buffer. */
+   lift_buffer_start = guest_code;
+   lift_buffer_end   = guest_code + vex_control.guest_max_bytes;
+#endif
    irsb        = irsb_IN;
    sigill_diag = sigill_diag_IN;
 
