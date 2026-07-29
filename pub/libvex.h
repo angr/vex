@@ -556,6 +556,27 @@ typedef
       /* When false constant folding and algebric simplification is disabled.
          This is used in the iropt tester. */
       Bool iropt_fold_expr;
+      /* What's the maximum basic block size in bytes? Default=5000 */
+      Int guest_max_bytes;
+      /* Should the arm-thumb lifter be allowed to look before the
+         current instruction pointer in order to check if there are no
+         IT instructions so that it can optimize the IR? Default: YES */
+      Bool arm_allow_optimizing_lookback;
+      /* Should the arm64 lifter be allowed to re-order register
+         writeback in a handful of special cases that make memcheck
+         unhappy otherwise? Default: YES */
+      Bool arm64_allow_reordered_writeback;
+      /* Whether we should lift the x86 code `call $+5; pop xxx` as
+         one instruction (True) or two (False). Default: True */
+      Bool x86_optimize_callpop_idiom;
+      /* Make CB{N}Z arm thumb instruction to be considered as branch */
+      Bool strict_block_end;
+      /* Whether we should decode the vex-specific "special" instructions.
+         Default: YES */
+      Bool special_instruction_support;
+      /* The number of bytes it is legal to poke before the start of the
+         passed instruction data */
+      UInt lookback_amount;
    }
    VexControl;
 

@@ -205,6 +205,13 @@ void LibVEX_default_VexControl ( /*OUT*/ VexControl* vcon )
    vcon->guest_chase                    = True;
    vcon->regalloc_version               = 3;
    vcon->iropt_fold_expr                = True;
+   vcon->guest_max_bytes                = 5000;
+   vcon->arm_allow_optimizing_lookback   = True;
+   vcon->arm64_allow_reordered_writeback = True;
+   vcon->x86_optimize_callpop_idiom      = True;
+   vcon->strict_block_end                = False;
+   vcon->special_instruction_support     = True;
+   vcon->lookback_amount                 = 0;
 }
 
 void LibVEX_set_VexControl ( VexControl vcon )
@@ -247,6 +254,16 @@ void LibVEX_Init (
    vassert(vcon->guest_max_insns <= 100);
    vassert(vcon->guest_chase == False || vcon->guest_chase == True);
    vassert(vcon->regalloc_version == 2 || vcon->regalloc_version == 3);
+   vassert(vcon->guest_max_bytes >= 1);
+   vassert(vcon->guest_max_bytes <= 5000);
+   vassert(vcon->strict_block_end  == True
+           || vcon->strict_block_end  == False);
+   vassert(vcon->arm_allow_optimizing_lookback  == True
+           || vcon->arm_allow_optimizing_lookback  == False);
+   vassert(vcon->arm64_allow_reordered_writeback  == True
+           || vcon->arm64_allow_reordered_writeback  == False);
+   vassert(vcon->x86_optimize_callpop_idiom  == True
+           || vcon->x86_optimize_callpop_idiom  == False);
 
    /* Check that Vex has been built with sizes of basic types as
       stated in priv/libvex_basictypes.h.  Failure of any of these is
