@@ -20152,158 +20152,154 @@ static UInt disInstr_MIPS_WRK_00(UInt cins, const VexArchInfo* archinfo,
 
          break;
 
-#if defined(__mips__) && ((defined(__mips_isa_rev) && __mips_isa_rev < 6))
+      /* Opcode 0x08 is ADDI before MIPSr6 and the compact branches
+         BEQZALC/BEQC/BOVC on MIPSr6.  Pick the decoding at run time from
+         the guest ISA, not from the host the lifter was built for. */
+      case 0x08: {
+         if (!VEX_MIPS_CPU_HAS_MIPSR6(archinfo->hwcaps)) {  /* ADDI */
+            DIP("addi r%u, r%u, %u", rt, rs, imm);
+            IRTemp tmpRs32, t1, t2, t3, t4;
+            tmpRs32 = newTemp(Ity_I32);
+            assign(tmpRs32, mkNarrowTo32(ty, getIReg(rs)));
 
-      case 0x08: {  /* ADDI */
-         DIP("addi r%u, r%u, %u", rt, rs, imm);
-         IRTemp tmpRs32, t1, t2, t3, t4;
-         tmpRs32 = newTemp(Ity_I32);
-         assign(tmpRs32, mkNarrowTo32(ty, getIReg(rs)));
+            t0 = newTemp(Ity_I32);
+            t1 = newTemp(Ity_I32);
+            t2 = newTemp(Ity_I32);
+            t3 = newTemp(Ity_I32);
+            t4 = newTemp(Ity_I32);
+            /* dst = src0 + sign(imm)
+            if(sign(src0 ) != sign(imm ))
+            goto no overflow;
+            if(sign(dst) == sign(src0 ))
+            goto no overflow;
+            we have overflow! */
 
-         t0 = newTemp(Ity_I32);
-         t1 = newTemp(Ity_I32);
-         t2 = newTemp(Ity_I32);
-         t3 = newTemp(Ity_I32);
-         t4 = newTemp(Ity_I32);
-         /* dst = src0 + sign(imm)
-         if(sign(src0 ) != sign(imm ))
-         goto no overflow;
-         if(sign(dst) == sign(src0 ))
-         goto no overflow;
-         we have overflow! */
+            assign(t0, binop(Iop_Add32, mkexpr(tmpRs32),
+                             mkU32(extend_s_16to32(imm))));
+            assign(t1, binop(Iop_Xor32, mkexpr(tmpRs32),
+                             mkU32(extend_s_16to32(imm))));
+            assign(t2, unop(Iop_1Sto32, binop(Iop_CmpEQ32, binop(Iop_And32,
+                                              mkexpr(t1), mkU32(0x80000000)), mkU32(0x80000000))));
 
-         assign(t0, binop(Iop_Add32, mkexpr(tmpRs32),
-                          mkU32(extend_s_16to32(imm))));
-         assign(t1, binop(Iop_Xor32, mkexpr(tmpRs32),
-                          mkU32(extend_s_16to32(imm))));
-         assign(t2, unop(Iop_1Sto32, binop(Iop_CmpEQ32, binop(Iop_And32,
-                                           mkexpr(t1), mkU32(0x80000000)), mkU32(0x80000000))));
+            assign(t3, binop(Iop_Xor32, mkexpr(t0), mkexpr(tmpRs32)));
+            assign(t4, unop(Iop_1Sto32, binop(Iop_CmpNE32, binop(Iop_And32,
+                                              mkexpr(t3), mkU32(0x80000000)), mkU32(0x80000000))));
 
-         assign(t3, binop(Iop_Xor32, mkexpr(t0), mkexpr(tmpRs32)));
-         assign(t4, unop(Iop_1Sto32, binop(Iop_CmpNE32, binop(Iop_And32,
-                                           mkexpr(t3), mkU32(0x80000000)), mkU32(0x80000000))));
+            stmt(IRStmt_Exit(binop(Iop_CmpEQ32, binop(Iop_Or32, mkexpr(t2),
+                                   mkexpr(t4)), mkU32(0)), Ijk_SigFPE_IntOvf,
+                             mode64 ? IRConst_U64(guest_PC_curr_instr + 4) :
+                             IRConst_U32(guest_PC_curr_instr + 4),
+                             OFFB_PC));
 
-         stmt(IRStmt_Exit(binop(Iop_CmpEQ32, binop(Iop_Or32, mkexpr(t2),
-                                mkexpr(t4)), mkU32(0)), Ijk_SigFPE_IntOvf,
-                          mode64 ? IRConst_U64(guest_PC_curr_instr + 4) :
-                          IRConst_U32(guest_PC_curr_instr + 4),
-                          OFFB_PC));
+            putIReg(rt,  mkWidenFrom32(ty, mkexpr(t0), True));
+         } else {  /* BEQZALC, BEQC, BOVC */
+            IRTemp t1, t2, t3, t4;
+            if (rs == 0) { /* BEQZALC */
+               DIP("beqzalc r%u, %u", rt, imm);
 
-         putIReg(rt,  mkWidenFrom32(ty, mkexpr(t0), True));
-         break;
-      }
+               if (mode64) {
+                  dis_branch_compact(True,
+                                     binop(Iop_CmpEQ64, getIReg(rt), mkU64(0x0)),
+                                     imm, dres);
+               } else {
+                  dis_branch_compact(True,
+                                     binop(Iop_CmpEQ32, getIReg(rt), mkU32(0x0)),
+                                     imm, dres);
+               }
+            } else  if (rs < rt) { /* BEQC */
+               DIP("beqc r%u, r%u, %u", rs, rt, imm);
 
-#elif defined(__mips__) && ((defined(__mips_isa_rev) && __mips_isa_rev >= 6))
+               if (mode64) {
+                  dis_branch_compact(False,
+                                     binop(Iop_CmpEQ64, getIReg(rt), getIReg(rs)),
+                                     imm, dres);
+               } else {
+                  dis_branch_compact(False,
+                                     binop(Iop_CmpEQ32, getIReg(rt), getIReg(rs)),
+                                     imm, dres);
+               }
+            } else { /* BOVC */
+               DIP("bovc r%u, r%u, %u", rs, rt, imm);
 
-      case 0x08: { /* BEQZALC, BEQC, BOVC */
-         IRTemp t1, t2, t3, t4;
-         if (rs == 0) { /* BEQZALC */
-            DIP("beqzalc r%u, %u", rt, imm);
+               if (mode64) {
+                  t0 = newTemp(Ity_I32);
+                  t1 = newTemp(Ity_I32);
+                  t2 = newTemp(Ity_I32);
+                  t3 = newTemp(Ity_I32);
+                  assign(t0, IRExpr_ITE(binop(Iop_CmpLT64S,
+                                              getIReg(rt),
+                                              mkU64(0xffffffff80000000ULL)),
+                                        mkU32(1),
+                                        IRExpr_ITE(binop(Iop_CmpLT64S,
+                                                         getIReg(rt),
+                                                         mkU64(0x7FFFFFFFULL)),
+                                                   mkU32(0), mkU32(1))));
+                  assign(t1, IRExpr_ITE(binop(Iop_CmpLT64S,
+                                              getIReg(rs),
+                                              mkU64(0xffffffff80000000ULL)),
+                                        mkU32(1),
+                                        IRExpr_ITE(binop(Iop_CmpLT64S,
+                                                         getIReg(rs),
+                                                         mkU64(0x7FFFFFFFULL)),
+                                                   mkU32(0), mkU32(1))));
+                  assign(t2, IRExpr_ITE(binop(Iop_CmpLT64S,
+                                              binop(Iop_Add64,
+                                                    getIReg(rt), getIReg(rs)),
+                                              mkU64(0xffffffff80000000ULL)),
+                                        mkU32(1),
+                                        IRExpr_ITE(binop(Iop_CmpLT64S,
+                                                         binop(Iop_Add64,
+                                                               getIReg(rt),
+                                                               getIReg(rs)),
+                                                         mkU64(0x7FFFFFFFULL)),
+                                                   mkU32(0), mkU32(1))));
+                  assign(t3, binop(Iop_Add32,
+                                   mkexpr(t0),
+                                   binop(Iop_Add32, mkexpr(t1), mkexpr(t2))));
+                  dis_branch_compact(False,
+                                     binop(Iop_CmpNE32, mkexpr(t3), mkU32(0)),
+                                     imm, dres);
+               } else {
+                  IRTemp tmpRs32 = newTemp(Ity_I32);
+                  IRTemp tmpRt32 = newTemp(Ity_I32);
+                  assign(tmpRs32, getIReg(rs));
+                  assign(tmpRt32, getIReg(rt));
 
-            if (mode64) {
-               dis_branch_compact(True,
-                                  binop(Iop_CmpEQ64, getIReg(rt), mkU64(0x0)),
-                                  imm, dres);
-            } else {
-               dis_branch_compact(True,
-                                  binop(Iop_CmpEQ32, getIReg(rt), mkU32(0x0)),
-                                  imm, dres);
+                  t0 = newTemp(Ity_I32);
+                  t1 = newTemp(Ity_I32);
+                  t2 = newTemp(Ity_I32);
+                  t3 = newTemp(Ity_I32);
+                  t4 = newTemp(Ity_I32);
+                  /* dst = src0 + src1
+                  if (sign(src0 ) != sign(src1 ))
+                  goto no overflow;
+                  if (sign(dst) == sign(src0 ))
+                  goto no overflow;
+                  we have overflow! */
+
+                  assign(t0, binop(Iop_Add32, mkexpr(tmpRs32), mkexpr(tmpRt32)));
+                  assign(t1, binop(Iop_Xor32, mkexpr(tmpRs32), mkexpr(tmpRt32)));
+                  assign(t2, unop(Iop_1Uto32,
+                                  binop(Iop_CmpEQ32,
+                                        binop(Iop_And32, mkexpr(t1), mkU32(0x80000000)),
+                                        mkU32(0x80000000))));
+
+                  assign(t3, binop(Iop_Xor32, mkexpr(t0), mkexpr(tmpRs32)));
+                  assign(t4, unop(Iop_1Uto32,
+                                  binop(Iop_CmpNE32,
+                                        binop(Iop_And32, mkexpr(t3), mkU32(0x80000000)),
+                                        mkU32(0x80000000))));
+
+                  dis_branch_compact(False, binop(Iop_CmpEQ32,
+                                                  binop(Iop_Or32, mkexpr(t2), mkexpr(t4)),
+                                                  mkU32(0)), imm, dres);
+               }
             }
-         } else  if (rs < rt) { /* BEQC */
-            DIP("beqc r%u, r%u, %u", rs, rt, imm);
-
-            if (mode64) {
-               dis_branch_compact(False,
-                                  binop(Iop_CmpEQ64, getIReg(rt), getIReg(rs)),
-                                  imm, dres);
-            } else {
-               dis_branch_compact(False,
-                                  binop(Iop_CmpEQ32, getIReg(rt), getIReg(rs)),
-                                  imm, dres);
-            }
-         } else { /* BOVC */
-            DIP("bovc r%u, r%u, %u", rs, rt, imm);
-
-            if (mode64) {
-               t0 = newTemp(Ity_I32);
-               t1 = newTemp(Ity_I32);
-               t2 = newTemp(Ity_I32);
-               t3 = newTemp(Ity_I32);
-               assign(t0, IRExpr_ITE(binop(Iop_CmpLT64S,
-                                           getIReg(rt),
-                                           mkU64(0xffffffff80000000ULL)),
-                                     mkU32(1),
-                                     IRExpr_ITE(binop(Iop_CmpLT64S,
-                                                      getIReg(rt),
-                                                      mkU64(0x7FFFFFFFULL)),
-                                                mkU32(0), mkU32(1))));
-               assign(t1, IRExpr_ITE(binop(Iop_CmpLT64S,
-                                           getIReg(rs),
-                                           mkU64(0xffffffff80000000ULL)),
-                                     mkU32(1),
-                                     IRExpr_ITE(binop(Iop_CmpLT64S,
-                                                      getIReg(rs),
-                                                      mkU64(0x7FFFFFFFULL)),
-                                                mkU32(0), mkU32(1))));
-               assign(t2, IRExpr_ITE(binop(Iop_CmpLT64S,
-                                           binop(Iop_Add64,
-                                                 getIReg(rt), getIReg(rs)),
-                                           mkU64(0xffffffff80000000ULL)),
-                                     mkU32(1),
-                                     IRExpr_ITE(binop(Iop_CmpLT64S,
-                                                      binop(Iop_Add64,
-                                                            getIReg(rt),
-                                                            getIReg(rs)),
-                                                      mkU64(0x7FFFFFFFULL)),
-                                                mkU32(0), mkU32(1))));
-               assign(t3, binop(Iop_Add32,
-                                mkexpr(t0),
-                                binop(Iop_Add32, mkexpr(t1), mkexpr(t2))));
-               dis_branch_compact(False,
-                                  binop(Iop_CmpNE32, mkexpr(t3), mkU32(0)),
-                                  imm, dres);
-            } else {
-               IRTemp tmpRs32 = newTemp(Ity_I32);
-               IRTemp tmpRt32 = newTemp(Ity_I32);
-               assign(tmpRs32, getIReg(rs));
-               assign(tmpRt32, getIReg(rt));
-
-               t0 = newTemp(Ity_I32);
-               t1 = newTemp(Ity_I32);
-               t2 = newTemp(Ity_I32);
-               t3 = newTemp(Ity_I32);
-               t4 = newTemp(Ity_I32);
-               /* dst = src0 + src1
-               if (sign(src0 ) != sign(src1 ))
-               goto no overflow;
-               if (sign(dst) == sign(src0 ))
-               goto no overflow;
-               we have overflow! */
-
-               assign(t0, binop(Iop_Add32, mkexpr(tmpRs32), mkexpr(tmpRt32)));
-               assign(t1, binop(Iop_Xor32, mkexpr(tmpRs32), mkexpr(tmpRt32)));
-               assign(t2, unop(Iop_1Uto32,
-                               binop(Iop_CmpEQ32,
-                                     binop(Iop_And32, mkexpr(t1), mkU32(0x80000000)),
-                                     mkU32(0x80000000))));
-
-               assign(t3, binop(Iop_Xor32, mkexpr(t0), mkexpr(tmpRs32)));
-               assign(t4, unop(Iop_1Uto32,
-                               binop(Iop_CmpNE32,
-                                     binop(Iop_And32, mkexpr(t3), mkU32(0x80000000)),
-                                     mkU32(0x80000000))));
-
-               dis_branch_compact(False, binop(Iop_CmpEQ32,
-                                               binop(Iop_Or32, mkexpr(t2), mkexpr(t4)),
-                                               mkU32(0)), imm, dres);
-            }
+            /* In documentation for BEQC stands rs > rt and for BOVC stands rs >= rt! */
          }
 
          break;
-         /* In documentation for BEQC stands rs > rt and for BOVC stands rs >= rt! */
       }
-
-#endif
 
       case 0x09:  /* ADDIU */
          DIP("addiu r%u, r%u, %u", rt, rs, imm);
@@ -23189,162 +23185,159 @@ static UInt disInstr_MIPS_WRK_10(UInt cins, const VexArchInfo* archinfo,
 
          break;
 
-#if defined(__mips__) && ((defined(__mips_isa_rev) && __mips_isa_rev < 6))
+      /* Opcode 0x18 is DADDI before MIPSr6 and the compact branches
+         BNEZALC/BNEC/BNVC on MIPSr6.  Pick the decoding at run time from
+         the guest ISA, not from the host the lifter was built for. */
+      case 0x08: {
+         if (!VEX_MIPS_CPU_HAS_MIPSR6(archinfo->hwcaps)) {
+            /* Doubleword Add Immidiate - DADDI; MIPS64 */
+            DIP("daddi r%u, r%u, %u", rt, rs, imm);
+            IRTemp tmpRs64 = newTemp(Ity_I64);
+            assign(tmpRs64, getIReg(rs));
 
-      case 0x08: {  /* Doubleword Add Immidiate - DADDI; MIPS64 */
-         DIP("daddi r%u, r%u, %u", rt, rs, imm);
-         IRTemp tmpRs64 = newTemp(Ity_I64);
-         assign(tmpRs64, getIReg(rs));
+            t0 = newTemp(Ity_I64);
+            t1 = newTemp(Ity_I64);
+            t2 = newTemp(Ity_I64);
+            t3 = newTemp(Ity_I64);
+            t4 = newTemp(Ity_I64);
+            /* dst = src0 + sign(imm)
+               if(sign(src0 ) != sign(imm ))
+               goto no overflow;
+               if(sign(dst) == sign(src0 ))
+               goto no overflow;
+               we have overflow! */
 
-         t0 = newTemp(Ity_I64);
-         t1 = newTemp(Ity_I64);
-         t2 = newTemp(Ity_I64);
-         t3 = newTemp(Ity_I64);
-         t4 = newTemp(Ity_I64);
-         /* dst = src0 + sign(imm)
-            if(sign(src0 ) != sign(imm ))
-            goto no overflow;
-            if(sign(dst) == sign(src0 ))
-            goto no overflow;
-            we have overflow! */
+            assign(t0, binop(Iop_Add64, mkexpr(tmpRs64),
+                             mkU64(extend_s_16to64(imm))));
+            assign(t1, binop(Iop_Xor64, mkexpr(tmpRs64),
+                             mkU64(extend_s_16to64(imm))));
+            assign(t2, unop(Iop_1Sto64, binop(Iop_CmpEQ64, binop(Iop_And64,
+                                              mkexpr(t1), mkU64(0x8000000000000000ULL)),
+                                              mkU64(0x8000000000000000ULL))));
 
-         assign(t0, binop(Iop_Add64, mkexpr(tmpRs64),
-                          mkU64(extend_s_16to64(imm))));
-         assign(t1, binop(Iop_Xor64, mkexpr(tmpRs64),
-                          mkU64(extend_s_16to64(imm))));
-         assign(t2, unop(Iop_1Sto64, binop(Iop_CmpEQ64, binop(Iop_And64,
-                                           mkexpr(t1), mkU64(0x8000000000000000ULL)),
-                                           mkU64(0x8000000000000000ULL))));
+            assign(t3, binop(Iop_Xor64, mkexpr(t0), mkexpr(tmpRs64)));
+            assign(t4, unop(Iop_1Sto64, binop(Iop_CmpNE64, binop(Iop_And64,
+                                              mkexpr(t3), mkU64(0x8000000000000000ULL)),
+                                              mkU64(0x8000000000000000ULL))));
 
-         assign(t3, binop(Iop_Xor64, mkexpr(t0), mkexpr(tmpRs64)));
-         assign(t4, unop(Iop_1Sto64, binop(Iop_CmpNE64, binop(Iop_And64,
-                                           mkexpr(t3), mkU64(0x8000000000000000ULL)),
-                                           mkU64(0x8000000000000000ULL))));
+            stmt(IRStmt_Exit(binop(Iop_CmpEQ64, binop(Iop_Or64, mkexpr(t2),
+                                   mkexpr(t4)), mkU64(0)), Ijk_SigFPE_IntOvf,
+                             IRConst_U64(guest_PC_curr_instr + 4),
+                             OFFB_PC));
 
-         stmt(IRStmt_Exit(binop(Iop_CmpEQ64, binop(Iop_Or64, mkexpr(t2),
-                                mkexpr(t4)), mkU64(0)), Ijk_SigFPE_IntOvf,
-                          IRConst_U64(guest_PC_curr_instr + 4),
-                          OFFB_PC));
+            putIReg(rt,  mkexpr(t0));
+         } else {  /* BNEZALC, BNEC, BNVC */
+            if (rs == 0) { /* BNEZALC */
+               DIP("bnezalc r%u, %u", rt, imm);
 
-         putIReg(rt,  mkexpr(t0));
-         break;
-      }
+               if (mode64) {
+                  dis_branch_compact(True,
+                                     unop(Iop_Not1,
+                                          binop(Iop_CmpEQ64, getIReg(rt), mkU64(0x0))),
+                                     imm, dres);
+               } else {
+                  dis_branch_compact(True,
+                                     unop(Iop_Not1,
+                                          binop(Iop_CmpEQ32, getIReg(rt), mkU32(0x0))),
+                                     imm, dres);
+               }
+            } else if (rs < rt) { /* BNEC */
+               DIP("bnec r%u, %u", rt, imm);
 
-#elif defined(__mips__) && ((defined(__mips_isa_rev) && __mips_isa_rev >= 6))
+               if (mode64) {
+                  dis_branch_compact(False,
+                                     unop(Iop_Not1,
+                                          binop(Iop_CmpEQ64,
+                                                getIReg(rt), getIReg(rs))),
+                                     imm, dres);
+               } else {
+                  dis_branch_compact(False,
+                                     unop(Iop_Not1,
+                                          binop(Iop_CmpEQ32,
+                                                getIReg(rt), getIReg(rs))),
+                                     imm, dres);
+               }
+            } else { /* BNVC */
+               DIP("bnvc r%u, r%u, %u", rs, rt, imm);
 
-      case 0x08: { /* BNEZALC, BNEC, BNVC */
-         if (rs == 0) { /* BNEZALC */
-            DIP("bnezalc r%u, %u", rt, imm);
+               if (mode64) {
+                  t0 = newTemp(Ity_I32);
+                  t1 = newTemp(Ity_I32);
+                  t2 = newTemp(Ity_I32);
+                  t3 = newTemp(Ity_I32);
+                  assign(t0, IRExpr_ITE(binop(Iop_CmpLT64S,
+                                              getIReg(rt),
+                                              mkU64(0xffffffff80000000ULL)),
+                                        mkU32(1),
+                                        IRExpr_ITE(binop(Iop_CmpLT64S,
+                                                         getIReg(rt),
+                                                         mkU64(0x7FFFFFFFULL)),
+                                                   mkU32(0), mkU32(1))));
+                  assign(t1, IRExpr_ITE(binop(Iop_CmpLT64S,
+                                              getIReg(rs),
+                                              mkU64(0xffffffff80000000ULL)),
+                                        mkU32(1),
+                                        IRExpr_ITE(binop(Iop_CmpLT64S,
+                                                         getIReg(rs),
+                                                         mkU64(0x7FFFFFFFULL)),
+                                                   mkU32(0), mkU32(1))));
+                  assign(t2, IRExpr_ITE(binop(Iop_CmpLT64S,
+                                              binop(Iop_Add64,
+                                                    getIReg(rt), getIReg(rs)),
+                                              mkU64(0xffffffff80000000ULL)),
+                                        mkU32(1),
+                                        IRExpr_ITE(binop(Iop_CmpLT64S,
+                                                         binop(Iop_Add64,
+                                                               getIReg(rt),
+                                                               getIReg(rs)),
+                                                         mkU64(0x7FFFFFFFULL)),
+                                                   mkU32(0), mkU32(1))));
+                  assign(t3, binop(Iop_Add32,
+                                   mkexpr(t0),
+                                   binop(Iop_Add32, mkexpr(t1), mkexpr(t2))));
+                  dis_branch_compact(False,
+                                     binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0)),
+                                     imm, dres);
+               } else {
+                  IRTemp tmpRs32 = newTemp(Ity_I32);
+                  IRTemp tmpRt32 = newTemp(Ity_I32);
 
-            if (mode64) {
-               dis_branch_compact(True,
-                                  unop(Iop_Not1,
-                                       binop(Iop_CmpEQ64, getIReg(rt), mkU64(0x0))),
-                                  imm, dres);
-            } else {
-               dis_branch_compact(True,
-                                  unop(Iop_Not1,
-                                       binop(Iop_CmpEQ32, getIReg(rt), mkU32(0x0))),
-                                  imm, dres);
-            }
-         } else if (rs < rt) { /* BNEC */
-            DIP("bnec r%u, %u", rt, imm);
+                  assign(tmpRs32, getIReg(rs));
+                  assign(tmpRt32, getIReg(rt));
+                  t0 = newTemp(Ity_I32);
+                  t1 = newTemp(Ity_I32);
+                  t2 = newTemp(Ity_I32);
+                  t3 = newTemp(Ity_I32);
+                  t4 = newTemp(Ity_I32);
+                  /* dst = src0 + src1
+                     if (sign(src0 ) != sign(src1 ))
+                     goto no overflow;
+                     if (sign(dst) == sign(src0 ))
+                     goto no overflow;
+                     we have overflow! */
 
-            if (mode64) {
-               dis_branch_compact(False,
-                                  unop(Iop_Not1,
-                                       binop(Iop_CmpEQ64,
-                                             getIReg(rt), getIReg(rs))),
-                                  imm, dres);
-            } else {
-               dis_branch_compact(False,
-                                  unop(Iop_Not1,
-                                       binop(Iop_CmpEQ32,
-                                             getIReg(rt), getIReg(rs))),
-                                  imm, dres);
-            }
-         } else { /* BNVC */
-            DIP("bnvc r%u, r%u, %u", rs, rt, imm);
+                  assign(t0, binop(Iop_Add32, mkexpr(tmpRs32), mkexpr(tmpRt32)));
+                  assign(t1, binop(Iop_Xor32, mkexpr(tmpRs32), mkexpr(tmpRt32)));
+                  assign(t2, unop(Iop_1Uto32,
+                                  binop(Iop_CmpEQ32,
+                                        binop(Iop_And32, mkexpr(t1), mkU32(0x80000000)),
+                                        mkU32(0x80000000))));
 
-            if (mode64) {
-               t0 = newTemp(Ity_I32);
-               t1 = newTemp(Ity_I32);
-               t2 = newTemp(Ity_I32);
-               t3 = newTemp(Ity_I32);
-               assign(t0, IRExpr_ITE(binop(Iop_CmpLT64S,
-                                           getIReg(rt),
-                                           mkU64(0xffffffff80000000ULL)),
-                                     mkU32(1),
-                                     IRExpr_ITE(binop(Iop_CmpLT64S,
-                                                      getIReg(rt),
-                                                      mkU64(0x7FFFFFFFULL)),
-                                                mkU32(0), mkU32(1))));
-               assign(t1, IRExpr_ITE(binop(Iop_CmpLT64S,
-                                           getIReg(rs),
-                                           mkU64(0xffffffff80000000ULL)),
-                                     mkU32(1),
-                                     IRExpr_ITE(binop(Iop_CmpLT64S,
-                                                      getIReg(rs),
-                                                      mkU64(0x7FFFFFFFULL)),
-                                                mkU32(0), mkU32(1))));
-               assign(t2, IRExpr_ITE(binop(Iop_CmpLT64S,
-                                           binop(Iop_Add64,
-                                                 getIReg(rt), getIReg(rs)),
-                                           mkU64(0xffffffff80000000ULL)),
-                                     mkU32(1),
-                                     IRExpr_ITE(binop(Iop_CmpLT64S,
-                                                      binop(Iop_Add64,
-                                                            getIReg(rt),
-                                                            getIReg(rs)),
-                                                      mkU64(0x7FFFFFFFULL)),
-                                                mkU32(0), mkU32(1))));
-               assign(t3, binop(Iop_Add32,
-                                mkexpr(t0),
-                                binop(Iop_Add32, mkexpr(t1), mkexpr(t2))));
-               dis_branch_compact(False,
-                                  binop(Iop_CmpEQ32, mkexpr(t3), mkU32(0)),
-                                  imm, dres);
-            } else {
-               IRTemp tmpRs32 = newTemp(Ity_I32);
-               IRTemp tmpRt32 = newTemp(Ity_I32);
+                  assign(t3, binop(Iop_Xor32, mkexpr(t0), mkexpr(tmpRs32)));
+                  assign(t4, unop(Iop_1Uto32,
+                                  binop(Iop_CmpNE32,
+                                        binop(Iop_And32, mkexpr(t3), mkU32(0x80000000)),
+                                        mkU32(0x80000000))));
 
-               assign(tmpRs32, getIReg(rs));
-               assign(tmpRt32, getIReg(rt));
-               t0 = newTemp(Ity_I32);
-               t1 = newTemp(Ity_I32);
-               t2 = newTemp(Ity_I32);
-               t3 = newTemp(Ity_I32);
-               t4 = newTemp(Ity_I32);
-               /* dst = src0 + src1
-                  if (sign(src0 ) != sign(src1 ))
-                  goto no overflow;
-                  if (sign(dst) == sign(src0 ))
-                  goto no overflow;
-                  we have overflow! */
-
-               assign(t0, binop(Iop_Add32, mkexpr(tmpRs32), mkexpr(tmpRt32)));
-               assign(t1, binop(Iop_Xor32, mkexpr(tmpRs32), mkexpr(tmpRt32)));
-               assign(t2, unop(Iop_1Uto32,
-                               binop(Iop_CmpEQ32,
-                                     binop(Iop_And32, mkexpr(t1), mkU32(0x80000000)),
-                                     mkU32(0x80000000))));
-
-               assign(t3, binop(Iop_Xor32, mkexpr(t0), mkexpr(tmpRs32)));
-               assign(t4, unop(Iop_1Uto32,
-                               binop(Iop_CmpNE32,
-                                     binop(Iop_And32, mkexpr(t3), mkU32(0x80000000)),
-                                     mkU32(0x80000000))));
-
-               dis_branch_compact(False, binop(Iop_CmpNE32 ,
-                                               binop(Iop_Or32, mkexpr(t2), mkexpr(t4)),
-                                               mkU32(0)), imm, dres);
+                  dis_branch_compact(False, binop(Iop_CmpNE32 ,
+                                                  binop(Iop_Or32, mkexpr(t2), mkexpr(t4)),
+                                                  mkU32(0)), imm, dres);
+               }
             }
          }
 
          break;
       }
-
-#endif
 
       case 0x09:  /* Doubleword Add Immidiate Unsigned - DADDIU; MIPS64 */
          DIP("daddiu r%u, r%u, %u", rt, rs, imm);
