@@ -62,11 +62,7 @@ const UChar *guest_code;
 
 /* CONST: The guest address for the instruction currently being
    translated. */
-#if defined(VGP_mips32_linux)
-static Addr32 guest_PC_curr_instr;
-#else
 static Addr64 guest_PC_curr_instr;
-#endif
 
 /* MOD: The IRSB* into which we're generating code. */
 IRSB *irsb;
@@ -374,11 +370,8 @@ static UInt integerGuestRegOffset(UInt iregNo)
    return ret;
 }
 
-#if defined(VGP_mips32_linux)
-#define OFFB_PC     offsetof(VexGuestMIPS32State, guest_PC)
-#else
-#define OFFB_PC     offsetof(VexGuestMIPS64State, guest_PC)
-#endif
+#define OFFB_PC (mode64 ? offsetof(VexGuestMIPS64State, guest_PC) \
+                        : offsetof(VexGuestMIPS32State, guest_PC))
 
 /* ---------------- Floating point registers ---------------- */
 
@@ -25078,11 +25071,7 @@ DisResult disInstr_MIPS( IRSB*        irsb_IN,
    irsb = irsb_IN;
    host_endness = host_endness_IN;
    guest_endness = archinfo->endness == VexEndnessLE ? Iend_LE : Iend_BE;
-#if defined(VGP_mips32_linux)
-   guest_PC_curr_instr = (Addr32)guest_IP;
-#elif defined(VGP_mips64_linux)
    guest_PC_curr_instr = (Addr64)guest_IP;
-#endif
 
    dres = disInstr_MIPS_WRK(delta, archinfo, abiinfo, sigill_diag_IN);
 
