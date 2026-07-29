@@ -27105,11 +27105,15 @@ Long dis_ESC_0F__VEX (
 
 #ifdef AVX_512
    /* AVX-512 OPMASK instructions */
-   case 0x41 ... 0x47:
+   case 0x41: case 0x42: case 0x43: case 0x44: case 0x45: case 0x46: case 0x47:
    case 0x4A: case 0x4B:
-   case 0x90 ... 0x93:
+   case 0x90: case 0x91: case 0x92: case 0x93:
    case 0x98: case 0x99:
-      delta = nonAVX512_operation_decode(vbi, ESC_0F, pfx, delta);
+      {
+         Long delta_om = nonAVX512_operation_decode(vbi, ESC_0F, pfx, delta);
+         if (delta_om == delta) break;  /* not ours: report decode failure */
+         delta = delta_om;
+      }
       *uses_vvvv = True;
       goto decode_success;
 #endif
@@ -32337,9 +32341,12 @@ Long dis_ESC_0F3A__VEX (
 
 #ifdef AVX_512
    /* AVX-512 OPMASK instructions */
-   case 0x30 ... 0x33:
-      delta = nonAVX512_operation_decode(vbi, ESC_0F3A, pfx, delta);
-      return delta;
+   case 0x30: case 0x31: case 0x32: case 0x33:
+      {
+         Long delta_3a = nonAVX512_operation_decode(vbi, ESC_0F3A, pfx, delta);
+         if (delta_3a == delta) break;  /* not ours: fall through to normal decode */
+         return delta_3a;
+      }
 #endif
 
    case 0x38:
@@ -32987,9 +32994,12 @@ DisResult disInstr_AMD64_WRK (
       pre = getUChar(delta);
       switch (pre) {
 #ifdef AVX_512
-         case 0x62:
-            delta = dis__EVEX(vbi, pfx, delta);
+         case 0x62: {
+            Long delta_evex = dis__EVEX(vbi, pfx, delta);
+            if (delta_evex == delta) goto decode_failure;
+            delta = delta_evex;
             goto decode_success;
+         }
 #endif
          case 0x66: pfx |= PFX_66; break;
          case 0x67: pfx |= PFX_ASO; break;
@@ -33223,8 +33233,10 @@ DisResult disInstr_AMD64_WRK (
    if (delta == delta_at_primary_opcode) {
       // Might be one of the new Intel instructions
       if (!(pfx & PFX_VEX)) {
-         delta++;
-         delta = nonAVX512_operation_decode(vbi, esc, pfx, delta);
+         Long delta_ni = nonAVX512_operation_decode(vbi, esc, pfx, delta + 1);
+         /* On failure it returns its input unchanged; restore delta so the
+            delta == delta_at_primary_opcode check below reports failure. */
+         delta = (delta_ni == delta + 1) ? delta : delta_ni;
       }
    }
 #endif

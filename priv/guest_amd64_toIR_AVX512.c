@@ -32,17 +32,26 @@
 
 /* Largest lane count of any EVEX operand: 64 x 8-bit lanes in a ZMM. */
 #define MAX_ELEMENTS 64
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
-#define DIP(format, args...)           \
+/* guest_amd64_toIR.c #undefs DIP/DIS before #including this file; redefine
+   them in the standard-variadic form that both GCC and MSVC accept. */
+#ifndef _MSC_VER
+#define DIP(format, ...)               \
    if (vex_traceflags & VEX_TRACE_FE)  \
-      vex_printf(format, ## args)
+      vex_printf(format, ## __VA_ARGS__)
 
-#define DIS(buf, format, args...)      \
+#define DIS(buf, format, ...)          \
    if (vex_traceflags & VEX_TRACE_FE)  \
-      vex_sprintf(buf, format, ## args)
+      vex_sprintf(buf, format, ## __VA_ARGS__)
+#else
+#define DIP(format, ...)               \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_printf(format, __VA_ARGS__)
+
+#define DIS(buf, format, ...)          \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_sprintf(buf, format, __VA_ARGS__)
+#endif
 
 typedef UInt Prefix_EVEX;
 // Have to implement it as a global variable: some VEX functions have to refer
@@ -170,7 +179,7 @@ static Int getTupleType ( void ) {
    return ((evex >> EVEX_EVEXTT_OFFSET) & 0xF);
 }
 
-static Int pow(Int x, Int n) {
+static Int ipow(Int x, Int n) {
    UInt res = 1;
    for (Int i = 0; i < n; ++i)
       res *= x;
@@ -193,18 +202,18 @@ Int getEVEXMult( Prefix pfx ) {
       switch (type) {
          case NoTupleType:   return 1;
          case FullVector:
-         case FullVectorMem: return pow(2, getEVexL()+4);
+         case FullVectorMem: return ipow(2, getEVexL()+4);
          case HalfVector:
-         case HalfMem:       return pow(2, getEVexL()+3);
-         case QuarterMem:    return pow(2, getEVexL()+2);
-         case OctMem:        return pow(2, getEVexL()+1);
+         case HalfMem:       return ipow(2, getEVexL()+3);
+         case QuarterMem:    return ipow(2, getEVexL()+2);
+         case OctMem:        return ipow(2, getEVexL()+1);
          case Tuple1Fixed:   return (getDstW() == W_64) ? 8 : 4;
          case Tuple2:        return (getDstW() == W_64) ? 16 : 8;
          case Tuple4:        return (getDstW() == W_64) ? 32 : 16;
          case Tuple8:        return 32;
          case Mem128:        return 16;
          // Tuple1Scalar relies on src width, but src does not have 8- and 16-bit cases
-         case Tuple1Scalar:  return getWIG() ? pow(2, getDstW()) : pow(2, getRexW(pfx)+2);
+         case Tuple1Scalar:  return getWIG() ? ipow(2, getDstW()) : ipow(2, getRexW(pfx)+2);
          case MOVDDUP: {
             switch (getEVexL()) {
                case 0: return 8;
@@ -1090,7 +1099,7 @@ static IRTemp m_I64U_to_I32U_sat( IRTemp src, IRTemp unused, UChar unused_i) {
 static IRTemp m_ANDN (IRTemp src1, IRTemp src2, UChar unused ) {
    IROp and_op, not_op;
    switch (typeOfIRTemp(irsb->tyenv, src1)) {
-      case Ity_V512: and_op = Iop_AndV512; not_op = Iop_NotV512; break;
+      case Ity_V512: and_op = (IROp)Iop_AndV512; not_op = (IROp)Iop_NotV512; break;
       case Ity_V256: and_op = Iop_AndV256; not_op = Iop_NotV256; break;
       case Ity_V128: and_op = Iop_AndV128; not_op = Iop_NotV128; break;
       case Ity_I64:  and_op = Iop_And64;   not_op = Iop_Not64;   break;
@@ -1339,9 +1348,9 @@ static IRTemp m_VPMOVB2M(IRTemp src, IRTemp unused, UChar vl) {
    IROp cmp_op = Iop_INVALID;
    UInt mult = 0;
    switch (vl) {
-      case 0: res = newTemp(Ity_V128); cmp_op = Iop_Cmp8Ux16; mult = 16; break;
-      case 1: res = newTemp(Ity_V256); cmp_op = Iop_Cmp8Ux32; mult = 32; break;
-      case 2: res = newTemp(Ity_V512); cmp_op = Iop_Cmp8Ux64; mult = 64; break;
+      case 0: res = newTemp(Ity_V128); cmp_op = (IROp)Iop_Cmp8Ux16; mult = 16; break;
+      case 1: res = newTemp(Ity_V256); cmp_op = (IROp)Iop_Cmp8Ux32; mult = 32; break;
+      case 2: res = newTemp(Ity_V512); cmp_op = (IROp)Iop_Cmp8Ux64; mult = 64; break;
       default: vpanic("Invalid VL");
    }
    cmp = m_Broadcast(elem, unused, mult);
@@ -1357,9 +1366,9 @@ static IRTemp m_VPMOVW2M(IRTemp src, IRTemp unused, UChar vl) {
    IROp cmp_op = Iop_INVALID;
    UInt mult = 0;
    switch (vl) {
-      case 0: res = newTemp(Ity_V128); cmp_op = Iop_Cmp16Ux8;  mult = 8;  break;
-      case 1: res = newTemp(Ity_V256); cmp_op = Iop_Cmp16Ux16; mult = 16; break;
-      case 2: res = newTemp(Ity_V512); cmp_op = Iop_Cmp16Ux32; mult = 32; break;
+      case 0: res = newTemp(Ity_V128); cmp_op = (IROp)Iop_Cmp16Ux8;  mult = 8;  break;
+      case 1: res = newTemp(Ity_V256); cmp_op = (IROp)Iop_Cmp16Ux16; mult = 16; break;
+      case 2: res = newTemp(Ity_V512); cmp_op = (IROp)Iop_Cmp16Ux32; mult = 32; break;
       default: vpanic("Invalid VL");
    }
    cmp = m_Broadcast(elem, unused, mult);
@@ -1368,7 +1377,7 @@ static IRTemp m_VPMOVW2M(IRTemp src, IRTemp unused, UChar vl) {
    assign(res, qop(cmp_op, mkexpr(dummy), mkexpr(cmp), mkexpr(src), mkU8(0x2)));
    return res;
 }
-static IRTemp m_VPMOVD2M(IRTemp src, IRTemp unused, UInt vl) {
+static IRTemp m_VPMOVD2M(IRTemp src, IRTemp unused, UChar vl) {
    IRTemp res = IRTemp_INVALID, cmp = IRTemp_INVALID;
    IRTemp elem = newTemp(Ity_I32);
    assign(elem, mkU32(1ULL<<31));
@@ -1376,17 +1385,17 @@ static IRTemp m_VPMOVD2M(IRTemp src, IRTemp unused, UInt vl) {
    switch (vl) {
       case 0:
          res = newTemp(Ity_V128);
-         cmp_op = Iop_Cmp32Ux4;
+         cmp_op = (IROp)Iop_Cmp32Ux4;
          cmp = m_Broadcast(elem, unused, 4);
          break;
       case 1:
          res = newTemp(Ity_V256);
-         cmp_op = Iop_Cmp32Ux8;
+         cmp_op = (IROp)Iop_Cmp32Ux8;
          cmp = m_Broadcast(elem, unused, 8);
          break;
       case 2:
          res = newTemp(Ity_V512);
-         cmp_op = Iop_Cmp32Ux16;
+         cmp_op = (IROp)Iop_Cmp32Ux16;
          cmp = m_Broadcast(elem, unused, 16);
          break;
       default: vpanic("Invalid VL");
@@ -1404,17 +1413,17 @@ static IRTemp m_VPMOVQ2M(IRTemp src, IRTemp unused, UChar vl) {
    switch (vl) {
       case 0:
          res = newTemp(Ity_V128);
-         cmp_op = Iop_Cmp64Ux2;
+         cmp_op = (IROp)Iop_Cmp64Ux2;
          cmp = m_Broadcast(elem, unused, 2);
          break;
       case 1:
          res = newTemp(Ity_V256);
-         cmp_op = Iop_Cmp64Ux4;
+         cmp_op = (IROp)Iop_Cmp64Ux4;
          cmp = m_Broadcast(elem, unused, 4);
          break;
       case 2:
          res = newTemp(Ity_V512);
-         cmp_op = Iop_Cmp64Ux8;
+         cmp_op = (IROp)Iop_Cmp64Ux8;
          cmp = m_Broadcast(elem, unused, 8);
          break;
       default: vpanic("Invalid VL");
@@ -1482,7 +1491,8 @@ static IRTemp m_Align_32 (IRTemp src1, IRTemp src2, UChar imm8) {
       default: vpanic("Invalid VL");
    }
 
-   IRTemp s1_elem[n], s2_elem[n], dst_elem[n];
+   IRTemp s1_elem[MAX_ELEMENTS], s2_elem[MAX_ELEMENTS], dst_elem[MAX_ELEMENTS];
+   vassert(n <= MAX_ELEMENTS);
    UInt j = 0;
    for (j = 0; j < n; j++) {
       s1_elem[j] = IRTemp_INVALID;
@@ -1512,7 +1522,8 @@ static IRTemp m_Align_64 (IRTemp src1, IRTemp src2, UChar imm8) {
    }
 
    Int j=0;
-   IRTemp s1_elem[n], s2_elem[n], dst_elem[n];
+   IRTemp s1_elem[MAX_ELEMENTS], s2_elem[MAX_ELEMENTS], dst_elem[MAX_ELEMENTS];
+   vassert(n <= MAX_ELEMENTS);
    for (j = 0; j < n; j++) {
       s1_elem[j] = IRTemp_INVALID;
       s2_elem[j] = IRTemp_INVALID;
@@ -1533,6 +1544,7 @@ static IRTemp m_Align_64 (IRTemp src1, IRTemp src2, UChar imm8) {
 
 static IRTemp m_ConvertF16x2toF32(IRTemp src1, IRTemp src2, UChar imm8) {
    vpanic("ConvertF16x2toF32 not implemented yet");
+   return IRTemp_INVALID; /* not reached; keeps MSVC (no noreturn) quiet */
 }
 
 static IRTemp m_vcmpss(IRTemp src1, IRTemp src2, UChar imm8) {
@@ -1671,6 +1683,19 @@ static void breakup16to8s ( IRTemp t16, IRTemp* t1, IRTemp* t0 )
    assign( *t1, unop(Iop_16HIto8, mkexpr(t16)) );
 }
 
+
+/* The INS_ARR opFn slot takes a UChar imm8; the upstream math_* helpers take
+   UInt.  Same values, but MSVC (C4113) rejects the pointer-type mismatch. */
+static IRTemp m_PALIGNR_XMM(IRTemp a, IRTemp b, UChar imm8) { return math_PALIGNR_XMM(a, b, imm8); }
+static IRTemp m_PCLMULQDQ(IRTemp a, IRTemp b, UChar imm8) { return math_PCLMULQDQ(a, b, imm8); }
+static IRTemp m_PINSRB_128(IRTemp a, IRTemp b, UChar imm8) { return math_PINSRB_128(a, b, imm8); }
+static IRTemp m_PINSRD_128(IRTemp a, IRTemp b, UChar imm8) { return math_PINSRD_128(a, b, imm8); }
+static IRTemp m_PINSRQ_128(IRTemp a, IRTemp b, UChar imm8) { return math_PINSRQ_128(a, b, imm8); }
+static IRTemp m_PINSRW_128(IRTemp a, IRTemp b, UChar imm8) { return math_PINSRW_128(a, b, imm8); }
+static IRTemp m_SHUFPD_128(IRTemp a, IRTemp b, UChar imm8) { return math_SHUFPD_128(a, b, imm8); }
+static IRTemp m_SHUFPD_256(IRTemp a, IRTemp b, UChar imm8) { return math_SHUFPD_256(a, b, imm8); }
+static IRTemp m_SHUFPS_128(IRTemp a, IRTemp b, UChar imm8) { return math_SHUFPS_128(a, b, imm8); }
+static IRTemp m_SHUFPS_256(IRTemp a, IRTemp b, UChar imm8) { return math_SHUFPS_256(a, b, imm8); }
 
 #include <guest_AVX512.h>
 
@@ -2636,7 +2661,7 @@ static Long dis_shift_ser_512 ( const VexAbiInfo* vbi, Prefix pfx, Long delta, I
 
    /* determine a matching 128-bit IR */
    UInt width = getDstW();
-   UInt size = pow(2, (width+3));
+   UInt size = ipow(2, (width+3));
    IROp shift_op = Iop_INVALID;
    switch (INS_ARR[ins_id].parameter) {
       case SHL:
@@ -2866,15 +2891,15 @@ static ULong dis_compress ( const VexAbiInfo* vbi, Prefix pfx, Long delta, UInt 
    switch (getEVexL()) {
       case 2: name_reg = nameZMMReg;
               get_reg = getZMMReg;
-              compress_op = is_64 ? Iop_Compress64x8 : Iop_Compress32x16;
+              compress_op = (IROp)(is_64 ? Iop_Compress64x8 : Iop_Compress32x16);
               break;
       case 1: name_reg = nameYMMReg;
               get_reg = getYMMReg;
-              compress_op = is_64 ? Iop_Compress64x4 : Iop_Compress32x8;
+              compress_op = (IROp)(is_64 ? Iop_Compress64x4 : Iop_Compress32x8);
               break;
       case 0: name_reg = nameXMMReg;
               get_reg = getXMMReg;
-              compress_op = is_64 ? Iop_Compress64x2 : Iop_Compress32x4;
+              compress_op = (IROp)(is_64 ? Iop_Compress64x2 : Iop_Compress32x4);
               break;
       default: vpanic("invalid dis_compress");
    }
@@ -2905,7 +2930,8 @@ static ULong dis_compress ( const VexAbiInfo* vbi, Prefix pfx, Long delta, UInt 
       DIP (",%s,%s\n", dis_buf, nameKReg(mask));
 
       Int count = sizeofIRType(INS_ARR[ins_id].arg_type[1]) / ( is_64 ? 8 : 4);
-      IRTemp elem_addr[count+1];
+      IRTemp elem_addr[MAX_ELEMENTS + 1];
+      vassert(count + 1 <= MAX_ELEMENTS + 1);
       for (i = 0; i < count+1; i++) {
          elem_addr[i] = newTemp(Ity_I64);
       }
@@ -2941,15 +2967,15 @@ static ULong dis_expand ( const VexAbiInfo* vbi, Prefix pfx, Long delta, UInt in
    switch (getEVexL()) {
       case 2: name_reg = nameZMMReg;
               get_reg = getZMMReg;
-              expand_op = is_64 ? Iop_Expand64x8 : Iop_Expand32x16;
+              expand_op = (IROp)(is_64 ? Iop_Expand64x8 : Iop_Expand32x16);
               break;
       case 1: name_reg = nameYMMReg;
               get_reg = getYMMReg;
-              expand_op = is_64 ? Iop_Expand64x4 : Iop_Expand32x8;
+              expand_op = (IROp)(is_64 ? Iop_Expand64x4 : Iop_Expand32x8);
               break;
       case 0: name_reg = nameXMMReg;
               get_reg = getXMMReg;
-              expand_op = is_64 ? Iop_Expand64x2 : Iop_Expand32x4;
+              expand_op = (IROp)(is_64 ? Iop_Expand64x2 : Iop_Expand32x4);
               break;
       default: vpanic("invalid dis_expand");
    }
@@ -2979,7 +3005,8 @@ static ULong dis_expand ( const VexAbiInfo* vbi, Prefix pfx, Long delta, UInt in
       DIP (",%s,%s\n", dis_buf, nameKReg(mask));
 
       Int count = sizeofIRType(INS_ARR[ins_id].arg_type[1]) / (is_64 ? 8:4);
-      IRTemp elem_addr[count+1];
+      IRTemp elem_addr[MAX_ELEMENTS + 1];
+      vassert(count + 1 <= MAX_ELEMENTS + 1);
       for (i = 0; i < count+1; i++) {
          elem_addr[i] = newTemp(Ity_I64);
       }
@@ -3449,8 +3476,11 @@ static Int IRTypeVL(IRType ty) {
 
 Long dis__EVEX( const VexAbiInfo* vbi, Prefix pfx, Long delta ) {
 
+   /* Returning deltaIN unchanged signals decode failure to the caller. */
+   Long deltaIN = delta;
+
    /* Parse instruction prefix */
-   UInt esc = ESC_NONE;
+   Escape esc = ESC_NONE;
    delta++;
    delta = ParseEVEX(&pfx, &esc, delta);
 
@@ -3461,24 +3491,32 @@ Long dis__EVEX( const VexAbiInfo* vbi, Prefix pfx, Long delta ) {
    UInt width = getRexW(pfx);
 
    UInt ins_id=0;
-   while (INS_ARR[ins_id].opcode != opcode) { // match opcode
+   while (ins_id < N_INS_ARR && INS_ARR[ins_id].opcode != opcode) { // match opcode
       ins_id++;
    }
-   while (INS_ARR[ins_id].opcode == opcode && // match esc and prefix
+   while (ins_id < N_INS_ARR &&
+         INS_ARR[ins_id].opcode == opcode && // match esc and prefix
          (INS_ARR[ins_id].pfx != prefix || INS_ARR[ins_id].esc != esc)) {
       ins_id++;
    }
 
-   if (INS_ARR[ins_id].opcode != opcode) {
-      vex_printf("pfx %s esc %s w %u, opcode 0x%x\n",
-            get_pfx_name(prefix), get_esc_name(esc), width, opcode);
-      vpanic("esc or pfx not implemented");
+   /* Not in the table: an AVX-512 subset this lifter does not implement, or
+      simply not a valid instruction.  Report a decode failure rather than
+      panicking -- the caller turns that into Ijk_NoDecode. */
+   if (ins_id >= N_INS_ARR || INS_ARR[ins_id].opcode != opcode) {
+      evex = 0;
+      return deltaIN;
    }
 
    if (INS_ARR[ins_id].src_w!= WIG) { // match width
-      while ((INS_ARR[ins_id].opcode == opcode) && (INS_ARR[ins_id].src_w != WIG) &&
+      while (ins_id < N_INS_ARR &&
+            (INS_ARR[ins_id].opcode == opcode) && (INS_ARR[ins_id].src_w != WIG) &&
             (INS_ARR[ins_id].src_w != width )) {
          ins_id++;
+      }
+      if (ins_id >= N_INS_ARR || INS_ARR[ins_id].opcode != opcode) {
+         evex = 0;
+         return deltaIN;
       }
    } else {
       setWIG();
@@ -3488,8 +3526,13 @@ Long dis__EVEX( const VexAbiInfo* vbi, Prefix pfx, Long delta ) {
    // Find matching "/2" or "/4" specifier, if it exists
    if (INS_ARR[ins_id].misc != NULL) {
       if ((char)INS_ARR[ins_id].misc[0] == '/') {
-         while ((char)INS_ARR[ins_id].misc[1] != gregLO3ofRM(modrm) + '0') {
+         while (ins_id < N_INS_ARR && INS_ARR[ins_id].misc != NULL &&
+               (char)INS_ARR[ins_id].misc[1] != gregLO3ofRM(modrm) + '0') {
             ins_id++;
+         }
+         if (ins_id >= N_INS_ARR || INS_ARR[ins_id].misc == NULL) {
+            evex = 0;
+            return deltaIN;
          }
       }
    }
@@ -3518,7 +3561,7 @@ Long dis__EVEX( const VexAbiInfo* vbi, Prefix pfx, Long delta ) {
       vpanic("width, length or /N not implemented");
    }
 
-   IROp irop = INS_ARR[ins_id].irop;
+   IROp irop = (IROp)INS_ARR[ins_id].irop;
    setTupleType( INS_ARR[ins_id].type );
    setDstW( INS_ARR[ins_id].dst_w );
    if (INS_ARR[ins_id].mask == MASK_MERGE)
@@ -3698,26 +3741,30 @@ Long nonAVX512_operation_decode ( const VexAbiInfo* vbi, UInt esc, Prefix pfx, L
    Int width = getRexW(pfx);
 
    UInt ins_id=0;
-   while (INS_ARR[ins_id].opcode != opcode) // match opcode
+   while (ins_id < N_INS_ARR && INS_ARR[ins_id].opcode != opcode) // match opcode
       ins_id++;
-   while (INS_ARR[ins_id].opcode == opcode && // match esc and prefix
+   while (ins_id < N_INS_ARR &&
+         INS_ARR[ins_id].opcode == opcode && // match esc and prefix
          (INS_ARR[ins_id].pfx != prefix || INS_ARR[ins_id].esc != esc))
       ins_id++;
-   if (INS_ARR[ins_id].src_w != WIG) // match width
-      while ((INS_ARR[ins_id].opcode == opcode) && (INS_ARR[ins_id].src_w != width ))
+   if (ins_id < N_INS_ARR && INS_ARR[ins_id].src_w != WIG) // match width
+      while (ins_id < N_INS_ARR &&
+            (INS_ARR[ins_id].opcode == opcode) && (INS_ARR[ins_id].src_w != width ))
          ins_id++;
    else
       setWIG();
 
-   if (INS_ARR[ins_id].opcode != opcode ||
+   /* Not in the table: report a decode failure (deltaIN unchanged) rather
+      than panicking, so the caller can emit Ijk_NoDecode. */
+   if (ins_id >= N_INS_ARR             ||
+         INS_ARR[ins_id].opcode != opcode ||
          INS_ARR[ins_id].pfx    != prefix ||
          INS_ARR[ins_id].esc    != esc    ) {
-      vex_printf("id %u - pfx %s esc %s w %d, opcode 0x%x\n",
-            ins_id, get_pfx_name(prefix), get_esc_name(esc), width, opcode);
-      vpanic("instruction is not implemented");
+      evex = 0;
+      return deltaIN;
    }
 
-   IROp irop = INS_ARR[ins_id].irop;
+   IROp irop = (IROp)INS_ARR[ins_id].irop;
    setDstW( INS_ARR[ins_id].dst_w );
    
    /* Handle exceptions */

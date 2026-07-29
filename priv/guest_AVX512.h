@@ -1595,6 +1595,13 @@ static struct Ins_data INS_ARR[] = {
 	{"VPADDD",	0xfe, PFX_66, ESC_0F, W0, W_32, NULL, Iop_Add32x8, 1, -1, FullVector, MASK_FULL, NULL, E4,  {_rG,_rV,_rmE}, {Ity_V256,Ity_V256,Ity_V256}},
 	{"VPADDD",	0xfe, PFX_66, ESC_0F, W0, W_32, NULL, Iop_Add32x8, 2, -1, FullVector, MASK_FULL, NULL, E4,  {_rG,_rV,_rmE}, {Ity_V512,Ity_V512,Ity_V512}},
 };
+
+/* Number of entries in INS_ARR.  The table-scan loops in
+   guest_amd64_toIR_AVX512.c must bound themselves by this: an opcode
+   that is not in the table (an AVX-512 extension this table does not
+   cover, or plain garbage bytes) would otherwise run off the end. */
+#define N_INS_ARR (sizeof(INS_ARR) / sizeof(INS_ARR[0]))
+
 #pragma GCC diagnostic pop
 #endif /* ndef __GUEST_AVX512_H */
 #endif /* ndef AVX_512*/
