@@ -227,8 +227,10 @@
    endlessly.  They are all constant during the translation of any
    given insn. */
 
-/* We need to know this to do sub-register accesses correctly. */
-static VexEndness host_endness;
+/* We need to know this to do sub-register accesses correctly.
+   The endianness of the guest being lifted, from VexArchInfo.endness;
+   it may differ from the host's. */
+static VexEndness guest_endness;
 
 /* Pointer to the guest code area. */
 static const UChar* guest_code;
@@ -678,7 +680,7 @@ static ULong extend_s_32to64 ( UInt x )
 static UInt getUIntPPCendianly ( const UChar* p )
 {
    UInt w = 0;
-   if (host_endness == VexEndnessBE) {
+   if (guest_endness == VexEndnessBE) {
        w = (w << 8) | p[0];
        w = (w << 8) | p[1];
        w = (w << 8) | p[2];
@@ -708,7 +710,7 @@ static void store ( IRExpr* addr, IRExpr* data )
    IRType tyA = typeOfIRExpr(irsb->tyenv, addr);
    vassert(tyA == Ity_I32 || tyA == Ity_I64);
 
-   if (host_endness == VexEndnessBE)
+   if (guest_endness == VexEndnessBE)
       stmt( IRStmt_Store(Iend_BE, addr, data) );
    else
       stmt( IRStmt_Store(Iend_LE, addr, data) );
@@ -771,7 +773,7 @@ static IRExpr* mkV128 ( UShort i )
 /* This generates a normal (non load-linked) load. */
 static IRExpr* load ( IRType ty, IRExpr* addr )
 {
-   if (host_endness == VexEndnessBE)
+   if (guest_endness == VexEndnessBE)
       return IRExpr_Load(Iend_BE, ty, addr);
    else
       return IRExpr_Load(Iend_LE, ty, addr);
@@ -780,7 +782,7 @@ static IRExpr* load ( IRType ty, IRExpr* addr )
 static IRStmt* stmt_load ( IRTemp result,
                            IRExpr* addr, IRExpr* storedata )
 {
-   if (host_endness == VexEndnessBE)
+   if (guest_endness == VexEndnessBE)
       return IRStmt_LLSC(Iend_BE, result, addr, storedata);
    else
       return IRStmt_LLSC(Iend_LE, result, addr, storedata);
@@ -1432,7 +1434,7 @@ static Int floatGuestRegOffset ( UInt archreg )
 {
    vassert(archreg < 32);
    
-   if (host_endness == VexEndnessLE) {
+   if (guest_endness == VexEndnessLE) {
       switch (archreg) {
          case  0: return offsetofPPCGuestState(guest_VSR0) + 8;
          case  1: return offsetofPPCGuestState(guest_VSR1) + 8;
@@ -8851,7 +8853,7 @@ static Bool dis_int_load_prefix ( UInt prefix, UInt theInstr )
        */
       //trap if EA misaligned on 16 byte address
       if (mode64) {
-         if (host_endness == VexEndnessBE) {
+         if (guest_endness == VexEndnessBE) {
             assign(high, load(ty, mkexpr( EA ) ) );
             assign(low, load(ty, binop( Iop_Add64,
                                         mkexpr( EA ),
@@ -8873,7 +8875,7 @@ static Bool dis_int_load_prefix ( UInt prefix, UInt theInstr )
 
       /* Note, the load order for lq is the same for BE and LE.  However,
          plq does an endian aware load.  */
-      if (is_prefix &&( host_endness == VexEndnessLE )) {
+      if (is_prefix &&( guest_endness == VexEndnessLE )) {
          putIReg( rT_addr,  mkexpr( low) );
          putIReg( rT_addr+1,  mkexpr( high) );
       } else {
@@ -9557,7 +9559,7 @@ static Bool dis_int_store_ds_prefix ( UInt prefix,
          DIPp( is_prefix, ",%u", R );
 
          if (mode64) {
-            if (host_endness == VexEndnessBE) {
+            if (guest_endness == VexEndnessBE) {
 
                /* upper 64-bits */
                assign( EA_hi, mkexpr(EA));
@@ -9583,7 +9585,7 @@ static Bool dis_int_store_ds_prefix ( UInt prefix,
          /* Note, the store order for stq instruction is the same for BE
             and LE.  The store order for the pstq instruction is endian aware
             store.  */
-         if (is_prefix &&( host_endness == VexEndnessLE )) {
+         if (is_prefix &&( guest_endness == VexEndnessLE )) {
             //  LE and pstq
             store( mkexpr(EA_hi), getIReg( rS_addr+1 ) );
             store( mkexpr(EA_lo), mkexpr(rS) );
@@ -11146,7 +11148,7 @@ static Bool dis_memsync ( UInt prefix, UInt theInstr,
 
          // and actually do the load
          if (mode64) {
-            if (host_endness == VexEndnessBE) {
+            if (guest_endness == VexEndnessBE) {
                stmt( stmt_load( res_hi,
                                 mkexpr(EA), NULL/*this is a load*/) );
                stmt( stmt_load( res_lo,
@@ -11194,7 +11196,7 @@ static Bool dis_memsync ( UInt prefix, UInt theInstr,
          resSC = newTemp(Ity_I1);
 
          if (mode64) {
-            if (host_endness == VexEndnessBE) {
+            if (guest_endness == VexEndnessBE) {
                stmt( stmt_load( resSC, mkexpr(EA), mkexpr(rS_hi) ) );
                store( binop( Iop_Add64, mkexpr(EA), mkU64(8) ),
                       mkexpr(rS_lo) );
@@ -11569,7 +11571,7 @@ static Bool dis_int_ldst_rev ( UInt prefix, UInt theInstr )
             on an LE machine and a LE load on a BE machine.
 
                IRTemp dw1 = newTemp(Ity_I64);
-               if (host_endness == VexEndnessBE)
+               if (guest_endness == VexEndnessBE)
                   assign( dw1, IRExpr_Load(Iend_LE, Ity_I64, mkexpr(EA)));
                else
                   assign( dw1, IRExpr_Load(Iend_BE, Ity_I64, mkexpr(EA)));
@@ -14003,7 +14005,7 @@ static Bool dis_fp_pair_prefix ( UInt prefix, UInt theInstr )
 
          // address of next 128bits
          assign( EA_16, binop( Iop_Add64, mkU64( 16 ), mkexpr( EA ) ) );
-         if (host_endness == VexEndnessBE) {
+         if (guest_endness == VexEndnessBE) {
             putVSReg( XTp, load( Ity_V128, mkexpr( EA ) ) );
             putVSReg( XTp+1, load( Ity_V128, mkexpr( EA_16 ) ) );
          } else {
@@ -14025,7 +14027,7 @@ static Bool dis_fp_pair_prefix ( UInt prefix, UInt theInstr )
          assign( EA_16, binop( Iop_Add64, mkU64( 16 ), mkexpr( EA ) ) );
          assign( EA_24, binop( Iop_Add64, mkU64( 24 ), mkexpr( EA ) ) );
 
-         if (host_endness == VexEndnessBE) {
+         if (guest_endness == VexEndnessBE) {
             store( mkexpr( EA ), unop( Iop_V128to64, getVSReg( XTp ) ) );
             store( mkexpr( EA_8 ), unop( Iop_V128HIto64, getVSReg( XTp ) ) );
             store( mkexpr( EA_16 ), unop( Iop_V128to64, getVSReg( XTp+1 ) ) );
@@ -14113,7 +14115,7 @@ static Bool dis_fp_pair_prefix ( UInt prefix, UInt theInstr )
       word[1] = newTemp(Ity_I64);
       assign( word[1], load( Ity_I64, irx_addr ) );
 
-      if (host_endness == VexEndnessBE)
+      if (guest_endness == VexEndnessBE)
          putVSReg( TX*32+T, binop( Iop_64HLtoV128,
                                    mkexpr( word[0] ),
                                    mkexpr( word[1] ) ) );
@@ -14261,7 +14263,7 @@ static Bool dis_fp_pair_prefix ( UInt prefix, UInt theInstr )
          word[1] = newTemp(Ity_I64);
          assign( word[1], load( Ity_I64, irx_addr ) );
 
-         if (host_endness == VexEndnessBE)
+         if (guest_endness == VexEndnessBE)
             putVSReg( TX*32+T, binop( Iop_64HLtoV128,
                                       mkexpr( word[0] ),
                                       mkexpr( word[1] ) ) );
@@ -14317,7 +14319,7 @@ static Bool dis_fp_pair_prefix ( UInt prefix, UInt theInstr )
                                           &immediate_val, &R ) );
          DIP("stxv v%u,%llu(r%u)\n", vRS, immediate_val, rA_addr );
 
-         if (host_endness == VexEndnessBE) {
+         if (guest_endness == VexEndnessBE) {
             store( mkexpr(EA), unop( Iop_V128HIto64,
                                      getVSReg( TX*32+T ) ) );
             irx_addr
@@ -14357,7 +14359,7 @@ static Bool dis_fp_pair_prefix ( UInt prefix, UInt theInstr )
 
       // address of next 128bits
       assign( EA_16, binop( Iop_Add64, mkU64( 16 ), mkexpr( EA ) ) );
-      if (host_endness == VexEndnessBE) {
+      if (guest_endness == VexEndnessBE) {
          putVSReg( XTp, load( Ity_V128, mkexpr( EA ) ) );
          putVSReg( XTp+1, load( Ity_V128, mkexpr( EA_16 ) ) );
       } else {
@@ -14385,7 +14387,7 @@ static Bool dis_fp_pair_prefix ( UInt prefix, UInt theInstr )
       assign( EA_16, binop( Iop_Add64, mkU64( 16 ), mkexpr( EA ) ) );
       assign( EA_24, binop( Iop_Add64, mkU64( 24 ), mkexpr( EA ) ) );
 
-      if (host_endness == VexEndnessBE) {
+      if (guest_endness == VexEndnessBE) {
          store( mkexpr( EA ), unop( Iop_V128to64, getVSReg( XTp ) ) );
          store( mkexpr( EA_8 ), unop( Iop_V128HIto64, getVSReg( XTp ) ) );
          store( mkexpr( EA_16 ), unop( Iop_V128to64, getVSReg( XTp+1 ) ) );
@@ -14422,7 +14424,7 @@ static Bool dis_fp_pair_prefix ( UInt prefix, UInt theInstr )
                                    rA_addr, ptype, DFORM_IMMASK,
                                    &immediate_val, &R ) );
 
-      if (host_endness == VexEndnessBE) {
+      if (guest_endness == VexEndnessBE) {
          store( mkexpr(EA), unop( Iop_V128HIto64,
                                   mkexpr( tmpV128 ) ) );
          irx_addr = binop( mkSzOp( ty, Iop_Add8 ), mkexpr( EA ),
@@ -23018,7 +23020,7 @@ dis_vxs_misc( UInt prefix, UInt theInstr, const VexAbiInfo* vbi, UInt opc2,
       {
          /* Move abs val of dw 0 of VSX[XB] to dw 0 of VSX[XT]. */
          IRTemp absVal = newTemp(Ity_V128);
-         if (host_endness == VexEndnessLE) {
+         if (guest_endness == VexEndnessLE) {
             IRTemp hi64 = newTemp(Ity_I64);
             IRTemp lo64 = newTemp(Ity_I64);
             assign( hi64, unop( Iop_V128HIto64, mkexpr(vB) ) );
@@ -23913,7 +23915,7 @@ dis_vxs_misc( UInt prefix, UInt theInstr, const VexAbiInfo* vbi, UInt opc2,
             /* Scatter 16-bit float values from returned 64-bit value
              * of V128 result.
              */
-            if (host_endness == VexEndnessLE)
+            if (guest_endness == VexEndnessLE)
                /* Note location 0 may have a valid number in it.  Location
                 * 15 should always be zero.  Use 0xF to put zeros in the
                 * desired bytes.
@@ -24473,7 +24475,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
       IRExpr * exp;
       DIP("lxsiwzx %d,r%u,r%u\n", XT, rA_addr, rB_addr);
 
-      if (host_endness == VexEndnessLE)
+      if (guest_endness == VexEndnessLE)
          exp = unop( Iop_64to32, load( Ity_I64, mkexpr( EA ) ) );
       else
          exp = unop( Iop_64HIto32, load( Ity_I64, mkexpr( EA ) ) );
@@ -24490,7 +24492,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
       DIP("lxvrbx v%u,r%u,r%u\n", XT, rA_addr, rB_addr);
       exp = load( Ity_I64, mkexpr( EA ) );
 
-      if (host_endness == VexEndnessLE)
+      if (guest_endness == VexEndnessLE)
          putVSReg( XT, binop( Iop_64HLtoV128,
                               mkU64( 0x0 ),
                               binop( Iop_And64, mkU64( 0xFF ), exp ) ) );
@@ -24512,7 +24514,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
 
       exp = load( Ity_I64, mkexpr( EA ) );
 
-      if (host_endness == VexEndnessLE)
+      if (guest_endness == VexEndnessLE)
          putVSReg( XT, binop( Iop_64HLtoV128,
                               mkU64( 0x0 ),
                               binop( Iop_And64, mkU64( 0xFFFF ), exp ) ) );
@@ -24534,7 +24536,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
 
       exp = load( Ity_I64, mkexpr( EA ) );
 
-      if (host_endness == VexEndnessLE)
+      if (guest_endness == VexEndnessLE)
          putVSReg( XT, binop( Iop_64HLtoV128,
                               mkU64( 0x0 ),
                               binop( Iop_And64, mkU64( 0xFFFFFFFF ), exp ) ) );
@@ -24557,7 +24559,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
 
       exp = load( Ity_I64, mkexpr( EA ) );
 
-      if (host_endness == VexEndnessLE)
+      if (guest_endness == VexEndnessLE)
          putVSReg( XT, binop( Iop_64HLtoV128,
                               mkU64( 0x0 ),
                               binop( Iop_And64,
@@ -24586,7 +24588,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
 
       /* Fetch 64 bits, merge byte element 15 into the fetched value and
        * store.  */
-      if (host_endness == VexEndnessLE) {
+      if (guest_endness == VexEndnessLE) {
          store_exp = binop( Iop_Or64,
                             binop( Iop_And64,
                                    mkU64( 0x00000000000000FF ),
@@ -24621,7 +24623,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
 
       /* Fetch 64 bits, merge half-word element 7 into the fetched value and
        * store.  */
-      if (host_endness == VexEndnessLE) {
+      if (guest_endness == VexEndnessLE) {
          store_exp = binop( Iop_Or64,
                             binop( Iop_And64,
                                    mkU64( 0x000000000000FFFF ),
@@ -24656,7 +24658,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
 
       /* Fetch 64 bits, merge word element 3 into the fetched value and
        * store.  */
-      if (host_endness == VexEndnessLE) {
+      if (guest_endness == VexEndnessLE) {
          store_exp = binop( Iop_Or64,
                             binop( Iop_And64,
                                    mkU64( 0x00000000FFFFFFFF ),
@@ -24689,7 +24691,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
 
       /* Fetch 64 bits, merge double word element 1 into the fetched value and
        * store.  Well, this is just store vS bits[63:0] at EA. */
-      if (host_endness == VexEndnessLE) {
+      if (guest_endness == VexEndnessLE) {
          store_exp = binop( Iop_And64,
                             mkU64( 0xFFFFFFFFFFFFFFFF ),
                             unop( Iop_V128to64, mkexpr( vS ) ) );
@@ -24708,7 +24710,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
       IRExpr * exp;
       DIP("lxsiwax %d,r%u,r%u\n", XT, rA_addr, rB_addr);
 
-      if (host_endness == VexEndnessLE)
+      if (guest_endness == VexEndnessLE)
          exp = unop( Iop_64to32, load( Ity_I64, mkexpr( EA ) ) );
       else
          exp = unop( Iop_64HIto32, load( Ity_I64, mkexpr( EA ) ) );
@@ -24727,7 +24729,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
 
       DIP("lxvx %u,r%u,r%u\n", (UInt)XT, rA_addr, rB_addr);
 
-      if ( host_endness == VexEndnessBE ) {
+      if ( guest_endness == VexEndnessBE ) {
          for ( i = 3; i>= 0; i-- ) {
             word[i] = newTemp( Ity_I64 );
 
@@ -24834,7 +24836,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
                      mkexpr( nb_gt16 ) ) );
 
       /* fetch all 16 bytes, we will remove what we don't want later */
-      if ( host_endness == VexEndnessBE ) {
+      if ( guest_endness == VexEndnessBE ) {
          for ( i = 0; i < 8; i++ ) {
             byte[i] = newTemp( Ity_I64 );
             tmp_hi[i+1] = newTemp( Ity_I64 );
@@ -25048,7 +25050,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
 
       /* The load is a 64-bit fetch that is Endian aware, just want
        * the lower 32 bits. */
-      if ( host_endness == VexEndnessBE ) {
+      if ( guest_endness == VexEndnessBE ) {
          UInt ea_off = 4;
          IRExpr* irx_addr;
 
@@ -25117,7 +25119,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
 
       DIP("lxsibzx %u,r%u,r%u\n", (UInt)XT, rA_addr, rB_addr);
 
-      if ( host_endness == VexEndnessBE )
+      if ( guest_endness == VexEndnessBE )
          irx_addr = binop( Iop_Sub64, mkexpr( EA ), mkU64( 7 ) );
 
       else
@@ -25137,7 +25139,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
 
       DIP("lxsihzx %u,r%u,r%u\n", (UInt)XT, rA_addr, rB_addr);
 
-      if ( host_endness == VexEndnessBE )
+      if ( guest_endness == VexEndnessBE )
          irx_addr = binop( Iop_Sub64, mkexpr( EA ), mkU64( 6 ) );
 
       else
@@ -25159,7 +25161,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
       /* The data in the vec register should be in big endian order.
          So if we just did a little endian load then swap around the
          high and low double words. */
-      if (host_endness == VexEndnessLE) {
+      if (guest_endness == VexEndnessLE) {
          IRTemp high = newTemp(Ity_I64);
          IRTemp low = newTemp(Ity_I64);
          assign( high, unop(Iop_V128HIto64, t128) );
@@ -25185,7 +25187,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
       DIP("lxvw4x %u,r%u,r%u\n", XT, rA_addr, rB_addr);
 
       /* The load will result in the data being in BE order. */
-      if (host_endness == VexEndnessLE) {
+      if (guest_endness == VexEndnessLE) {
          IRExpr *t0_BE;
          IRTemp perm_LE = newTemp(Ity_V128);
 
@@ -25281,7 +25283,7 @@ dis_vx_load ( UInt prefix, UInt theInstr )
       assign( low, unop(Iop_V128to64, t128) );
       assign( low_rev, unop(Iop_Reverse8sIn64_x1, mkexpr(low)) );
 
-      if (host_endness == VexEndnessLE)
+      if (guest_endness == VexEndnessLE)
          t128 = binop( Iop_64HLtoV128, mkexpr (low_rev), mkexpr (high_rev) );
       else
          t128 = binop( Iop_64HLtoV128, mkexpr (high_rev), mkexpr (low_rev) );
@@ -25396,7 +25398,7 @@ dis_vsx_vector_paired_load_store ( UInt prefix, UInt theInstr )
    switch (opc2) {
    case 0x14D:  // lxvpx
       DIP( "lxvpx %u,%d(%u)\n", XTp, rA_addr, rB_addr );
-      if ( host_endness == VexEndnessBE ) {
+      if ( guest_endness == VexEndnessBE ) {
          putVSReg( XTp,   load( Ity_V128, mkexpr( EA ) ) );
          putVSReg( XTp+1, load( Ity_V128, mkexpr( EA_16 ) ) );
       } else {
@@ -25414,7 +25416,7 @@ dis_vsx_vector_paired_load_store ( UInt prefix, UInt theInstr )
       assign( EA_8, binop( Iop_Add64, mkU64( 8 ), mkexpr( EA ) ) );
       assign( EA_24, binop( Iop_Add64, mkU64( 24 ), mkexpr( EA ) ) );
 
-      if ( host_endness == VexEndnessBE ) {
+      if ( guest_endness == VexEndnessBE ) {
          store( mkexpr( EA ), unop( Iop_V128to64, getVSReg( XTp ) ) );
          store( mkexpr( EA_8 ), unop( Iop_V128HIto64, getVSReg( XTp ) ) );
          store( mkexpr( EA_16 ), unop( Iop_V128to64, getVSReg( XTp+1 ) ) );
@@ -25502,7 +25504,7 @@ dis_vx_store ( UInt prefix, UInt theInstr )
                             unop( Iop_V128to64, mkexpr( vS ) ),
                             mkU64( 0xFFFFFFFF ) ) );
 
-      if (host_endness == VexEndnessBE) {
+      if (guest_endness == VexEndnessBE) {
          store( mkexpr( EA ), unop( Iop_64to32, mkexpr( word0 ) ) );
 
          ea_off += 4;
@@ -26095,7 +26097,7 @@ dis_vx_store ( UInt prefix, UInt theInstr )
                                  mkU64( 0xFFFF ) ) );
 
       /* Do the 32-bit stores.  The store() does an Endian aware store. */
-      if ( host_endness == VexEndnessBE ) {
+      if ( guest_endness == VexEndnessBE ) {
          store( mkexpr( EA ), unop( Iop_64to32,
                                     binop( Iop_Or64,
                                            mkexpr( half_word1 ),
@@ -26204,7 +26206,7 @@ dis_vx_store ( UInt prefix, UInt theInstr )
                                mkU64( 0xFF ) ) );
       }
 
-      if ( host_endness == VexEndnessBE ) {
+      if ( guest_endness == VexEndnessBE ) {
          for ( i = 0; i < 16; i = i + 4)  {
             irx_addr =
                binop( mkSzOp( ty, Iop_Add8 ), mkexpr( EA ),
@@ -26674,7 +26676,7 @@ dis_vx_Floating_Point_Arithmetic_quad_precision( UInt prefix, UInt theInstr,
                /* store 64-bit float in upper 64-bits of 128-bit register,
                 * lower 64-bits are zero.
                 */
-               if (host_endness == VexEndnessLE)
+               if (guest_endness == VexEndnessLE)
                   assign( vT,
                           binop( Iop_F64HLtoF128,
                                  mkexpr( ftmp ),
@@ -27533,7 +27535,7 @@ static Bool dis_av_load ( const VexAbiInfo* vbi, UInt prefix, UInt theInstr )
                         fnptr_to_fnentry(vbi, &ppc32g_dirtyhelper_LVS),
                         args_be );
       } else {
-         if (host_endness == VexEndnessBE)
+         if (guest_endness == VexEndnessBE)
             d = unsafeIRDirty_0_N (
                            0/*regparms*/,
                            "ppc64g_dirtyhelper_LVS",
@@ -27583,7 +27585,7 @@ static Bool dis_av_load ( const VexAbiInfo* vbi, UInt prefix, UInt theInstr )
                         fnptr_to_fnentry(vbi, &ppc32g_dirtyhelper_LVS),
                         args_be );
       } else {
-         if (host_endness == VexEndnessBE)
+         if (guest_endness == VexEndnessBE)
             d = unsafeIRDirty_0_N (
                            0/*regparms*/,
                            "ppc64g_dirtyhelper_LVS",
@@ -27682,7 +27684,7 @@ static Bool dis_av_store ( UInt prefix, UInt theInstr )
       assign( eb, binop(Iop_And8, mkU8(0xF),
                         unop(Iop_32to8,
                              mkNarrowTo32(ty, mkexpr(EA)) )) );
-     if (host_endness == VexEndnessLE) {
+     if (guest_endness == VexEndnessLE) {
          assign( idx, binop(Iop_Shl8, mkexpr(eb), mkU8(3)) );
       } else {
          assign( idx, binop(Iop_Shl8,
@@ -27699,7 +27701,7 @@ static Bool dis_av_store ( UInt prefix, UInt theInstr )
       assign( addr_aligned, addr_align(mkexpr(EA), 2) );
       assign( eb, binop(Iop_And8, mkU8(0xF),
                         mkNarrowTo8(ty, mkexpr(addr_aligned) )) );
-      if (host_endness == VexEndnessLE) {
+      if (guest_endness == VexEndnessLE) {
           assign( idx, binop(Iop_Shl8, mkexpr(eb), mkU8(3)) );
       } else {
          assign( idx, binop(Iop_Shl8,
@@ -27716,7 +27718,7 @@ static Bool dis_av_store ( UInt prefix, UInt theInstr )
       assign( addr_aligned, addr_align(mkexpr(EA), 4) );
       assign( eb, binop(Iop_And8, mkU8(0xF),
                         mkNarrowTo8(ty, mkexpr(addr_aligned) )) );
-      if (host_endness == VexEndnessLE) {
+      if (guest_endness == VexEndnessLE) {
          assign( idx, binop(Iop_Shl8, mkexpr(eb), mkU8(3)) );
       } else {
          assign( idx, binop(Iop_Shl8,
@@ -35845,7 +35847,7 @@ DisResult disInstr_PPC_WRK (
          else
          if (getUIntPPCendianly(code+16) == 0x7C631B78 /* or 3,3,3 */) {
             delta += 20;
-            if (host_endness == VexEndnessLE) {
+            if (guest_endness == VexEndnessLE) {
                 /*  branch-and-link-to-noredir %R12 */
                 DIP("branch-and-link-to-noredir r12\n");
                 putGST( PPC_GST_LR,
@@ -35874,7 +35876,7 @@ DisResult disInstr_PPC_WRK (
          else
          if (getUIntPPCendianly(code+16) == 0x7CA52B78 /* or 5,5,5 */) {
             DIP("IR injection\n");
-            if (host_endness == VexEndnessBE)
+            if (guest_endness == VexEndnessBE)
                vex_inject_ir(irsb, Iend_BE);
             else
                vex_inject_ir(irsb, Iend_LE);
@@ -38245,10 +38247,14 @@ DisResult disInstr_PPC ( IRSB*        irsb_IN,
 
    vassert(guest_arch == VexArchPPC32 || guest_arch == VexArchPPC64);
 
-   /* global -- ick */
+   /* Set globals (see top of this file) */
+   guest_code           = guest_code_IN;
+   irsb                 = irsb_IN;
+   guest_endness        = archinfo->endness;
+
    mode64 = guest_arch == VexArchPPC64;
    ty = mode64 ? Ity_I64 : Ity_I32;
-   if (!mode64 && (host_endness_IN == VexEndnessLE)) {
+   if (!mode64 && (guest_endness == VexEndnessLE)) {
       vex_printf("disInstr(ppc): Little Endian 32-bit mode is not supported\n");
       dres.len         = 0;
       dres.whatNext    = Dis_StopHere;
@@ -38272,11 +38278,6 @@ DisResult disInstr_PPC ( IRSB*        irsb_IN,
    } else {
       vassert((hwcaps_guest & mask64) == 0);
    }
-
-   /* Set globals (see top of this file) */
-   guest_code           = guest_code_IN;
-   irsb                 = irsb_IN;
-   host_endness         = host_endness_IN;
 
    guest_CIA_curr_instr = mkSzAddr(ty, guest_IP);
    guest_CIA_bbstart    = mkSzAddr(ty, guest_IP - delta);
