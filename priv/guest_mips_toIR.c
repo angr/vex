@@ -1296,7 +1296,6 @@ static IRExpr *genRORV32(IRExpr * src, IRExpr * rs)
 
 static void jmp_lit32 ( /*MOD*/ DisResult* dres, IRJumpKind kind, Addr32 d32 )
 {
-   vassert(dres->whatNext    == Dis_Continue);
    vassert(dres->len         == 0);
    vassert(dres->jk_StopHere == Ijk_INVALID);
    dres->whatNext    = Dis_StopHere;
@@ -1306,7 +1305,6 @@ static void jmp_lit32 ( /*MOD*/ DisResult* dres, IRJumpKind kind, Addr32 d32 )
 
 static void jmp_lit64 ( /*MOD*/ DisResult* dres, IRJumpKind kind, Addr64 d64 )
 {
-   vassert(dres->whatNext    == Dis_Continue);
    vassert(dres->len         == 0);
    vassert(dres->jk_StopHere == Ijk_INVALID);
    dres->whatNext    = Dis_StopHere;
