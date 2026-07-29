@@ -962,6 +962,18 @@ static IRSB* disassemble_basic_block_till_stop(
       /* ... disassembled insn length is sane ... */
       vassert(dres.len <= 24);
 
+      /* If this instruction would take the block over the maximum
+         lift size, roll it back (drop its IMark and stmts) and stop
+         before it.  If it is the first instruction, this yields an
+         empty block. */
+      if ((UInt)*extent_len + dres.len > (UInt)vex_control.guest_max_bytes) {
+         irbb->stmts_used = first_stmt_idx;
+         irbb->next = IRExpr_Get(offB_GUEST_IP, guest_word_type);
+         /* irbb->jumpkind must already be Ijk_Boring */
+         irbb->offsIP = offB_GUEST_IP;
+         break;
+      }
+
       /* If the disassembly function passed us a hint, take note of it. */
       if (LIKELY(dres.hint == Dis_HintNone)) {
          /* Do nothing */
@@ -1036,7 +1048,8 @@ static IRSB* disassemble_basic_block_till_stop(
       switch (dres.whatNext) {
          case Dis_Continue:
             vassert(dres.jk_StopHere == Ijk_INVALID);
-            if (*n_instrs >= n_instrs_allowed) {
+            if (*n_instrs >= n_instrs_allowed
+                || *extent_len >= vex_control.guest_max_bytes) {
                /* We have to stop.  See comment above re irbb field
                   settings here. */
                irbb->next = IRExpr_Get(offB_GUEST_IP, guest_word_type);
@@ -1298,6 +1311,8 @@ IRSB* bb_to_IR (
    vassert(sizeof(HWord) == sizeof(void*));
    vassert(vex_control.guest_max_insns >= 1);
    vassert(vex_control.guest_max_insns <= 100);
+   vassert(vex_control.guest_max_bytes >= 1);
+   vassert(vex_control.guest_max_bytes <= 5000);
    vassert(vex_control.guest_chase == False || vex_control.guest_chase == True);
    vassert(guest_word_type == Ity_I32 || guest_word_type == Ity_I64);
 
@@ -1398,6 +1413,16 @@ IRSB* bb_to_IR (
       vassert(instrs_avail >= 0);
       if (instrs_avail < 3)
          break;
+
+      // Out of byte budget (guest_max_bytes); defensive, since each
+      // extent is also individually capped during disassembly.
+      {
+         UInt bytes_used = 0;
+         for (Int i = 0; i < vge->n_used; i++)
+            bytes_used += vge->len[i];
+         if (bytes_used >= (UInt)vex_control.guest_max_bytes)
+            break;
+      }
 
       // Try for an extend.  What kind we do depends on how the current trace
       // ends.
