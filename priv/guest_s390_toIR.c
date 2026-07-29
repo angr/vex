@@ -482,6 +482,10 @@ system_call(IRExpr *sysno)
    /* Store the system call number in the pseudo register. */
    stmt(IRStmt_Put(S390X_GUEST_OFFSET(guest_SYSNO), sysno));
 
+   /* Store the current IA into guest_IP_AT_SYSCALL. libvex_ir.h says so. */
+   stmt(IRStmt_Put(S390X_GUEST_OFFSET(guest_IP_AT_SYSCALL),
+                   mkU64(guest_IA_curr_instr)));
+
    put_IA(mkaddr_expr(guest_IA_next_instr));
 
    /* It's important that all ArchRegs carry their up-to-date value
@@ -501,6 +505,10 @@ extension(ULong id, ULong variant)
    /* Store the extension ID in the pseudo register. */
    ULong ext_id = id | (variant << S390_EXT_ID_NBITS);
    stmt(IRStmt_Put(S390X_GUEST_OFFSET(guest_SYSNO), mkU64(ext_id)));
+
+   /* Store the current IA into guest_IP_AT_SYSCALL. */
+   stmt(IRStmt_Put(S390X_GUEST_OFFSET(guest_IP_AT_SYSCALL),
+                   mkU64(guest_IA_curr_instr)));
 
    put_IA(mkaddr_expr(guest_IA_next_instr));
 

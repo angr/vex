@@ -277,6 +277,9 @@ static IRSB* irsb;
 #define OFFB_CMLEN     offsetof(VexGuestX86State,guest_CMLEN)
 #define OFFB_NRADDR    offsetof(VexGuestX86State,guest_NRADDR)
 
+#define OFFB_IP_AT_SYSCALL offsetof(VexGuestX86State,guest_IP_AT_SYSCALL)
+
+
 /*------------------------------------------------------------*/
 /*--- Helper bits and pieces for deconstructing the        ---*/
 /*--- x86 insn stream.                                     ---*/
@@ -13923,6 +13926,8 @@ DisResult disInstr_X86_WRK (
          goto decode_failure;
       }
 
+      stmt( IRStmt_Put( OFFB_IP_AT_SYSCALL,
+                        mkU32(guest_EIP_curr_instr) ) );
       jmp_lit(&dres, jump_kind, ((Addr32)guest_EIP_bbstart)+delta);
       vassert(dres.whatNext == Dis_StopHere);
       DIP("int $0x%x\n", d32);
@@ -15624,6 +15629,11 @@ DisResult disInstr_X86_WRK (
             thread will jump to address zero, which is probably
             fatal. 
          */
+
+         /* Note where we are, so we can back up the guest to this
+            point if the syscall needs to be restarted. */
+         stmt( IRStmt_Put( OFFB_IP_AT_SYSCALL,
+                           mkU32(guest_EIP_curr_instr) ) );
          jmp_lit(&dres, Ijk_Sys_sysenter, 0/*bogus next EIP value*/);
          vassert(dres.whatNext == Dis_StopHere);
          DIP("sysenter");
@@ -15776,6 +15786,8 @@ DisResult disInstr_X86_WRK (
       }
 
       case 0x05: /* AMD's syscall */
+         stmt( IRStmt_Put( OFFB_IP_AT_SYSCALL,
+                           mkU32(guest_EIP_curr_instr) ) );
          jmp_lit(&dres, Ijk_Sys_syscall, ((Addr32)guest_EIP_bbstart)+delta);
          vassert(dres.whatNext == Dis_StopHere);
          DIP("syscall\n");

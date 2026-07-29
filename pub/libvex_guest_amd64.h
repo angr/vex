@@ -161,20 +161,20 @@ typedef
          of the %fs-const hack for amd64-linux/solaris). */
       ULong guest_GS_CONST;
 
+      /* Needed for Darwin (but mandated for all guest architectures):
+         RIP at the last syscall insn (int 0x80/81/82, sysenter,
+         syscall).  Used when backing up to restart a syscall that has
+         been interrupted by a signal. */
+      ULong guest_IP_AT_SYSCALL;
+
       /* Used on FreeBSD as part of a mechanism to allow signal handlers
            to use TLS. */
       ULong guest_TLSBASE;
-
-      UInt padding1;
-      UInt padding2;
 
       /* Add padding here to make it have an 16-aligned size */
    }
    VexGuestAMD64State;
 
-#if defined(__LP64__)
-_Static_assert(sizeof(VexGuestAMD64State)%16 == 0, "sizeof VexGuestAMD64State is not a multiple of 16");
-#endif
 
 
 /*---------------------------------------------------------------*/

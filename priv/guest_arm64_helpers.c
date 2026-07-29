@@ -2109,6 +2109,7 @@ void LibVEX_GuestARM64_initialise ( /*OUT*/VexGuestARM64State* vex_state )
 //ZZ    vex_state->guest_CMSTART = 0;
 //ZZ    vex_state->guest_CMLEN   = 0;
 //ZZ    vex_state->guest_NRADDR  = 0;
+//ZZ    vex_state->guest_IP_AT_SYSCALL = 0;
 //ZZ 
 //ZZ    vex_state->guest_D0  = 0;
 //ZZ    vex_state->guest_D1  = 0;
@@ -2239,7 +2240,7 @@ VexGuestLayout
 
           /* Describe any sections to be regarded by Memcheck as
              'always-defined'. */
-          .n_alwaysDefd = 8,
+          .n_alwaysDefd = 9,
 
           /* flags thunk: OP is always defd, whereas DEP1 and DEP2
              have to be tracked.  See detailed comment in gdefs.h on
@@ -2252,7 +2253,8 @@ VexGuestLayout
                  /* 4 */ ALWAYSDEFD(guest_CMSTART),
                  /* 5 */ ALWAYSDEFD(guest_CMLEN),
                  /* 6 */ ALWAYSDEFD(guest_NRADDR),
-                 /* 7 */ ALWAYSDEFD(guest_TPIDR_EL0)
+                 /* 7 */ ALWAYSDEFD(guest_IP_AT_SYSCALL),
+                 /* 8 */ ALWAYSDEFD(guest_TPIDR_EL0)
                }
         };
 

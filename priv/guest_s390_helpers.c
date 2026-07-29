@@ -120,7 +120,7 @@ VexGuestLayout s390xGuest_layout = {
 
    /* Describe any sections to be regarded by Memcheck as
       'always-defined'. */
-   .n_alwaysDefd = 8,
+   .n_alwaysDefd = 9,
 
    /* Flags thunk: OP and NDEP are always defined, whereas DEP1
       and DEP2 have to be tracked.  See detailed comment in
@@ -131,9 +131,10 @@ VexGuestLayout s390xGuest_layout = {
       /*  2 */ ALWAYSDEFD(guest_EMNOTE),    /* generic */
       /*  3 */ ALWAYSDEFD(guest_CMSTART),   /* generic */
       /*  4 */ ALWAYSDEFD(guest_CMLEN),     /* generic */
-      /*  5 */ ALWAYSDEFD(guest_IA),        /* control reg */
-      /*  6 */ ALWAYSDEFD(guest_fpc),       /* control reg */
-      /*  7 */ ALWAYSDEFD(guest_counter),   /* internal usage register */
+      /*  5 */ ALWAYSDEFD(guest_IP_AT_SYSCALL), /* generic */
+      /*  6 */ ALWAYSDEFD(guest_IA),        /* control reg */
+      /*  7 */ ALWAYSDEFD(guest_fpc),       /* control reg */
+      /*  8 */ ALWAYSDEFD(guest_counter),   /* internal usage register */
    }
 };
 

@@ -104,8 +104,12 @@ typedef
          replace-style ones. */
       UInt guest_NRADDR;
 
+      /* Needed for Darwin (but mandated for all guest architectures):
+         program counter at the last syscall insn (int 0x80/81/82,
+         sysenter, syscall, svc).  Used when backing up to restart a
+         syscall that has been interrupted by a signal. */
       /* 124 */
-      UInt padding1;
+      UInt guest_IP_AT_SYSCALL;
 
       /* VFP state.  D0 .. D15 must be 8-aligned. */
       /* 128 */
@@ -194,7 +198,6 @@ typedef
    }
    VexGuestARMState;
 
-_Static_assert(sizeof(VexGuestARMState)%16 == 0, "sizeof VexGuestX86State is not a multiple of 16");
 
 /*---------------------------------------------------------------*/
 /*--- Utility functions for ARM guest stuff.                  ---*/

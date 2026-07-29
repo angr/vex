@@ -6036,6 +6036,7 @@ s390_guest_regname_WRK(UInt offset, const HChar *prefix)
          { SPECIAL_REG(guest, NRADDR)  },
          { SPECIAL_REG(guest, CMSTART) },
          { SPECIAL_REG(guest, CMLEN)   },
+         { SPECIAL_REG(guest, IP_AT_SYSCALL) },
          { SPECIAL_REG(guest, EMNOTE) },
          { SPECIAL_REG(host, EvC_COUNTER)  },
          { SPECIAL_REG(host, EvC_FAILADDR) },
