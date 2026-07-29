@@ -171,7 +171,16 @@ typedef
            to use TLS. */
       ULong guest_TLSBASE;
 
-      /* Add padding here to make it have an 16-aligned size */
+      /* Segment registers. */
+      UShort guest_CS;
+      UShort guest_DS;
+      UShort guest_ES;
+      UShort guest_FS;
+      UShort guest_GS;
+      UShort guest_SS;
+
+      /* Padding to make it have an 16-aligned size */
+      UInt pad4;
    }
    VexGuestAMD64State;
 
