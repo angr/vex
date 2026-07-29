@@ -491,7 +491,7 @@ void ppNANOMIPSInstr(const NANOMIPSInstr* i)
          break;
 
       case NMin_Call:
-         vex_printf("CALL 0x%lX, #%X, ", i->NMin.Call.target,
+         vex_printf("CALL 0x%llX, #%X, ", (ULong)i->NMin.Call.target,
                     i->NMin.Call.argiregs);
          ppHRegNANOMIPS(i->NMin.Call.guard);
          break;
@@ -503,7 +503,7 @@ void ppNANOMIPSInstr(const NANOMIPSInstr* i)
             ppHRegNANOMIPS(i->NMin.XDirect.cond);
             vex_printf(", zero, 12; ");
          }
-         vex_printf("LI a5, 0x%08lX; ", i->NMin.XDirect.dstGA);
+         vex_printf("LI a5, 0x%08llX; ", (ULong)i->NMin.XDirect.dstGA);
          vex_printf("sw a5, %d(", i->NMin.XDirect.addr_offset);
          ppHRegNANOMIPS(i->NMin.XDirect.addr);
          vex_printf("); LI a5, <%s>; ", i->NMin.XDirect.toFastEP ?
