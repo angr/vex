@@ -1088,7 +1088,7 @@ static IRSB* disassemble_basic_block_till_stop(
    }
 
    /* And clean it up. */
-   irbb = do_minimal_initial_iropt_BB ( irbb );
+   irbb = do_minimal_initial_iropt_BB ( irbb, arch_guest );
    if (debug_print) {
       ppIRSB(irbb);
    }

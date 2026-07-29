@@ -71,7 +71,8 @@ Addr ado_treebuild_BB (
      );
 
 IRSB* do_minimal_initial_iropt_BB(
-         IRSB* bb0
+         IRSB* bb0,
+         VexArch guest_arch
       );
 void concatenate_irsbs ( IRSB* dst, IRSB* src );
 void deltaIRStmt ( IRStmt* st, Int delta );

@@ -628,7 +628,7 @@ IRSB* LibVEX_FrontEnd ( /*MOD*/ VexTranslateArgs* vta,
 
    *pxControl = vex_control.iropt_register_updates_default;
    vassert(*pxControl >= VexRegUpdSpAtMemAccess
-           && *pxControl <= VexRegUpdAllregsAtEachInsn);
+           && *pxControl <= VexRegUpdLdAllregsAtEachInsn);
 
    irsb = bb_to_IR ( vta->guest_extents,
                      &res->n_sc_extents,
@@ -670,7 +670,7 @@ IRSB* LibVEX_FrontEnd ( /*MOD*/ VexTranslateArgs* vta,
 
    /* bb_to_IR() could have caused pxControl to change. */
    vassert(*pxControl >= VexRegUpdSpAtMemAccess
-           && *pxControl <= VexRegUpdAllregsAtEachInsn);
+           && *pxControl <= VexRegUpdLdAllregsAtEachInsn);
 
    /* If debugging, show the raw guest bytes for this bb. */
    if (0 || (vex_traceflags & VEX_TRACE_FE)) {
