@@ -19108,11 +19108,11 @@ DisResult disInstr_THUMB_WRK (
       also possibly guarded.  Hence if 'label:' is the start of a hot
       loop we will get a big performance hit.
    */
-   {
-      /* Summary result of this analysis: False == safe but
-         suboptimal. */
-      vassert(guaranteedUnconditional == False);
+   /* Summary result of this analysis: False == safe but
+      suboptimal. */
+   vassert(guaranteedUnconditional == False);
 
+   if (vex_control.arm_allow_optimizing_lookback) {
       UInt pc = guest_R15_curr_instr_notENC;
       vassert(0 == (pc & 1));
 
@@ -19121,7 +19121,7 @@ DisResult disInstr_THUMB_WRK (
             insn.  So, have a look at them. */
          guaranteedUnconditional = True; /* assume no 'it' insn found,
                                             till we do */
-         UShort* hwp = (UShort*)(HWord)pc;
+         const UShort* hwp = (const UShort*) guest_instr;
          Int i;
          for (i = -1; i >= -9; i--) {
             /* We're in the same page.  (True, but commented out due
