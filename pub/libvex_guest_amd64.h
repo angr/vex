@@ -179,8 +179,27 @@ typedef
       UShort guest_GS;
       UShort guest_SS;
 
-      /* Padding to make it have an 16-aligned size */
+      /* Padding to keep the control registers 8-aligned and the
+         overall size 16-aligned. */
       UInt pad4;
+
+      // Control registers
+      ULong guest_CR0;
+      ULong guest_CR1;
+      ULong guest_CR2;
+      ULong guest_CR3;
+      ULong guest_CR4;
+      ULong guest_CR5;
+      ULong guest_CR6;
+      ULong guest_CR7;
+      ULong guest_CR8;
+      ULong guest_CR9;
+      ULong guest_CR10;
+      ULong guest_CR11;
+      ULong guest_CR12;
+      ULong guest_CR13;
+      ULong guest_CR14;
+      ULong guest_CR15;
    }
    VexGuestAMD64State;
 

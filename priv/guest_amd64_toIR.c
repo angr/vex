@@ -449,6 +449,12 @@ static void unimplemented ( const HChar* str )
 #define OFFB_YMM15     offsetof(VexGuestAMD64State,guest_YMM15)
 #define OFFB_YMM16     offsetof(VexGuestAMD64State,guest_YMM16)
 
+#define OFFB_CR0       offsetof(VexGuestAMD64State,guest_CR0)
+#define OFFB_CR2       offsetof(VexGuestAMD64State,guest_CR2)
+#define OFFB_CR3       offsetof(VexGuestAMD64State,guest_CR3)
+#define OFFB_CR4       offsetof(VexGuestAMD64State,guest_CR4)
+#define OFFB_CR8       offsetof(VexGuestAMD64State,guest_CR8)
+
 #define OFFB_EMNOTE    offsetof(VexGuestAMD64State,guest_EMNOTE)
 #define OFFB_CMSTART   offsetof(VexGuestAMD64State,guest_CMSTART)
 #define OFFB_CMLEN     offsetof(VexGuestAMD64State,guest_CMLEN)
@@ -486,6 +492,13 @@ static void unimplemented ( const HChar* str )
 #define R_DS 3
 #define R_FS 4
 #define R_GS 5
+
+/* This is the AMD64 register encoding -- control regs. */
+#define R_CR0 0
+#define R_CR2 2
+#define R_CR3 3
+#define R_CR4 4
+#define R_CR8 8
 
 
 /* Various simple conversions */
@@ -837,7 +850,9 @@ typedef
       ESC_NONE=0xF0000000, // none
       ESC_0F,              // 0F
       ESC_0F38,            // 0F 38
-      ESC_0F3A             // 0F 3A
+      ESC_0F3A,            // 0F 3A
+      ESC_0F20,            // 0F 20 (mov from control reg)
+      ESC_0F22             // 0F 22 (mov to control reg)
    }
    Escape;
 
@@ -1487,6 +1502,76 @@ static void putSReg ( UInt sreg, IRExpr* e )
 {
    vassert(typeOfIRExpr(irsb->tyenv,e) == Ity_I16);
    stmt( IRStmt_Put( segmentGuestRegOffset(sreg), e ) );
+}
+
+
+/*------------------------------------------------------------*/
+/*--- For dealing with control registers                   ---*/
+/*------------------------------------------------------------*/
+
+static Int controlGuestRegOffset ( UInt reg )
+{
+   switch (reg) {
+      case R_CR0:  return OFFB_CR0;
+      case R_CR2:  return OFFB_CR2;
+      case R_CR3:  return OFFB_CR3;
+      case R_CR4:  return OFFB_CR4;
+      case R_CR8:  return OFFB_CR8;
+      default: vpanic("controlGuestRegOffset(amd64)");
+   }
+}
+
+/* Produce the guest state offset for a reference to the 'g' register */
+
+static UInt offsetControlRegG ( Int sz, Prefix pfx, UChar mod_reg_rm )
+{
+   UInt reg;
+   vassert(host_endness == VexEndnessLE);
+   vassert(IS_VALID_PFX(pfx));
+   vassert(sz == 8 || sz == 4);
+   reg = gregOfRexRM( pfx, mod_reg_rm );
+   return controlGuestRegOffset( reg );
+}
+
+static
+void putControlRegG ( Int sz, Prefix pfx, UChar mod_reg_rm, IRExpr* e )
+{
+   vassert(typeOfIRExpr(irsb->tyenv,e) == szToITy(sz));
+   if (sz == 4) {
+      e = unop(Iop_32Uto64,e);
+   }
+   stmt( IRStmt_Put( offsetControlRegG( sz, pfx, mod_reg_rm ), e ) );
+}
+
+static
+IRExpr* getControlRegG ( Int sz, Prefix pfx, UChar mod_reg_rm )
+{
+   if (sz == 4) {
+      return unop(Iop_64to32,
+                  IRExpr_Get( offsetControlRegG( 8, pfx, mod_reg_rm ),
+                              Ity_I64 ));
+   } else {
+      return IRExpr_Get( offsetControlRegG( sz, pfx, mod_reg_rm ),
+                         szToITy(sz) );
+   }
+}
+
+static const HChar* nameControlReg ( UInt reg )
+{
+   switch (reg) {
+      case R_CR0: return "%cr0";
+      case R_CR2: return "%cr2";
+      case R_CR3: return "%cr3";
+      case R_CR4: return "%cr4";
+      case R_CR8: return "%cr8";
+      default: vpanic("nameControlReg(amd64)");
+   }
+}
+
+static
+const HChar* nameControlRegG ( Prefix pfx, UChar mod_reg_rm )
+{
+   return nameControlReg( gregOfRexRM(pfx,mod_reg_rm) );
 }
 
 
@@ -22835,6 +22920,66 @@ Long dis_ESC_0F3A (
 
 /*------------------------------------------------------------*/
 /*---                                                      ---*/
+/*--- Top-level post-escape decoders: dis_ESC_0F20         ---*/
+/*---                                                      ---*/
+/*------------------------------------------------------------*/
+
+__attribute__((noinline))
+static
+Long dis_ESC_0F20 (
+        /*MB_OUT*/DisResult* dres,
+        const VexArchInfo* archinfo,
+        const VexAbiInfo*  vbi,
+        Prefix pfx, Int sz, Long deltaIN
+     )
+{
+   Long  delta = deltaIN;
+   UChar rm    = getUChar(delta);
+
+   if (epartIsReg(rm)) {
+      putIRegE(sz, pfx, rm, getControlRegG(sz, pfx, rm));
+      DIP("mov%c %s,%s\n", nameISize(sz),
+                           nameControlRegG(pfx,rm),
+                           nameIRegE(sz,pfx,rm));
+      return 1+delta;
+   }
+
+   return deltaIN; /* fail */
+}
+
+
+/*------------------------------------------------------------*/
+/*---                                                      ---*/
+/*--- Top-level post-escape decoders: dis_ESC_0F22         ---*/
+/*---                                                      ---*/
+/*------------------------------------------------------------*/
+
+__attribute__((noinline))
+static
+Long dis_ESC_0F22 (
+        /*MB_OUT*/DisResult* dres,
+        const VexArchInfo* archinfo,
+        const VexAbiInfo*  vbi,
+        Prefix pfx, Int sz, Long deltaIN
+     )
+{
+   Long  delta = deltaIN;
+   UChar rm    = getUChar(delta);
+
+   if (epartIsReg(rm)) {
+      putControlRegG(sz, pfx, rm, getIRegE(sz, pfx, rm));
+      DIP("mov%c %s,%s\n", nameISize(sz),
+                           nameIRegE(sz,pfx,rm),
+                           nameControlRegG(pfx,rm));
+      return 1+delta;
+   }
+
+   return deltaIN; /* fail */
+}
+
+
+/*------------------------------------------------------------*/
+/*---                                                      ---*/
 /*--- Top-level post-escape decoders: dis_ESC_0F__VEX      ---*/
 /*---                                                      ---*/
 /*------------------------------------------------------------*/
@@ -32431,6 +32576,8 @@ DisResult disInstr_AMD64_WRK (
          delta++;
          pre = getUChar(delta);
          switch (pre) {
+            case 0x20: esc = ESC_0F20; delta++; break;
+            case 0x22: esc = ESC_0F22; delta++; break;
             case 0x38: esc = ESC_0F38; delta++; break;
             case 0x3A: esc = ESC_0F3A; delta++; break;
             default:   esc = ESC_0F; break;
@@ -32462,6 +32609,14 @@ DisResult disInstr_AMD64_WRK (
             break;
          case ESC_0F3A:
             delta = dis_ESC_0F3A( &dres,
+                                  archinfo, vbi, pfx, sz, delta );
+            break;
+         case ESC_0F20:
+            delta = dis_ESC_0F20( &dres,
+                                  archinfo, vbi, pfx, sz, delta );
+            break;
+         case ESC_0F22:
+            delta = dis_ESC_0F22( &dres,
                                   archinfo, vbi, pfx, sz, delta );
             break;
          default:
