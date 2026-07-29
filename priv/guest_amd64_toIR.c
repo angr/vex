@@ -20982,15 +20982,10 @@ Long dis_ESC_NONE (
 
    case 0xCD: /* INT imm8 */
       d64 = getUChar(delta); delta++;
-
-      /* Handle int $0xD2 (Solaris fasttrap syscalls). */
-      if (d64 == 0xD2) {
-         jmp_lit(dres, Ijk_Sys_int210, guest_RIP_bbstart + delta);
-         vassert(dres->whatNext == Dis_StopHere);
-         DIP("int $0xD2\n");
-         return delta;
-      }
-      goto decode_failure;
+      jmp_lit(dres, Ijk_Sys_int, guest_RIP_bbstart + delta);
+      vassert(dres->whatNext == Dis_StopHere);
+      DIP("int $0x%x\n", (UInt)d64);
+      return delta;
 
    case 0xCF: /* IRET */
       /* Note, this is an extremely kludgey and limited implementation of iret
