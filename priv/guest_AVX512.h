@@ -28,8 +28,10 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
+#ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
+#endif
 enum mask_modes { MASK_NONE, MASK_ZERO, MASK_MERGE, MASK_FULL, MASK_MEMORY };
 enum op_encoding {
    _none = 0, _imm8,
@@ -106,9 +108,9 @@ static struct Ins_data INS_ARR[] = {
 	{"VPERMILPD",	0xd, PFX_66, ESC_0F38, W1, W_64, m_PERMILPD_VAR, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rV,_rmE}, {Ity_V128,Ity_V128,Ity_V128}},
 	{"VPERMILPD",	0xd, PFX_66, ESC_0F38, W1, W_64, m_PERMILPD_VAR, Iop_INVALID, 2, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rV,_rmE}, {Ity_V256,Ity_V256,Ity_V256}},
 	{"VPERMILPD",	0xd, PFX_66, ESC_0F38, W1, W_64, m_PERMILPD_VAR, Iop_INVALID, 4, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rV,_rmE}, {Ity_V512,Ity_V512,Ity_V512}},
-	{"VPALIGNR",	0xf, PFX_66, ESC_0F3A, WIG, W_8, math_PALIGNR_XMM, Iop_INVALID, 1, -1, FullVectorMem, MASK_FULL, NULL, E4NFnb,  {_rG,_rV,_rmE,_imm8}, {Ity_V128,Ity_V128,Ity_V128,Ity_I8}},
-	{"VPALIGNR",	0xf, PFX_66, ESC_0F3A, WIG, W_8, math_PALIGNR_XMM, Iop_INVALID, 2, -1, FullVectorMem, MASK_FULL, NULL, E4NFnb,  {_rG,_rV,_rmE,_imm8}, {Ity_V256,Ity_V256,Ity_V256,Ity_I8}},
-	{"VPALIGNR",	0xf, PFX_66, ESC_0F3A, WIG, W_8, math_PALIGNR_XMM, Iop_INVALID, 4, -1, FullVectorMem, MASK_FULL, NULL, E4NFnb,  {_rG,_rV,_rmE,_imm8}, {Ity_V512,Ity_V512,Ity_V512,Ity_I8}},
+	{"VPALIGNR",	0xf, PFX_66, ESC_0F3A, WIG, W_8, m_PALIGNR_XMM, Iop_INVALID, 1, -1, FullVectorMem, MASK_FULL, NULL, E4NFnb,  {_rG,_rV,_rmE,_imm8}, {Ity_V128,Ity_V128,Ity_V128,Ity_I8}},
+	{"VPALIGNR",	0xf, PFX_66, ESC_0F3A, WIG, W_8, m_PALIGNR_XMM, Iop_INVALID, 2, -1, FullVectorMem, MASK_FULL, NULL, E4NFnb,  {_rG,_rV,_rmE,_imm8}, {Ity_V256,Ity_V256,Ity_V256,Ity_I8}},
+	{"VPALIGNR",	0xf, PFX_66, ESC_0F3A, WIG, W_8, m_PALIGNR_XMM, Iop_INVALID, 4, -1, FullVectorMem, MASK_FULL, NULL, E4NFnb,  {_rG,_rV,_rmE,_imm8}, {Ity_V512,Ity_V512,Ity_V512,Ity_I8}},
 	{"VMOVUPS",	0x10, PFX_NA, ESC_0F, W0, W_32, m_Copy, Iop_INVALID, 1, -1, FullVectorMem, MASK_FULL, NULL, E4nb,  {_rG,_rmE}, {Ity_V128,Ity_V128}},
 	{"VMOVUPS",	0x10, PFX_NA, ESC_0F, W0, W_32, m_Copy, Iop_INVALID, 1, -1, FullVectorMem, MASK_FULL, NULL, E4nb,  {_rG,_rmE}, {Ity_V256,Ity_V256}},
 	{"VMOVUPS",	0x10, PFX_NA, ESC_0F, W0, W_32, m_Copy, Iop_INVALID, 1, -1, FullVectorMem, MASK_FULL, NULL, E4nb,  {_rG,_rmE}, {Ity_V512,Ity_V512}},
@@ -269,7 +271,7 @@ static struct Ins_data INS_ARR[] = {
 	{"VPMOVSWB",	0x20, PFX_F3, ESC_0F38, W0, W_8, NULL, Iop_16Sto8x8, 1, -1, HalfMem, MASK_FULL, NULL, E6,  {_rmE,_rG}, {Ity_I64,Ity_V128}},
 	{"VPMOVSWB",	0x20, PFX_F3, ESC_0F38, W0, W_8, NULL, Iop_16Sto8x8, 2, -1, HalfMem, MASK_FULL, NULL, E6,  {_rmE,_rG}, {Ity_V128,Ity_V256}},
 	{"VPMOVSWB",	0x20, PFX_F3, ESC_0F38, W0, W_8, NULL, Iop_16Sto8x8, 4, -1, HalfMem, MASK_FULL, NULL, E6,  {_rmE,_rG}, {Ity_V256,Ity_V512}},
-	{"VPINSRB",	0x20, PFX_66, ESC_0F3A, WIG, W_8, math_PINSRB_128, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_NONE, NULL, E9NF,  {_rG,_rV,_imE,_imm8}, {Ity_V128,Ity_V128,Ity_I8,Ity_I8}},
+	{"VPINSRB",	0x20, PFX_66, ESC_0F3A, WIG, W_8, m_PINSRB_128, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_NONE, NULL, E9NF,  {_rG,_rV,_imE,_imm8}, {Ity_V128,Ity_V128,Ity_I8,Ity_I8}},
 	{"VPMOVSXBD",	0x21, PFX_66, ESC_0F38, WIG, W_32, NULL, Iop_8Sto32, 4, -1, QuarterMem, MASK_FULL, NULL, E5,  {_rG,_rmE}, {Ity_V128,Ity_I32}},
 	{"VPMOVSXBD",	0x21, PFX_66, ESC_0F38, WIG, W_32, NULL, Iop_8Sto32, 8, -1, QuarterMem, MASK_FULL, NULL, E5,  {_rG,_rmE}, {Ity_V256,Ity_I64}},
 	{"VPMOVSXBD",	0x21, PFX_66, ESC_0F38, WIG, W_32, NULL, Iop_8Sto32, 16, -1, QuarterMem, MASK_FULL, NULL, E5,  {_rG,_rmE}, {Ity_V512,Ity_V128}},
@@ -283,8 +285,8 @@ static struct Ins_data INS_ARR[] = {
 	{"VPMOVSQB",	0x22, PFX_F3, ESC_0F38, W0, W_8, m_I64S_to_I8S_sat, Iop_INVALID, 2, -1, OctMem, MASK_FULL, NULL, E6,  {_rmE,_rG}, {Ity_I16,Ity_V128}},
 	{"VPMOVSQB",	0x22, PFX_F3, ESC_0F38, W0, W_8, m_I64S_to_I8S_sat, Iop_INVALID, 4, -1, OctMem, MASK_FULL, NULL, E6,  {_rmE,_rG}, {Ity_I32,Ity_V256}},
 	{"VPMOVSQB",	0x22, PFX_F3, ESC_0F38, W0, W_8, m_I64S_to_I8S_sat, Iop_INVALID, 8, -1, OctMem, MASK_FULL, NULL, E6,  {_rmE,_rG}, {Ity_I64,Ity_V512}},
-	{"VPINSRD",	0x22, PFX_66, ESC_0F3A, W0, W_32, math_PINSRD_128, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_NONE, NULL, E9NF,  {_rG,_rV,_imE,_imm8}, {Ity_V128,Ity_V128,Ity_I32,Ity_I8}},
-	{"VPINSRQ",	0x22, PFX_66, ESC_0F3A, W1, W_64, math_PINSRQ_128, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_NONE, NULL, E9NF,  {_rG,_rV,_imE,_imm8}, {Ity_V128,Ity_V128,Ity_I64,Ity_I8}},
+	{"VPINSRD",	0x22, PFX_66, ESC_0F3A, W0, W_32, m_PINSRD_128, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_NONE, NULL, E9NF,  {_rG,_rV,_imE,_imm8}, {Ity_V128,Ity_V128,Ity_I32,Ity_I8}},
+	{"VPINSRQ",	0x22, PFX_66, ESC_0F3A, W1, W_64, m_PINSRQ_128, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_NONE, NULL, E9NF,  {_rG,_rV,_imE,_imm8}, {Ity_V128,Ity_V128,Ity_I64,Ity_I8}},
 	{"VPMOVSXWD",	0x23, PFX_66, ESC_0F38, WIG, W_32, NULL, Iop_16Sto32, 4, -1, HalfMem, MASK_FULL, NULL, E5,  {_rG,_rmE}, {Ity_V128,Ity_I64}},
 	{"VPMOVSXWD",	0x23, PFX_66, ESC_0F38, WIG, W_32, NULL, Iop_16Sto32, 8, -1, HalfMem, MASK_FULL, NULL, E5,  {_rG,_rmE}, {Ity_V256,Ity_V128}},
 	{"VPMOVSXWD",	0x23, PFX_66, ESC_0F38, WIG, W_32, NULL, Iop_16Sto32, 16, -1, HalfMem, MASK_FULL, NULL, E5,  {_rG,_rmE}, {Ity_V512,Ity_V256}},
@@ -579,9 +581,9 @@ static struct Ins_data INS_ARR[] = {
 	{"VPLZCNTQ",	0x44, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_ClzNat64, 2, -1, FullVector, MASK_FULL, NULL, E4,  {_rG,_rmE}, {Ity_V128,Ity_V128}},
 	{"VPLZCNTQ",	0x44, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_ClzNat64, 4, -1, FullVector, MASK_FULL, NULL, E4,  {_rG,_rmE}, {Ity_V256,Ity_V256}},
 	{"VPLZCNTQ",	0x44, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_ClzNat64, 8, -1, FullVector, MASK_FULL, NULL, E4,  {_rG,_rmE}, {Ity_V512,Ity_V512}},
-	{"VPCLMULQDQ",	0x44, PFX_66, ESC_0F3A, WIG, W_64, math_PCLMULQDQ, Iop_INVALID, 1, -1, FullVectorMem, MASK_NONE, NULL, EXC_UNDEF,  {_rG,_rV,_rmE,_imm8}, {Ity_V128,Ity_V128,Ity_V128,Ity_I8}},
-	{"VPCLMULQDQ",	0x44, PFX_66, ESC_0F3A, WIG, W_64, math_PCLMULQDQ, Iop_INVALID, 2, -1, FullVectorMem, MASK_NONE, NULL, EXC_UNDEF,  {_rG,_rV,_rmE,_imm8}, {Ity_V256,Ity_V256,Ity_V256,Ity_I8}},
-	{"VPCLMULQDQ",	0x44, PFX_66, ESC_0F3A, WIG, W_64, math_PCLMULQDQ, Iop_INVALID, 4, -1, FullVectorMem, MASK_NONE, NULL, EXC_UNDEF,  {_rG,_rV,_rmE,_imm8}, {Ity_V512,Ity_V512,Ity_V512,Ity_I8}},
+	{"VPCLMULQDQ",	0x44, PFX_66, ESC_0F3A, WIG, W_64, m_PCLMULQDQ, Iop_INVALID, 1, -1, FullVectorMem, MASK_NONE, NULL, EXC_UNDEF,  {_rG,_rV,_rmE,_imm8}, {Ity_V128,Ity_V128,Ity_V128,Ity_I8}},
+	{"VPCLMULQDQ",	0x44, PFX_66, ESC_0F3A, WIG, W_64, m_PCLMULQDQ, Iop_INVALID, 2, -1, FullVectorMem, MASK_NONE, NULL, EXC_UNDEF,  {_rG,_rV,_rmE,_imm8}, {Ity_V256,Ity_V256,Ity_V256,Ity_I8}},
+	{"VPCLMULQDQ",	0x44, PFX_66, ESC_0F3A, WIG, W_64, m_PCLMULQDQ, Iop_INVALID, 4, -1, FullVectorMem, MASK_NONE, NULL, EXC_UNDEF,  {_rG,_rV,_rmE,_imm8}, {Ity_V512,Ity_V512,Ity_V512,Ity_I8}},
 	{"KORW",	0x45, PFX_NA, ESC_0F, W0, W_16, NULL, Iop_Or16, 1, -1, NoTupleType, MASK_NONE, NULL, EXC_UNDEF,  {_kG,_kV,_kE}, {Ity_I16,Ity_I16,Ity_I16}},
 	{"KORQ",	0x45, PFX_NA, ESC_0F, W1, W_64, NULL, Iop_Or64, 1, -1, NoTupleType, MASK_NONE, NULL, EXC_UNDEF,  {_kG,_kV,_kE}, {Ity_I64,Ity_I64,Ity_I64}},
 	{"KORB",	0x45, PFX_66, ESC_0F, W0, W_8, NULL, Iop_Or8, 1, -1, NoTupleType, MASK_NONE, NULL, EXC_UNDEF,  {_kG,_kV,_kE}, {Ity_I8,Ity_I8,Ity_I8}},
@@ -1320,8 +1322,8 @@ static struct Ins_data INS_ARR[] = {
 	{"VFNMADD213PD",	0xac, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E2,  {_rG,_rV,_rG,_rmE}, {Ity_V512,Ity_V512,Ity_V512,Ity_V512}},
 	{"VFNMADD213SS",	0xad, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_FULL, NULL, E3,  {_rG,_rV,_rG,_rmE}, {Ity_V128,Ity_V128,Ity_V128,Ity_V128}},
 	{"VFNMADD213SD",	0xad, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_FULL, NULL, E3,  {_rG,_rV,_rG,_rmE}, {Ity_V128,Ity_V128,Ity_V128,Ity_V128}},
-	{"CLWB",	0xae, PFX_66, ESC_0F, WIG, 0, NULL, Iop_INVALID, 1, -1, NoTupleType, MASK_NONE, "/6", EXC_UNDEF,  {}, {}},
-	{"CLFLUSHOPT",	0xae, PFX_66, ESC_0F, WIG, 0, NULL, Iop_INVALID, 1, -1, NoTupleType, MASK_NONE, "/7", EXC_UNDEF,  {}, {}},
+	{"CLWB",	0xae, PFX_66, ESC_0F, WIG, 0, NULL, Iop_INVALID, 1, -1, NoTupleType, MASK_NONE, "/6", EXC_UNDEF,  {0}, {0}},
+	{"CLFLUSHOPT",	0xae, PFX_66, ESC_0F, WIG, 0, NULL, Iop_INVALID, 1, -1, NoTupleType, MASK_NONE, "/7", EXC_UNDEF,  {0}, {0}},
 	{"VFNMSUB213PS",	0xae, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E2,  {_rG,_rV,_rG,_rmE}, {Ity_V128,Ity_V128,Ity_V128,Ity_V128}},
 	{"VFNMSUB213PS",	0xae, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E1,  {_rG,_rV,_rG,_rmE}, {Ity_V256,Ity_V256,Ity_V256,Ity_V256}},
 	{"VFNMSUB213PS",	0xae, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E2,  {_rG,_rV,_rG,_rmE}, {Ity_V512,Ity_V512,Ity_V512,Ity_V512}},
@@ -1330,12 +1332,6 @@ static struct Ins_data INS_ARR[] = {
 	{"VFNMSUB213PD",	0xae, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E2,  {_rG,_rV,_rG,_rmE}, {Ity_V512,Ity_V512,Ity_V512,Ity_V512}},
 	{"VFNMSUB213SS",	0xaf, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_FULL, NULL, E3,  {_rG,_rV,_rG,_rmE}, {Ity_V128,Ity_V128,Ity_V128,Ity_V128}},
 	{"VFNMSUB213SD",	0xaf, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_FULL, NULL, E3,  {_rG,_rV,_rG,_rmE}, {Ity_V128,Ity_V128,Ity_V128,Ity_V128}},
-	{"VPMADD52LUQ",	0xb4, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_PMADD52LUQ , 1, -1, FullVector, MASK_FULL, NULL, E4,  {_rG,_rV,_rmE}, {Ity_V128,Ity_V128,Ity_V128}},
-	{"VPMADD52LUQ",	0xb4, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_PMADD52LUQ , 2, -1, FullVector, MASK_FULL, NULL, E4,  {_rG,_rV,_rmE}, {Ity_V256,Ity_V256,Ity_V256}},
-	{"VPMADD52LUQ",	0xb4, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_PMADD52LUQ , 4, -1, FullVector, MASK_FULL, NULL, E4,  {_rG,_rV,_rmE}, {Ity_V512,Ity_V512,Ity_V512}},
-	{"VPMADD52HUQ",	0xb5, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_PMADD52HUQ , 1, -1, FullVector, MASK_FULL, NULL, E4,  {_rG,_rV,_rmE}, {Ity_V128,Ity_V128,Ity_V128}},
-	{"VPMADD52HUQ",	0xb5, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_PMADD52HUQ , 2, -1, FullVector, MASK_FULL, NULL, E4,  {_rG,_rV,_rmE}, {Ity_V256,Ity_V256,Ity_V256}},
-	{"VPMADD52HUQ",	0xb5, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_PMADD52HUQ , 4, -1, FullVector, MASK_FULL, NULL, E4,  {_rG,_rV,_rmE}, {Ity_V512,Ity_V512,Ity_V512}},
 	{"VFMADDSUB231PS",	0xb6, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E2,  {_rG,_rV,_rmE,_rG}, {Ity_V128,Ity_V128,Ity_V128,Ity_V128}},
 	{"VFMADDSUB231PS",	0xb6, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E2,  {_rG,_rV,_rmE,_rG}, {Ity_V256,Ity_V256,Ity_V256,Ity_V256}},
 	{"VFMADDSUB231PS",	0xb6, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E2,  {_rG,_rV,_rmE,_rG}, {Ity_V512,Ity_V512,Ity_V512,Ity_V512}},
@@ -1388,7 +1384,7 @@ static struct Ins_data INS_ARR[] = {
 	{"VCMPPD",	0xc2, PFX_66, ESC_0F, W1, W_64, NULL, Iop_Cmp64Fx8, 1, -1, FullVector, MASK_ZERO, NULL, E2,  {_kG,_kG,_rV,_rmE,_imm8}, {Ity_I64,Ity_I64,Ity_V512,Ity_V512,Ity_I8}},
 	{"VCMPSS",	0xc2, PFX_F3, ESC_0F, W0, W_32, m_vcmpss, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, NULL, E3,  {_kG,_rV,_rmE,_imm8}, {Ity_I64,Ity_I32,Ity_I32,Ity_I8}},
 	{"VCMPSD",	0xc2, PFX_F2, ESC_0F, W1, W_64, m_vcmpsd, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, NULL, E3,  {_kG,_rV,_rmE,_imm8}, {Ity_I64,Ity_I64,Ity_I64,Ity_I8}},
-	{"VPINSRW",	0xc4, PFX_66, ESC_0F, WIG, W_16, math_PINSRW_128, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_NONE, NULL, E9NF,  {_rG,_rV,_imE,_imm8}, {Ity_V128,Ity_V128,Ity_I16,Ity_I8}},
+	{"VPINSRW",	0xc4, PFX_66, ESC_0F, WIG, W_16, m_PINSRW_128, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_NONE, NULL, E9NF,  {_rG,_rV,_imE,_imm8}, {Ity_V128,Ity_V128,Ity_I16,Ity_I8}},
 	{"VPCONFLICTD",	0xc4, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_CfD32x4, 1, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rmE}, {Ity_V128,Ity_V128}},
 	{"VPCONFLICTD",	0xc4, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_CfD32x8, 1, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rmE}, {Ity_V256,Ity_V256}},
 	{"VPCONFLICTD",	0xc4, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_CfD32x16, 1, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rmE}, {Ity_V512,Ity_V512}},
@@ -1396,28 +1392,28 @@ static struct Ins_data INS_ARR[] = {
 	{"VPCONFLICTQ",	0xc4, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_CfD64x4, 1, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rmE}, {Ity_V256,Ity_V256}},
 	{"VPCONFLICTQ",	0xc4, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_CfD64x8, 1, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rmE}, {Ity_V512,Ity_V512}},
 	{"VPEXTRW",	0xc5, PFX_66, ESC_0F, WIG, W_16, NULL, Iop_INVALID, 1, -1, NoTupleType, MASK_NONE, NULL, E9NF,  {_iG,_rE,_imm8}, {Ity_I16,Ity_V128,Ity_I8}},
-	{"VSHUFPS",	0xc6, PFX_NA, ESC_0F, W0, W_32, math_SHUFPS_128, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rmE,_rV,_imm8}, {Ity_V128,Ity_V128,Ity_V128,Ity_I8}},
-	{"VSHUFPS",	0xc6, PFX_NA, ESC_0F, W0, W_32, math_SHUFPS_256, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rmE,_rV,_imm8}, {Ity_V256,Ity_V256,Ity_V256,Ity_I8}},
-	{"VSHUFPS",	0xc6, PFX_NA, ESC_0F, W0, W_32, math_SHUFPS_256, Iop_INVALID, 2, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rmE,_rV,_imm8}, {Ity_V512,Ity_V512,Ity_V512,Ity_I8}},
-	{"VSHUFPD",	0xc6, PFX_66, ESC_0F, W1, W_64, math_SHUFPD_128, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rmE,_rV,_imm8}, {Ity_V128,Ity_V128,Ity_V128,Ity_I8}},
-	{"VSHUFPD",	0xc6, PFX_66, ESC_0F, W1, W_64, math_SHUFPD_256, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rmE,_rV,_imm8}, {Ity_V256,Ity_V256,Ity_V256,Ity_I8}},
+	{"VSHUFPS",	0xc6, PFX_NA, ESC_0F, W0, W_32, m_SHUFPS_128, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rmE,_rV,_imm8}, {Ity_V128,Ity_V128,Ity_V128,Ity_I8}},
+	{"VSHUFPS",	0xc6, PFX_NA, ESC_0F, W0, W_32, m_SHUFPS_256, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rmE,_rV,_imm8}, {Ity_V256,Ity_V256,Ity_V256,Ity_I8}},
+	{"VSHUFPS",	0xc6, PFX_NA, ESC_0F, W0, W_32, m_SHUFPS_256, Iop_INVALID, 2, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rmE,_rV,_imm8}, {Ity_V512,Ity_V512,Ity_V512,Ity_I8}},
+	{"VSHUFPD",	0xc6, PFX_66, ESC_0F, W1, W_64, m_SHUFPD_128, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rmE,_rV,_imm8}, {Ity_V128,Ity_V128,Ity_V128,Ity_I8}},
+	{"VSHUFPD",	0xc6, PFX_66, ESC_0F, W1, W_64, m_SHUFPD_256, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rmE,_rV,_imm8}, {Ity_V256,Ity_V256,Ity_V256,Ity_I8}},
 	{"VSHUFPD",	0xc6, PFX_66, ESC_0F, W1, W_64, m_SHUFPD_512, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E4NF,  {_rG,_rmE,_rV,_imm8}, {Ity_V512,Ity_V512,Ity_V512,Ity_I8}},
-	{"VGATHERPF0DPS",	0xc6, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/1", E12NP,  {}, {}},
-	{"VGATHERPF1DPS",	0xc6, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/2", E12NP,  {}, {}},
-	{"VSCATTERPF0DPS",	0xc6, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/5", E12NP,  {}, {}},
-	{"VSCATTERPF1DPS",	0xc6, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/6", E12NP,  {}, {}},
-	{"VGATHERPF0DPD",	0xc6, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/1", E12NP,  {}, {}},
-	{"VGATHERPF1DPD",	0xc6, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/2", E12NP,  {}, {}},
-	{"VSCATTERPF0DPD",	0xc6, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/5", E12NP,  {}, {}},
-	{"VSCATTERPF1DPD",	0xc6, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/6", E12NP,  {}, {}},
-	{"VGATHERPF0QPS",	0xc7, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/1", E12NP,  {}, {}},
-	{"VGATHERPF1QPS",	0xc7, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/2", E12NP,  {}, {}},
-	{"VSCATTERPF0QPS",	0xc7, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/5", E12NP,  {}, {}},
-	{"VSCATTERPF1QPS",	0xc7, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/6", E12NP,  {}, {}},
-	{"VGATHERPF0QPD",	0xc7, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/1", E12NP,  {}, {}},
-	{"VGATHERPF1QPD",	0xc7, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/2", E12NP,  {}, {}},
-	{"VSCATTERPF0QPD",	0xc7, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/5", E12NP,  {}, {}},
-	{"VSCATTERPF1QPD",	0xc7, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/6", E12NP,  {}, {}},
+	{"VGATHERPF0DPS",	0xc6, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/1", E12NP,  {0}, {0}},
+	{"VGATHERPF1DPS",	0xc6, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/2", E12NP,  {0}, {0}},
+	{"VSCATTERPF0DPS",	0xc6, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/5", E12NP,  {0}, {0}},
+	{"VSCATTERPF1DPS",	0xc6, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/6", E12NP,  {0}, {0}},
+	{"VGATHERPF0DPD",	0xc6, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/1", E12NP,  {0}, {0}},
+	{"VGATHERPF1DPD",	0xc6, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/2", E12NP,  {0}, {0}},
+	{"VSCATTERPF0DPD",	0xc6, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/5", E12NP,  {0}, {0}},
+	{"VSCATTERPF1DPD",	0xc6, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/6", E12NP,  {0}, {0}},
+	{"VGATHERPF0QPS",	0xc7, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/1", E12NP,  {0}, {0}},
+	{"VGATHERPF1QPS",	0xc7, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/2", E12NP,  {0}, {0}},
+	{"VSCATTERPF0QPS",	0xc7, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/5", E12NP,  {0}, {0}},
+	{"VSCATTERPF1QPS",	0xc7, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/6", E12NP,  {0}, {0}},
+	{"VGATHERPF0QPD",	0xc7, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/1", E12NP,  {0}, {0}},
+	{"VGATHERPF1QPD",	0xc7, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/2", E12NP,  {0}, {0}},
+	{"VSCATTERPF0QPD",	0xc7, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/5", E12NP,  {0}, {0}},
+	{"VSCATTERPF1QPD",	0xc7, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_INVALID, 1, -1, Tuple1Scalar, MASK_ZERO, "/6", E12NP,  {0}, {0}},
 	{"VEXP2PS",	0xc8, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_Exp32x16, 1, -1, FullVector, MASK_FULL, NULL, E2,  {_rG,_rmE}, {Ity_V512,Ity_V512}},
 	{"VEXP2PD",	0xc8, PFX_66, ESC_0F38, W1, W_64, NULL, Iop_Exp64x8, 1, -1, FullVector, MASK_FULL, NULL, E2,  {_rG,_rmE}, {Ity_V512,Ity_V512}},
 	{"VRCP28PS",	0xca, PFX_66, ESC_0F38, W0, W_32, NULL, Iop_Recip28_32x16, 1, -1, FullVector, MASK_FULL, NULL, E2,  {_rG,_rmE}, {Ity_V512,Ity_V512}},
@@ -1567,6 +1563,10 @@ static struct Ins_data INS_ARR[] = {
 	{"VPMULUDQ",	0xf4, PFX_66, ESC_0F, W1, W_64, m_PMULUDQ, Iop_INVALID, 1, -1, FullVector, MASK_FULL, NULL, E4,  {_rG,_rV,_rmE}, {Ity_V128,Ity_V128,Ity_V128}},
 	{"VPMULUDQ",	0xf4, PFX_66, ESC_0F, W1, W_64, m_PMULUDQ, Iop_INVALID, 2, -1, FullVector, MASK_FULL, NULL, E4,  {_rG,_rV,_rmE}, {Ity_V256,Ity_V256,Ity_V256}},
 	{"VPMULUDQ",	0xf4, PFX_66, ESC_0F, W1, W_64, m_PMULUDQ, Iop_INVALID, 4, -1, FullVector, MASK_FULL, NULL, E4,  {_rG,_rV,_rmE}, {Ity_V512,Ity_V512,Ity_V512}},
+	/* VPMADD52LUQ/VPMADD52HUQ (AVX-512 IFMA) rows removed: IOPS_ARR has no
+	   type row for Iop_PMADD52{L,H}UQ and the generic applier would drop the
+	   accumulator operand, lifting them with wrong semantics.  Without table
+	   rows they decode-fail cleanly instead. */
 	{"VPMADDWD",	0xf5, PFX_66, ESC_0F, WIG, W_32, m_PMADDWD, Iop_INVALID, 1, -1, FullVectorMem, MASK_FULL, NULL, E4NFnb,  {_rG,_rV,_rmE}, {Ity_V128,Ity_V128,Ity_V128}},
 	{"VPMADDWD",	0xf5, PFX_66, ESC_0F, WIG, W_32, m_PMADDWD, Iop_INVALID, 2, -1, FullVectorMem, MASK_FULL, NULL, E4NFnb,  {_rG,_rV,_rmE}, {Ity_V256,Ity_V256,Ity_V256}},
 	{"VPMADDWD",	0xf5, PFX_66, ESC_0F, WIG, W_32, m_PMADDWD, Iop_INVALID, 4, -1, FullVectorMem, MASK_FULL, NULL, E4NFnb,  {_rG,_rV,_rmE}, {Ity_V512,Ity_V512,Ity_V512}},
@@ -1602,6 +1602,8 @@ static struct Ins_data INS_ARR[] = {
    cover, or plain garbage bytes) would otherwise run off the end. */
 #define N_INS_ARR (sizeof(INS_ARR) / sizeof(INS_ARR[0]))
 
+#ifdef __GNUC__
 #pragma GCC diagnostic pop
+#endif
 #endif /* ndef __GUEST_AVX512_H */
 #endif /* ndef AVX_512*/

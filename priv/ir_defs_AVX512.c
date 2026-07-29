@@ -57,8 +57,12 @@ void ppIRConst_AVX512 ( const IRConst* con )
 
 void ppIROp_AVX512 ( IROp op )
 {
-   if ((op > Iop_LAST_NOT_EVEX) && (op < Iop_LAST)) {
-      vex_printf("%s", IOPS_ARR[INDEX(op)].name);
+   if (((UInt)op > (UInt)Iop_LAST_NOT_EVEX) && ((UInt)op < (UInt)Iop_LAST)) {
+      /* Gap entries (enum members with no IOPS_ARR row) have a NULL name. */
+      if (IOPS_ARR[INDEX(op)].name != NULL)
+         vex_printf("%s", IOPS_ARR[INDEX(op)].name);
+      else
+         vex_printf("Iop_EVEX_0x%x", (UInt)op);
       return;
    }
    vpanic("ppIROp_AVX512");
@@ -88,6 +92,13 @@ void typeOfPrimop_AVX512 ( IROp op,
    *t_arg4 = Ity_INVALID;
 
    Iop_data iop = IOPS_ARR[INDEX(op)];
+
+   /* Gap entry: an IROp_EVEX member with no IOPS_ARR row.  Leave every
+      output as Ity_INVALID; panicking here is not an option because pyvex
+      exposes typeOfPrimop directly to Python, outside any setjmp. */
+   if (iop.name == NULL)
+      return;
+
    Int argN = 0;
    while ((argN < 5) && (iop.operands[argN] != 0)) {
       argN++;
@@ -95,9 +106,9 @@ void typeOfPrimop_AVX512 ( IROp op,
    *t_dst = iop.operands[0];
 
    switch (argN) { // fallthrough
-      case 5: *t_arg4 = iop.operands[4]; __attribute__ ((fallthrough));
-      case 4: *t_arg3 = iop.operands[3]; __attribute__ ((fallthrough));
-      case 3: *t_arg2 = iop.operands[2]; __attribute__ ((fallthrough));
+      case 5: *t_arg4 = iop.operands[4]; /* fall through */
+      case 4: *t_arg3 = iop.operands[3]; /* fall through */
+      case 3: *t_arg2 = iop.operands[2]; /* fall through */
       case 2: *t_arg1 = iop.operands[1]; break;
       default:
          ppIROp(op);
@@ -134,7 +145,7 @@ Int sizeofIRType_AVX512 ( IRType ty )
 
 Bool primopMightTrap_AVX512 ( IROp op )
 {
-   if ((op > Iop_LAST_NOT_EVEX) && (op < Iop_LAST))
+   if (((UInt)op > (UInt)Iop_LAST_NOT_EVEX) && ((UInt)op < (UInt)Iop_LAST))
       return False;
    vpanic("primopMightTrap_AVX512");
 }
