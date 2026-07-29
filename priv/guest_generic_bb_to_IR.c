@@ -856,6 +856,46 @@ static void analyse_block_end ( /*OUT*/BlockEnd* be, const IRSB* irsb,
 /*--- Disassembly of basic (not super) blocks                ---*/
 /*--------------------------------------------------------------*/
 
+/* Compute the expression to close the block with (irbb->next).  Every
+   disassembled instruction is contractually required to end with a
+   PUT to the guest PC (vasserted in the loop below), so when the block
+   ends, the value of that final PUT *is* the successor address.  Use
+   it directly -- chasing a single-assignment temp to its defining
+   constant, so direct branch targets appear as constants in
+   irbb->next -- rather than closing with GET(IP), which nothing folds
+   at iropt level 0 / LdAllregsAtEachInsn mode and which denies pyvex
+   constant jump-target extraction.  Falls back to GET(IP) when there
+   is no trailing PC PUT to consult (e.g. an empty block). */
+static IRExpr* block_end_next_expr ( const IRSB* irbb,
+                                     Int offB_GUEST_IP,
+                                     IRType guest_word_type )
+{
+   if (irbb->stmts_used > 0) {
+      const IRStmt* st = irbb->stmts[irbb->stmts_used - 1];
+      if (st->tag == Ist_Put
+          && st->Ist.Put.offset == offB_GUEST_IP
+          && typeOfIRExpr(irbb->tyenv, st->Ist.Put.data)
+             == guest_word_type) {
+         const IRExpr* data = st->Ist.Put.data;
+         if (data->tag == Iex_RdTmp) {
+            /* IR temps are assigned exactly once; find the def. */
+            IRTemp tmp = data->Iex.RdTmp.tmp;
+            for (Int i = irbb->stmts_used - 1; i >= 0; i--) {
+               const IRStmt* d = irbb->stmts[i];
+               if (d->tag == Ist_WrTmp && d->Ist.WrTmp.tmp == tmp) {
+                  if (d->Ist.WrTmp.data->tag == Iex_Const)
+                     data = d->Ist.WrTmp.data;
+                  break;
+               }
+            }
+         }
+         if (data->tag == Iex_Const || data->tag == Iex_RdTmp)
+            return deepCopyIRExpr(data);
+      }
+   }
+   return IRExpr_Get(offB_GUEST_IP, guest_word_type);
+}
+
 /* Disassemble instructions, starting at |&guest_code[delta_IN]|, into |irbb|,
    and terminate the block properly.  At most |n_instrs_allowed_IN| may be
    disassembled, and this function may choose to disassemble fewer.
@@ -972,7 +1012,8 @@ static IRSB* disassemble_basic_block_till_stop(
             vpanic("Not enough bytes given to decode even a single instruction");
          }
          irbb->stmts_used = first_stmt_idx;
-         irbb->next = IRExpr_Get(offB_GUEST_IP, guest_word_type);
+         irbb->next = block_end_next_expr(irbb, offB_GUEST_IP,
+                                          guest_word_type);
          /* irbb->jumpkind must already be Ijk_Boring */
          irbb->offsIP = offB_GUEST_IP;
          break;
@@ -1056,7 +1097,8 @@ static IRSB* disassemble_basic_block_till_stop(
                 || *extent_len >= vex_control.guest_max_bytes) {
                /* We have to stop.  See comment above re irbb field
                   settings here. */
-               irbb->next = IRExpr_Get(offB_GUEST_IP, guest_word_type);
+               irbb->next = block_end_next_expr(irbb, offB_GUEST_IP,
+                                                guest_word_type);
                /* irbb->jumpkind must already by Ijk_Boring */
                irbb->offsIP = offB_GUEST_IP;
                stopNow = True;
@@ -1065,7 +1107,8 @@ static IRSB* disassemble_basic_block_till_stop(
          case Dis_StopHere:
             vassert(dres.jk_StopHere != Ijk_INVALID);
             /* See comment above re irbb field settings here. */
-            irbb->next = IRExpr_Get(offB_GUEST_IP, guest_word_type);
+            irbb->next = block_end_next_expr(irbb, offB_GUEST_IP,
+                                             guest_word_type);
             irbb->jumpkind = dres.jk_StopHere;
             irbb->offsIP = offB_GUEST_IP;
             stopNow = True;
