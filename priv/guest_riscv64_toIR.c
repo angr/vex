@@ -687,6 +687,7 @@ static const HChar* nameAqRlSuffix(UInt aqrl)
 /* Obtain a control/status register name. */
 static const HChar* nameCSR(UInt csr)
 {
+   static HChar buf[16];
    switch (csr) {
    case 0x001:
       return "fflags";
@@ -695,7 +696,8 @@ static const HChar* nameCSR(UInt csr)
    case 0x003:
       return "fcsr";
    default:
-      vpanic("nameCSR(riscv64)");
+      vex_sprintf(buf, "0x%x", csr);
+      return buf;
    }
 }
 
@@ -3195,6 +3197,35 @@ static Bool dis_RV64D(/*MB_OUT*/ DisResult* dres,
    return False;
 }
 
+/* Emit a call to a CSR dirty helper and put its result in rd (unless x0).
+   The generic Ifx_Read-of-x0 effect satisfies the requirement that a
+   GSPTR-taking dirty call declares some guest-state access; the helpers
+   are stubs meant to be intercepted by tools. */
+static void csr_op(/*OUT*/ IRSB* irsb,
+                   const HChar*  helper_name,
+                   void*         helper_addr,
+                   UInt          csr,
+                   Bool          write,
+                   Bool          read,
+                   IRExpr*       value,
+                   UInt          rd)
+{
+   IRTemp   res = newTemp(irsb, Ity_I64);
+   IRDirty* d =
+      unsafeIRDirty_1_N(res, 0 /*regparms*/, helper_name, helper_addr,
+                        mkIRExprVec_5(IRExpr_GSPTR(), mkU32(csr),
+                                      mkU32((UInt)write), mkU32((UInt)read),
+                                      value));
+   d->nFxState = 1;
+   vex_bzero(&d->fxState, sizeof(d->fxState));
+   d->fxState[0].fx     = Ifx_Read;
+   d->fxState[0].offset = OFFB_X0;
+   d->fxState[0].size   = 4;
+   stmt(irsb, IRStmt_Dirty(d));
+   if (rd != 0)
+      putIReg64(irsb, rd, mkexpr(res));
+}
+
 static Bool dis_RV64Zicsr(/*MB_OUT*/ DisResult* dres,
                           /*OUT*/ IRSB*         irsb,
                           UInt                  insn)
@@ -3331,6 +3362,109 @@ static Bool dis_RV64Zicsr(/*MB_OUT*/ DisResult* dres,
              nameIReg(rs1));
          return True;
       }
+   }
+
+   /* --------- csrr{w,s,c} rd, csr, rs1 -- non-FP CSRs --------- */
+   if (INSN(6, 0) == 0b1110011 &&
+       (INSN(14, 12) == 0b001 || INSN(14, 12) == 0b010 ||
+        INSN(14, 12) == 0b011)) {
+      UInt rd     = INSN(11, 7);
+      UInt funct3 = INSN(14, 12);
+      UInt rs1    = INSN(19, 15);
+      UInt csr    = INSN(31, 20);
+      /* FP CSRs were handled inline above; pass everything else to a
+         dirty helper. */
+      const HChar* name;
+      const HChar* helper_name;
+      void*        helper_addr;
+      switch (funct3) {
+      case 0b001:
+         name        = "csrrw";
+         helper_name = "riscv_dirtyhelper_CSR_rw";
+         helper_addr = riscv_dirtyhelper_CSR_rw;
+         break;
+      case 0b010:
+         name        = "csrrs";
+         helper_name = "riscv_dirtyhelper_CSR_s";
+         helper_addr = riscv_dirtyhelper_CSR_s;
+         break;
+      case 0b011:
+         name        = "csrrc";
+         helper_name = "riscv_dirtyhelper_CSR_c";
+         helper_addr = riscv_dirtyhelper_CSR_c;
+         break;
+      default:
+         vassert(0);
+      }
+      csr_op(irsb, helper_name, helper_addr, csr, rs1 != 0, rd != 0,
+             getIReg32(rs1), rd);
+      DIP("%s %s, %s, %s\n", name, nameIReg(rd), nameCSR(csr), nameIReg(rs1));
+      return True;
+   }
+
+   /* --------------- csrr{w,s,c}i rd, csr, uimm ---------------- */
+   if (INSN(6, 0) == 0b1110011 &&
+       (INSN(14, 12) == 0b101 || INSN(14, 12) == 0b110 ||
+        INSN(14, 12) == 0b111)) {
+      UInt rd     = INSN(11, 7);
+      UInt funct3 = INSN(14, 12);
+      UInt imm    = INSN(19, 15);
+      UInt csr    = INSN(31, 20);
+      const HChar* name;
+      const HChar* helper_name;
+      void*        helper_addr;
+      switch (funct3) {
+      case 0b101:
+         name        = "csrrwi";
+         helper_name = "riscv_dirtyhelper_CSR_rw";
+         helper_addr = riscv_dirtyhelper_CSR_rw;
+         break;
+      case 0b110:
+         name        = "csrrsi";
+         helper_name = "riscv_dirtyhelper_CSR_s";
+         helper_addr = riscv_dirtyhelper_CSR_s;
+         break;
+      case 0b111:
+         name        = "csrrci";
+         helper_name = "riscv_dirtyhelper_CSR_c";
+         helper_addr = riscv_dirtyhelper_CSR_c;
+         break;
+      default:
+         vassert(0);
+      }
+      csr_op(irsb, helper_name, helper_addr, csr, imm != 0, rd != 0,
+             mkU32(imm), rd);
+      DIP("%s %s, %s, 0x%x\n", name, nameIReg(rd), nameCSR(csr), imm);
+      return True;
+   }
+
+   /* --------------------------- wfi --------------------------- */
+   if (INSN(6, 0) == 0b1110011 && INSN(14, 12) == 0b000 &&
+       INSN(24, 20) == 0b00101) {
+      stmt(irsb, IRStmt_NoOp());
+      DIP("wfi\n");
+      return True;
+   }
+
+   /* -------------------------- mret --------------------------- */
+   if (INSN(6, 0) == 0b1110011 && INSN(14, 12) == 0b000 &&
+       INSN(24, 20) == 0b00010 && INSN(31, 27) == 0b00110) {
+      IRTemp   res = newTemp(irsb, Ity_I64);
+      IRDirty* d   = unsafeIRDirty_1_N(res, 0 /*regparms*/,
+                                       "riscv_dirtyhelper_mret",
+                                       riscv_dirtyhelper_mret,
+                                       mkIRExprVec_1(IRExpr_GSPTR()));
+      d->nFxState = 1;
+      vex_bzero(&d->fxState, sizeof(d->fxState));
+      d->fxState[0].fx     = Ifx_Read;
+      d->fxState[0].offset = OFFB_X0; /* An MEPC guest-state field would be
+                                         needed for a full implementation. */
+      d->fxState[0].size   = 8;
+      /* Use the dirty call's result as the new PC. */
+      stmt(irsb, IRStmt_Dirty(d));
+      putPC(irsb, mkexpr(res));
+      DIP("mret\n");
+      return True;
    }
 
    return False;
