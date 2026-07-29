@@ -393,6 +393,22 @@ IRSB* LibVEX_FrontEnd ( /*MOD*/ VexTranslateArgs* vta,
    if (vta->arch_host == VexArchS390X) {
       s390_host_hwcaps = vta->archinfo_host.hwcaps;
    }
+#ifdef PYVEX
+   /* PYVEX KLUDGE: the s390x lifter gates facility-dependent instructions
+      on s390_host_hwcaps -- the HOST's facility bits -- which are all zero
+      when lifting s390x code on a non-s390x host, making every gated
+      instruction EmFail.  Force the guest's facility bits instead; if the
+      caller passed none, assume all facilities.  The machine model (low 6
+      bits) is only consulted by the code generator, so it is left at 0.
+      VEX_HWCAPS_S390X_MSA12 and VEX_HWCAPS_S390X_MRMM share bit 19; only
+      the MSA12 meaning is consulted when lifting, so forcing it is
+      harmless. */
+   if (vta->arch_guest == VexArchS390X) {
+      UInt s390_guest_hwcaps = VEX_HWCAPS_S390X(vta->archinfo_guest.hwcaps);
+      s390_host_hwcaps = s390_guest_hwcaps != 0 ? s390_guest_hwcaps
+                                                : VEX_HWCAPS_S390X_ALL;
+   }
+#endif
 
    /* First off, check that the guest and host insn sets
       are supported. */
