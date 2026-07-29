@@ -4495,7 +4495,6 @@ ULong dis_Grp5 ( const VexAbiInfo* vbi,
             break;
          case 2: /* call Ev */
             /* Ignore any sz value and operate as if sz==8. */
-            if (!(sz == 4 || sz == 8)) goto unhandledR;
             if (haveF2(pfx)) DIP("bnd ; "); /* MPX bnd prefix. */
             sz = 8;
             t3 = newTemp(Ity_I64);
@@ -4511,7 +4510,6 @@ ULong dis_Grp5 ( const VexAbiInfo* vbi,
             break;
          case 4: /* jmp Ev */
             /* Ignore any sz value and operate as if sz==8. */
-            if (!(sz == 4 || sz == 8)) goto unhandledR;
             if (haveF2(pfx)) DIP("bnd ; "); /* MPX bnd prefix. */
             sz = 8;
             t3 = newTemp(Ity_I64);
