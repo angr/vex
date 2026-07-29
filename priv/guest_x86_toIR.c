@@ -13794,8 +13794,10 @@ DisResult disInstr_X86_WRK (
       d32 = getUDisp32(delta); delta += 4;
       d32 += (guest_EIP_bbstart+delta); 
       /* (guest_eip_bbstart+delta) == return-to addr, d32 == call-to addr */
-      if (d32 == guest_EIP_bbstart+delta && getIByte(delta) >= 0x58 
-                                         && getIByte(delta) <= 0x5F) {
+      Bool isPICIdiom = d32 == guest_EIP_bbstart+delta
+                            && getIByte(delta) >= 0x58
+                            && getIByte(delta) <= 0x5F;
+      if (isPICIdiom && vex_control.x86_optimize_callpop_idiom) {
          /* Specially treat the position-independent-code idiom 
                  call X
               X: popl %reg
@@ -13813,7 +13815,7 @@ DisResult disInstr_X86_WRK (
          assign(t1, binop(Iop_Sub32, getIReg(4,R_ESP), mkU32(4)));
          putIReg(4, R_ESP, mkexpr(t1));
          storeLE( mkexpr(t1), mkU32(guest_EIP_bbstart+delta));
-         jmp_lit(&dres, Ijk_Call, d32);
+         jmp_lit(&dres, isPICIdiom ? Ijk_Boring : Ijk_Call, d32);
          vassert(dres.whatNext == Dis_StopHere);
          DIP("call 0x%x\n",d32);
       }
