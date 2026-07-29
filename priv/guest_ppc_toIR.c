@@ -3401,7 +3401,11 @@ static IRExpr* calculate_prefix_EA ( UInt prefix, UInt suffixInstr,
                                      ULong *immediate_val,
                                      UInt *R )
 {
-   IRType  ty     = Ity_I64;
+   /* Must match the callers' EA temp type: I32 in 32-bit mode.  The
+      upstream hard-coded Ity_I64 makes every non-prefixed D-form
+      load/store on ppc32 produce type-invalid IR (I64 tmp assigned an
+      I32 expression), which the IR sanity check rejects. */
+   IRType  ty     = mode64 ? Ity_I64 : Ity_I32;
    ULong   d0     = ifieldUIMM18(prefix);  // Will be zero for word inst
    ULong   d1     = ifieldUIMM16(suffixInstr) & immediate_mask;
    ULong   D      = CONCAT( d0, d1, 16 );  // result is 34 bits wide
