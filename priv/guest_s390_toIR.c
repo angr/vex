@@ -2409,6 +2409,7 @@ s390_vr_offset_by_index(UInt archreg,IRType type, UChar index)
       vex_printf("s390_vr_offset_by_index: index = %d ; type = ", index);
       ppIRType(type);
       vpanic("s390_vr_offset_by_index: invalid index for given type");
+      return 0;   /* Make MSVC happy */
 }
 
 /* Write type sized element to indexed part of vr to the guest state. */

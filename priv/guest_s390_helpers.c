@@ -790,6 +790,7 @@ decode_bfp_rounding_mode(UInt irrm)
       break;
    }
    vpanic("decode_bfp_rounding_mode");
+   return S390_BFP_ROUND_NEAREST_EVEN;   /* Make MSVC happy */
 }
 
 #define S390_CC_FOR_BINARY(opcode,cc_dep1,cc_dep2) \
@@ -1085,6 +1086,7 @@ decode_dfp_rounding_mode(UInt irrm)
       return S390_DFP_ROUND_NEAREST_TIE_TOWARD_0;
    }
    vpanic("decode_dfp_rounding_mode");
+   return S390_DFP_ROUND_NEAREST_EVEN_4;   /* Make MSVC happy */
 }
 
 #define S390_CC_FOR_DFP_RESULT(cc_dep1) \
@@ -1676,6 +1678,7 @@ s390_calculate_cc(ULong cc_op, ULong cc_dep1, ULong cc_dep2, ULong cc_ndep)
    }
 #endif
    vpanic("s390_calculate_cc");
+   return 0;   /* Make MSVC happy */
 }
 
 
