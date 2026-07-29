@@ -2888,7 +2888,8 @@ static Bool check_for_special_requests_nanoMIPS(DisResult *dres,
    const UInt word2 = 0x8000C05D;
    const UInt word3 = 0x8000C043;
    const UInt word4 = 0x8000C053;
-   if (getUInt(code + 0) == word1 && getUInt(code + 4) == word2 &&
+   if (vex_control.special_instruction_support &&
+       getUInt(code + 0) == word1 && getUInt(code + 4) == word2 &&
        getUInt(code + 8) == word3 && getUInt(code + 12) == word4) {
       /* Got a "Special" instruction preamble. Which one is it? */
       if (getUInt(code + 16) == 0x218C6290 /* or t0, t0, t0 */ ) {

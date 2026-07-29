@@ -24801,7 +24801,7 @@ static DisResult disInstr_MIPS_WRK ( Long         delta64,
    }
 
    /* Spot "Special" instructions (see comment at top of file). */
-   {
+   if (vex_control.special_instruction_support) {
       /* Spot the 16-byte preamble:
        ****mips32****
        "srl $0, $0, 13

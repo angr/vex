@@ -3380,7 +3380,7 @@ static Bool disInstr_RISCV64_WRK(/*MB_OUT*/ DisResult* dres,
    vassert((guest_pc_curr_instr & 1) == 0);
 
    /* Spot "Special" instructions (see comment at top of file). */
-   {
+   if (vex_control.special_instruction_support) {
       const UChar* code = guest_instr;
       /* Spot the 16-byte preamble:
             00305013   srli zero, zero, 3
