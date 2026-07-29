@@ -1238,6 +1238,22 @@ static Bool is_Branch_or_Jump_and_Link(const UChar * addr)
    return False;
 }
 
+static Bool is_Ret(const UChar * addr)
+{
+   UInt cins = getUInt(addr);
+
+   UInt opcode = get_opcode(cins);
+   UInt rs = get_rs(cins);
+   UInt function = get_function(cins);
+
+   /* jr $ra */
+   if (opcode == 0x00 && function == 0x08 && rs == 31) {
+      return True;
+   }
+
+   return False;
+}
+
 static Bool branch_or_link_likely(const UChar * addr)
 {
    UInt cins = getUInt(addr);
@@ -24990,8 +25006,11 @@ decode_failure:
       else
          putPC(mkU32(guest_PC_curr_instr + 4));
 
-      dres.jk_StopHere = is_Branch_or_Jump_and_Link(guest_code + delta - 4) ?
-                         Ijk_Call : Ijk_Boring;
+      if (is_Branch_or_Jump_and_Link(guest_code + delta - 4))
+         dres.jk_StopHere = Ijk_Call;
+      else
+         dres.jk_StopHere = is_Ret(guest_code + delta - 4) ? Ijk_Ret
+                                                           : Ijk_Boring;
    }
 
    if (likely_delay_slot) {
@@ -25004,8 +25023,11 @@ decode_failure:
    if (delay_slot_jump) {
       putPC(lastn);
       lastn = NULL;
-      dres.jk_StopHere = is_Branch_or_Jump_and_Link(guest_code + delta - 4) ?
-                         Ijk_Call : Ijk_Boring;
+      if (is_Branch_or_Jump_and_Link(guest_code + delta - 4))
+         dres.jk_StopHere = Ijk_Call;
+      else
+         dres.jk_StopHere = is_Ret(guest_code + delta - 4) ? Ijk_Ret
+                                                           : Ijk_Boring;
    }
 
 decode_success:
