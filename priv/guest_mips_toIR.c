@@ -19062,7 +19062,8 @@ static UInt disInstr_MIPS_WRK_Special3(UInt cins, const VexArchInfo* archinfo,
                break;
             }
 
-            case 0x08 ... 0x0f: { /* DALIGN */
+            case 0x08: case 0x09: case 0x0a: case 0x0b:
+            case 0x0c: case 0x0d: case 0x0e: case 0x0f: { /* DALIGN */
                if (VEX_MIPS_CPU_HAS_MIPSR6(archinfo->hwcaps)) {
                   DIP("dalign r%u, r%u, r%u, %u", rd, rs, rt, lsb & 0x7);
                   UInt bp = (lsb & 0x7) << 3;
@@ -19282,7 +19283,7 @@ static UInt disInstr_MIPS_WRK_Special3(UInt cins, const VexArchInfo* archinfo,
 
                break;
 
-            case 0x08 ... 0x0b: /* ALIGN */
+            case 0x08: case 0x09: case 0x0a: case 0x0b: /* ALIGN */
                if (VEX_MIPS_CPU_HAS_MIPSR6(archinfo->hwcaps)) {
                   if (mode64) {
                      UInt bp = (sa & 0x3) << 3;
