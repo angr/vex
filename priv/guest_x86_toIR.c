@@ -8438,6 +8438,8 @@ DisResult disInstr_X86_WRK (
    DisResult dres;
    const UChar* insn; /* used in SSE decoders */
 
+   Bool      has_66_pfx = 0;
+
    /* The running delta */
    Int delta = (Int)delta64;
 
@@ -8681,6 +8683,7 @@ DisResult disInstr_X86_WRK (
       pre = getUChar(delta);
       switch (pre) {
          case 0x66:
+            has_66_pfx = 1;
             if (protected_mode) {
                sz = 2;
                current_sz_data = 2;
@@ -8764,11 +8767,11 @@ DisResult disInstr_X86_WRK (
    */
 
    /* 0F AE /0 = FXSAVE m512 -- write x87 and SSE state to memory */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xAE
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xAE
        && !epartIsReg(insn[2]) && gregOfRM(insn[2]) == 0) {
       IRDirty* d;
       modrm = getIByte(delta+2);
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       vassert(!epartIsReg(modrm));
 
       addr = disAMode ( &alen, sorb, delta+2, dis_buf );
@@ -8835,11 +8838,11 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 0F AE /1 = FXRSTOR m512 -- read x87 and SSE state from memory */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xAE
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xAE
        && !epartIsReg(insn[2]) && gregOfRM(insn[2]) == 1) {
       IRDirty* d;
       modrm = getIByte(delta+2);
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       vassert(!epartIsReg(modrm));
 
       addr = disAMode ( &alen, sorb, delta+2, dis_buf );
@@ -8930,46 +8933,46 @@ DisResult disInstr_X86_WRK (
       for SSE1 here. */
 
    /* 0F 58 = ADDPS -- add 32Fx4 from R/M to R */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x58) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x58) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "addps", Iop_Add32Fx4 );
       goto decode_success;
    }
 
    /* F3 0F 58 = ADDSS -- add 32F0x4 from R/M to R */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x58) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_lo32( sorb, delta+3, "addss", Iop_Add32F0x4 );
       goto decode_success;
    }
 
    /* 0F 55 = ANDNPS -- G = (not G) and E */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x55) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x55) {
       delta = dis_SSE_E_to_G_all_invG( sorb, delta+2, "andnps", Iop_AndV128 );
       goto decode_success;
    }
 
    /* 0F 54 = ANDPS -- G = G and E */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x54) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x54) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "andps", Iop_AndV128 );
       goto decode_success;
    }
 
    /* 0F C2 = CMPPS -- 32Fx4 comparison from R/M to R */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xC2) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xC2) {
       delta = dis_SSEcmp_E_to_G( sorb, delta+2, "cmpps", True, 4 );
       goto decode_success;
    }
 
    /* F3 0F C2 = CMPSS -- 32F0x4 comparison from R/M to R */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0xC2) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSEcmp_E_to_G( sorb, delta+3, "cmpss", False, 4 );
       goto decode_success;
    }
 
    /* 0F 2F = COMISS  -- 32F0x4 comparison G,E, and set ZCP */
    /* 0F 2E = UCOMISS -- 32F0x4 comparison G,E, and set ZCP */
-   if (sz == 4 && insn[0] == 0x0F && (insn[1] == 0x2F || insn[1] == 0x2E)) {
+   if (!has_66_pfx && insn[0] == 0x0F && (insn[1] == 0x2F || insn[1] == 0x2E)) {
       IRTemp argL = newTemp(Ity_F32);
       IRTemp argR = newTemp(Ity_F32);
       modrm = getIByte(delta+2);
@@ -9005,10 +9008,10 @@ DisResult disInstr_X86_WRK (
 
    /* 0F 2A = CVTPI2PS -- convert 2 x I32 in mem/mmx to 2 x F32 in low
       half xmm */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x2A) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x2A) {
       IRTemp arg64 = newTemp(Ity_I64);
       IRTemp rmode = newTemp(Ity_I32);
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
 
       modrm = getIByte(delta+2);
       if (epartIsReg(modrm)) {
@@ -9051,7 +9054,7 @@ DisResult disInstr_X86_WRK (
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x2A) {
       IRTemp arg32 = newTemp(Ity_I32);
       IRTemp rmode = newTemp(Ity_I32);
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
 
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
@@ -9082,7 +9085,7 @@ DisResult disInstr_X86_WRK (
       I32 in mmx, according to prevailing SSE rounding mode */
    /* 0F 2C = CVTTPS2PI -- convert 2 x F32 in mem/low half xmm to 2 x
       I32 in mmx, rounding towards zero */
-   if (sz == 4 && insn[0] == 0x0F && (insn[1] == 0x2D || insn[1] == 0x2C)) {
+   if (!has_66_pfx && insn[0] == 0x0F && (insn[1] == 0x2D || insn[1] == 0x2C)) {
       IRTemp dst64  = newTemp(Ity_I64);
       IRTemp rmode  = newTemp(Ity_I32);
       IRTemp f32lo  = newTemp(Ity_F32);
@@ -9142,7 +9145,7 @@ DisResult disInstr_X86_WRK (
       IRTemp rmode = newTemp(Ity_I32);
       IRTemp f32lo = newTemp(Ity_F32);
       Bool   r2zero = toBool(insn[2] == 0x2C);
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
 
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
@@ -9176,14 +9179,14 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 0F 5E = DIVPS -- div 32Fx4 from R/M to R */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x5E) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x5E) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "divps", Iop_Div32Fx4 );
       goto decode_success;
    }
 
    /* F3 0F 5E = DIVSS -- div 32F0x4 from R/M to R */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x5E) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_lo32( sorb, delta+3, "divss", Iop_Div32F0x4 );
       goto decode_success;
    }
@@ -9197,7 +9200,7 @@ DisResult disInstr_X86_WRK (
 
       modrm = getIByte(delta+2);
       vassert(!epartIsReg(modrm));
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
 
       addr = disAMode ( &alen, sorb, delta+2, dis_buf );
       delta += 2+alen;
@@ -9243,7 +9246,7 @@ DisResult disInstr_X86_WRK (
 
    /* ***--- this is an MMX class insn introduced in SSE1 ---*** */
    /* 0F F7 = MASKMOVQ -- 8x8 masked store */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xF7) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xF7) {
       Bool ok = False;
       delta = dis_MMX( &ok, sorb, sz, delta+1 );
       if (!ok)
@@ -9259,7 +9262,7 @@ DisResult disInstr_X86_WRK (
    */
    if (insn[0] == 0x0F && insn[1] == 0xE7) {
       modrm = getIByte(delta+2);
-      if (sz == 4 && !epartIsReg(modrm)) {
+      if (!has_66_pfx && !epartIsReg(modrm)) {
          /* do_MMX_preamble(); Intel docs don't specify this */
          addr = disAMode ( &alen, sorb, delta+2, dis_buf );
          storeLE( mkexpr(addr), getMMXReg(gregOfRM(modrm)) );
@@ -9273,7 +9276,7 @@ DisResult disInstr_X86_WRK (
 
    /* ***--- this is an MMX class insn introduced in SSE1 ---*** */
    /* 0F E0 = PAVGB -- 8x8 unsigned Packed Average, with rounding */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xE0) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xE0) {
       do_MMX_preamble();
       delta = dis_MMXop_regmem_to_reg ( 
                 sorb, delta+2, insn[1], "pavgb", False );
@@ -9282,7 +9285,7 @@ DisResult disInstr_X86_WRK (
 
    /* ***--- this is an MMX class insn introduced in SSE1 ---*** */
    /* 0F E3 = PAVGW -- 16x4 unsigned Packed Average, with rounding */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xE3) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xE3) {
       do_MMX_preamble();
       delta = dis_MMXop_regmem_to_reg ( 
                 sorb, delta+2, insn[1], "pavgw", False );
@@ -9294,7 +9297,7 @@ DisResult disInstr_X86_WRK (
       zero-extend of it in ireg(G). */
    if (insn[0] == 0x0F && insn[1] == 0xC5) {
       modrm = insn[2];
-      if (sz == 4 && epartIsReg(modrm)) {
+      if (!has_66_pfx && epartIsReg(modrm)) {
          IRTemp sV = newTemp(Ity_I64);
          t5 = newTemp(Ity_I16);
          do_MMX_preamble();
@@ -9320,7 +9323,7 @@ DisResult disInstr_X86_WRK (
    /* ***--- this is an MMX class insn introduced in SSE1 ---*** */
    /* 0F C4 = PINSRW -- get 16 bits from E(mem or low half ireg) and
       put it into the specified lane of mmx(G). */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xC4) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xC4) {
       /* Use t0 .. t3 to hold the 4 original 16-bit lanes of the
          mmx reg.  t4 is the new lane value.  t5 is the original
          mmx value. t6 is the new mmx value. */
@@ -9364,7 +9367,7 @@ DisResult disInstr_X86_WRK (
 
    /* ***--- this is an MMX class insn introduced in SSE1 ---*** */
    /* 0F EE = PMAXSW -- 16x4 signed max */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xEE) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xEE) {
       do_MMX_preamble();
       delta = dis_MMXop_regmem_to_reg ( 
                 sorb, delta+2, insn[1], "pmaxsw", False );
@@ -9373,7 +9376,7 @@ DisResult disInstr_X86_WRK (
 
    /* ***--- this is an MMX class insn introduced in SSE1 ---*** */
    /* 0F DE = PMAXUB -- 8x8 unsigned max */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xDE) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xDE) {
       do_MMX_preamble();
       delta = dis_MMXop_regmem_to_reg ( 
                 sorb, delta+2, insn[1], "pmaxub", False );
@@ -9382,7 +9385,7 @@ DisResult disInstr_X86_WRK (
 
    /* ***--- this is an MMX class insn introduced in SSE1 ---*** */
    /* 0F EA = PMINSW -- 16x4 signed min */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xEA) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xEA) {
       do_MMX_preamble();
       delta = dis_MMXop_regmem_to_reg ( 
                 sorb, delta+2, insn[1], "pminsw", False );
@@ -9391,7 +9394,7 @@ DisResult disInstr_X86_WRK (
 
    /* ***--- this is an MMX class insn introduced in SSE1 ---*** */
    /* 0F DA = PMINUB -- 8x8 unsigned min */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xDA) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xDA) {
       do_MMX_preamble();
       delta = dis_MMXop_regmem_to_reg ( 
                 sorb, delta+2, insn[1], "pminub", False );
@@ -9402,7 +9405,7 @@ DisResult disInstr_X86_WRK (
    /* 0F D7 = PMOVMSKB -- extract sign bits from each of 8 lanes in
       mmx(E), turn them into a byte, and put zero-extend of it in
       ireg(G). */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xD7) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xD7) {
       modrm = insn[2];
       if (epartIsReg(modrm)) {
          do_MMX_preamble();
@@ -9421,7 +9424,7 @@ DisResult disInstr_X86_WRK (
 
    /* ***--- this is an MMX class insn introduced in SSE1 ---*** */
    /* 0F E4 = PMULUH -- 16x4 hi-half of unsigned widening multiply */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xE4) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xE4) {
       do_MMX_preamble();
       delta = dis_MMXop_regmem_to_reg ( 
                 sorb, delta+2, insn[1], "pmuluh", False );
@@ -9480,7 +9483,7 @@ DisResult disInstr_X86_WRK (
 
    /* ***--- this is an MMX class insn introduced in SSE1 ---*** */
    /* 0F F6 = PSADBW -- sum of 8Ux8 absolute differences */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xF6) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xF6) {
       do_MMX_preamble();
       delta = dis_MMXop_regmem_to_reg ( 
                  sorb, delta+2, insn[1], "psadbw", False );
@@ -9489,7 +9492,7 @@ DisResult disInstr_X86_WRK (
 
    /* ***--- this is an MMX class insn introduced in SSE1 ---*** */
    /* 0F 70 = PSHUFW -- rearrange 4x16 from E(mmx or mem) to G(mmx) */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x70) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x70) {
       Int order;
       IRTemp sV, dV, s3, s2, s1, s0;
       s3 = s2 = s1 = s0 = IRTemp_INVALID;
@@ -9529,7 +9532,7 @@ DisResult disInstr_X86_WRK (
    /* 0F AE /7 = SFENCE -- flush pending operations to memory */
    if (insn[0] == 0x0F && insn[1] == 0xAE
        && epartIsReg(insn[2]) && gregOfRM(insn[2]) == 7) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta += 3;
       /* Insert a memory fence.  It's sometimes important that these
          are carried through to the generated code. */
@@ -9544,34 +9547,34 @@ DisResult disInstr_X86_WRK (
 
 
    /* 0F 5F = MAXPS -- max 32Fx4 from R/M to R */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x5F) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x5F) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "maxps", Iop_Max32Fx4 );
       goto decode_success;
    }
 
    /* F3 0F 5F = MAXSS -- max 32F0x4 from R/M to R */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x5F) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_lo32( sorb, delta+3, "maxss", Iop_Max32F0x4 );
       goto decode_success;
    }
 
    /* 0F 5D = MINPS -- min 32Fx4 from R/M to R */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x5D) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x5D) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "minps", Iop_Min32Fx4 );
       goto decode_success;
    }
 
    /* F3 0F 5D = MINSS -- min 32F0x4 from R/M to R */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x5D) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_lo32( sorb, delta+3, "minss", Iop_Min32F0x4 );
       goto decode_success;
    }
 
    /* 0F 28 = MOVAPS -- move from E (mem or xmm) to G (xmm). */
    /* 0F 10 = MOVUPS -- move from E (mem or xmm) to G (xmm). */
-   if (sz == 4 && insn[0] == 0x0F && (insn[1] == 0x28 || insn[1] == 0x10)) {
+   if (!has_66_pfx && insn[0] == 0x0F && (insn[1] == 0x28 || insn[1] == 0x10)) {
       modrm = getIByte(delta+2);
       if (epartIsReg(modrm)) {
          putXMMReg( gregOfRM(modrm), 
@@ -9594,7 +9597,7 @@ DisResult disInstr_X86_WRK (
 
    /* 0F 29 = MOVAPS -- move from G (xmm) to E (mem or xmm). */
    /* 0F 11 = MOVUPS -- move from G (xmm) to E (mem or xmm). */
-   if (sz == 4 && insn[0] == 0x0F 
+   if (!has_66_pfx && insn[0] == 0x0F 
        && (insn[1] == 0x29 || insn[1] == 0x11)) {
       modrm = getIByte(delta+2);
       if (epartIsReg(modrm)) {
@@ -9613,7 +9616,7 @@ DisResult disInstr_X86_WRK (
 
    /* 0F 16 = MOVHPS -- move from mem to high half of XMM. */
    /* 0F 16 = MOVLHPS -- move from lo half to hi half of XMM. */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x16) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x16) {
       modrm = getIByte(delta+2);
       if (epartIsReg(modrm)) {
          delta += 2+1;
@@ -9633,7 +9636,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 0F 17 = MOVHPS -- move from high half of XMM to mem. */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x17) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x17) {
       if (!epartIsReg(insn[2])) {
          delta += 2;
          addr = disAMode ( &alen, sorb, delta, dis_buf );
@@ -9650,7 +9653,7 @@ DisResult disInstr_X86_WRK (
 
    /* 0F 12 = MOVLPS -- move from mem to low half of XMM. */
    /* OF 12 = MOVHLPS -- from from hi half to lo half of XMM. */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x12) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x12) {
       modrm = getIByte(delta+2);
       if (epartIsReg(modrm)) {
          delta += 2+1;
@@ -9671,7 +9674,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 0F 13 = MOVLPS -- move from low half of XMM to mem. */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x13) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x13) {
       if (!epartIsReg(insn[2])) {
          delta += 2;
          addr = disAMode ( &alen, sorb, delta, dis_buf );
@@ -9690,7 +9693,7 @@ DisResult disInstr_X86_WRK (
       to 4 lowest bits of ireg(G) */
    if (insn[0] == 0x0F && insn[1] == 0x50) {
       modrm = getIByte(delta+2);
-      if (sz == 4 && epartIsReg(modrm)) {
+      if (!has_66_pfx && epartIsReg(modrm)) {
          Int src;
          t0 = newTemp(Ity_I32);
          t1 = newTemp(Ity_I32);
@@ -9743,7 +9746,7 @@ DisResult disInstr_X86_WRK (
    /* F3 0F 10 = MOVSS -- move 32 bits from E (mem or lo 1/4 xmm) to G
       (lo 1/4 xmm).  If E is mem, upper 3/4 of G is zeroed out. */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x10) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
          putXMMRegLane32( gregOfRM(modrm), 0,
@@ -9770,7 +9773,7 @@ DisResult disInstr_X86_WRK (
    /* F3 0F 11 = MOVSS -- move 32 bits from G (lo 1/4 xmm) to E (mem
       or lo 1/4 xmm). */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x11) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
          /* fall through, we don't yet have a test case */
@@ -9786,27 +9789,27 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 0F 59 = MULPS -- mul 32Fx4 from R/M to R */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x59) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x59) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "mulps", Iop_Mul32Fx4 );
       goto decode_success;
    }
 
    /* F3 0F 59 = MULSS -- mul 32F0x4 from R/M to R */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x59) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_lo32( sorb, delta+3, "mulss", Iop_Mul32F0x4 );
       goto decode_success;
    }
 
    /* 0F 56 = ORPS -- G = G and E */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x56) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x56) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "orps", Iop_OrV128 );
       goto decode_success;
    }
 
    /* 0F 53 = RCPPS -- approx reciprocal 32Fx4 from R/M to R */
    if (insn[0] == 0x0F && insn[1] == 0x53) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_unary_all( sorb, delta+2, 
                                         "rcpps", Iop_RecipEst32Fx4 );
       goto decode_success;
@@ -9814,7 +9817,7 @@ DisResult disInstr_X86_WRK (
 
    /* F3 0F 53 = RCPSS -- approx reciprocal 32F0x4 from R/M to R */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x53) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_unary_lo32( sorb, delta+3, 
                                          "rcpss", Iop_RecipEst32F0x4 );
       goto decode_success;
@@ -9822,7 +9825,7 @@ DisResult disInstr_X86_WRK (
 
    /* 0F 52 = RSQRTPS -- approx reciprocal sqrt 32Fx4 from R/M to R */
    if (insn[0] == 0x0F && insn[1] == 0x52) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_unary_all( sorb, delta+2, 
                                         "rsqrtps", Iop_RSqrtEst32Fx4 );
       goto decode_success;
@@ -9830,14 +9833,14 @@ DisResult disInstr_X86_WRK (
 
    /* F3 0F 52 = RSQRTSS -- approx reciprocal sqrt 32F0x4 from R/M to R */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x52) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_unary_lo32( sorb, delta+3, 
                                          "rsqrtss", Iop_RSqrtEst32F0x4 );
       goto decode_success;
    }
 
    /* 0F C6 /r ib = SHUFPS -- shuffle packed F32s */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xC6) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xC6) {
       Int    select;
       IRTemp sV, dV;
       IRTemp s3, s2, s1, s0, d3, d2, d1, d0;
@@ -9883,7 +9886,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 0F 51 = SQRTPS -- approx sqrt 32Fx4 from R/M to R */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x51) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x51) {
       delta = dis_SSE_E_to_G_unary_all( sorb, delta+2, 
                                         "sqrtps", Iop_Sqrt32Fx4 );
       goto decode_success;
@@ -9891,7 +9894,7 @@ DisResult disInstr_X86_WRK (
 
    /* F3 0F 51 = SQRTSS -- approx sqrt 32F0x4 from R/M to R */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x51) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_unary_lo32( sorb, delta+3, 
                                          "sqrtss", Iop_Sqrt32F0x4 );
       goto decode_success;
@@ -9901,7 +9904,7 @@ DisResult disInstr_X86_WRK (
    if (insn[0] == 0x0F && insn[1] == 0xAE
        && !epartIsReg(insn[2]) && gregOfRM(insn[2]) == 3) {
       modrm = getIByte(delta+2);
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       vassert(!epartIsReg(modrm));
 
       addr = disAMode ( &alen, sorb, delta+2, dis_buf );
@@ -9923,14 +9926,14 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 0F 5C = SUBPS -- sub 32Fx4 from R/M to R */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x5C) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x5C) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "subps", Iop_Sub32Fx4 );
       goto decode_success;
    }
 
    /* F3 0F 5C = SUBSS -- sub 32F0x4 from R/M to R */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x5C) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_lo32( sorb, delta+3, "subss", Iop_Sub32F0x4 );
       goto decode_success;
    }
@@ -9938,7 +9941,7 @@ DisResult disInstr_X86_WRK (
    /* 0F 15 = UNPCKHPS -- unpack and interleave high part F32s */
    /* 0F 14 = UNPCKLPS -- unpack and interleave low part F32s */
    /* These just appear to be special cases of SHUFPS */
-   if (sz == 4 && insn[0] == 0x0F && (insn[1] == 0x15 || insn[1] == 0x14)) {
+   if (!has_66_pfx && insn[0] == 0x0F && (insn[1] == 0x15 || insn[1] == 0x14)) {
       IRTemp sV, dV;
       IRTemp s3, s2, s1, s0, d3, d2, d1, d0;
       Bool hi = toBool(insn[1] == 0x15);
@@ -9976,7 +9979,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 0F 57 = XORPS -- G = G and E */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x57) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x57) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "xorps", Iop_XorV128 );
       goto decode_success;
    }
@@ -9997,46 +10000,46 @@ DisResult disInstr_X86_WRK (
    insn = &guest_code[delta];
 
    /* 66 0F 58 = ADDPD -- add 32Fx4 from R/M to R */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x58) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x58) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "addpd", Iop_Add64Fx2 );
       goto decode_success;
    }
  
    /* F2 0F 58 = ADDSD -- add 64F0x2 from R/M to R */
    if (insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0x58) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_lo64( sorb, delta+3, "addsd", Iop_Add64F0x2 );
       goto decode_success;
    }
 
    /* 66 0F 55 = ANDNPD -- G = (not G) and E */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x55) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x55) {
       delta = dis_SSE_E_to_G_all_invG( sorb, delta+2, "andnpd", Iop_AndV128 );
       goto decode_success;
    }
 
    /* 66 0F 54 = ANDPD -- G = G and E */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x54) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x54) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "andpd", Iop_AndV128 );
       goto decode_success;
    }
 
    /* 66 0F C2 = CMPPD -- 64Fx2 comparison from R/M to R */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xC2) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xC2) {
       delta = dis_SSEcmp_E_to_G( sorb, delta+2, "cmppd", True, 8 );
       goto decode_success;
    }
 
    /* F2 0F C2 = CMPSD -- 64F0x2 comparison from R/M to R */
    if (insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0xC2) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSEcmp_E_to_G( sorb, delta+3, "cmpsd", False, 8 );
       goto decode_success;
    }
 
    /* 66 0F 2F = COMISD  -- 64F0x2 comparison G,E, and set ZCP */
    /* 66 0F 2E = UCOMISD -- 64F0x2 comparison G,E, and set ZCP */
-   if (sz == 2 && insn[0] == 0x0F && (insn[1] == 0x2F || insn[1] == 0x2E)) {
+   if (has_66_pfx && insn[0] == 0x0F && (insn[1] == 0x2F || insn[1] == 0x2E)) {
       IRTemp argL = newTemp(Ity_F64);
       IRTemp argR = newTemp(Ity_F64);
       modrm = getIByte(delta+2);
@@ -10072,7 +10075,7 @@ DisResult disInstr_X86_WRK (
       F64 in xmm(G) */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0xE6) {
       IRTemp arg64 = newTemp(Ity_I64);
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
 
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
@@ -10103,7 +10106,7 @@ DisResult disInstr_X86_WRK (
 
    /* 0F 5B = CVTDQ2PS -- convert 4 x I32 in mem/xmm to 4 x F32 in
       xmm(G) */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x5B) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x5B) {
       IRTemp argV  = newTemp(Ity_V128);
       IRTemp rmode = newTemp(Ity_I32);
 
@@ -10143,7 +10146,7 @@ DisResult disInstr_X86_WRK (
    if (insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0xE6) {
       IRTemp argV  = newTemp(Ity_V128);
       IRTemp rmode = newTemp(Ity_I32);
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
 
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
@@ -10185,7 +10188,7 @@ DisResult disInstr_X86_WRK (
       I32 in mmx, according to prevailing SSE rounding mode */
    /* 66 0F 2C = CVTTPD2PI -- convert 2 x F64 in mem/xmm to 2 x
       I32 in mmx, rounding towards zero */
-   if (sz == 2 && insn[0] == 0x0F && (insn[1] == 0x2D || insn[1] == 0x2C)) {
+   if (has_66_pfx && insn[0] == 0x0F && (insn[1] == 0x2D || insn[1] == 0x2C)) {
       IRTemp dst64  = newTemp(Ity_I64);
       IRTemp rmode  = newTemp(Ity_I32);
       IRTemp f64lo  = newTemp(Ity_F64);
@@ -10237,7 +10240,7 @@ DisResult disInstr_X86_WRK (
    /* Note, this is practically identical to CVTPD2DQ.  It would have
       been nicer to merge them together, but the insn[] offsets differ
       by one. */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x5A) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x5A) {
       IRTemp argV  = newTemp(Ity_V128);
       IRTemp rmode = newTemp(Ity_I32);
 
@@ -10279,7 +10282,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F 2A = CVTPI2PD -- convert 2 x I32 in mem/mmx to 2 x F64 in
       xmm(G) */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x2A) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x2A) {
       IRTemp arg64 = newTemp(Ity_I64);
 
       modrm = getIByte(delta+2);
@@ -10318,7 +10321,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F 5B = CVTPS2DQ -- convert 4 x F32 in mem/xmm to 4 x I32 in
       xmm(G) */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x5B) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x5B) {
       IRTemp argV  = newTemp(Ity_V128);
       IRTemp rmode = newTemp(Ity_I32);
 
@@ -10359,7 +10362,7 @@ DisResult disInstr_X86_WRK (
 
    /* 0F 5A = CVTPS2PD -- convert 2 x F32 in low half mem/xmm to 2 x
       F64 in xmm(G). */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0x5A) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0x5A) {
       IRTemp f32lo = newTemp(Ity_F32);
       IRTemp f32hi = newTemp(Ity_F32);
 
@@ -10397,7 +10400,7 @@ DisResult disInstr_X86_WRK (
       IRTemp rmode = newTemp(Ity_I32);
       IRTemp f64lo = newTemp(Ity_F64);
       Bool   r2zero = toBool(insn[2] == 0x2C);
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
 
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
@@ -10432,7 +10435,7 @@ DisResult disInstr_X86_WRK (
    if (insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0x5A) {
       IRTemp rmode = newTemp(Ity_I32);
       IRTemp f64lo = newTemp(Ity_F64);
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
 
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
@@ -10461,7 +10464,7 @@ DisResult disInstr_X86_WRK (
       half xmm */
    if (insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0x2A) {
       IRTemp arg32 = newTemp(Ity_I32);
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
 
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
@@ -10488,7 +10491,7 @@ DisResult disInstr_X86_WRK (
       low half xmm(G) */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x5A) {
       IRTemp f32lo = newTemp(Ity_F32);
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
 
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
@@ -10512,7 +10515,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F E6 = CVTTPD2DQ -- convert 2 x F64 in mem/xmm to 2 x I32 in
       lo half xmm(G), and zero upper half, rounding towards zero */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xE6) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xE6) {
       IRTemp argV  = newTemp(Ity_V128);
       IRTemp rmode = newTemp(Ity_I32);
 
@@ -10558,7 +10561,7 @@ DisResult disInstr_X86_WRK (
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x5B) {
       IRTemp argV  = newTemp(Ity_V128);
       IRTemp rmode = newTemp(Ity_I32);
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
 
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
@@ -10596,14 +10599,14 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 5E = DIVPD -- div 64Fx2 from R/M to R */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x5E) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x5E) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "divpd", Iop_Div64Fx2 );
       goto decode_success;
    }
 
    /* F2 0F 5E = DIVSD -- div 64F0x2 from R/M to R */
    if (insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0x5E) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_lo64( sorb, delta+3, "divsd", Iop_Div64F0x2 );
       goto decode_success;
    }
@@ -10613,7 +10616,7 @@ DisResult disInstr_X86_WRK (
    if (insn[0] == 0x0F && insn[1] == 0xAE
        && epartIsReg(insn[2]) 
        && (gregOfRM(insn[2]) == 5 || gregOfRM(insn[2]) == 6)) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta += 3;
       /* Insert a memory fence.  It's sometimes important that these
          are carried through to the generated code. */
@@ -10623,27 +10626,27 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 5F = MAXPD -- max 64Fx2 from R/M to R */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x5F) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x5F) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "maxpd", Iop_Max64Fx2 );
       goto decode_success;
    }
 
    /* F2 0F 5F = MAXSD -- max 64F0x2 from R/M to R */
    if (insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0x5F) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_lo64( sorb, delta+3, "maxsd", Iop_Max64F0x2 );
       goto decode_success;
    }
 
    /* 66 0F 5D = MINPD -- min 64Fx2 from R/M to R */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x5D) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x5D) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "minpd", Iop_Min64Fx2 );
       goto decode_success;
    }
 
    /* F2 0F 5D = MINSD -- min 64F0x2 from R/M to R */
    if (insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0x5D) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_lo64( sorb, delta+3, "minsd", Iop_Min64F0x2 );
       goto decode_success;
    }
@@ -10651,7 +10654,7 @@ DisResult disInstr_X86_WRK (
    /* 66 0F 28 = MOVAPD -- move from E (mem or xmm) to G (xmm). */
    /* 66 0F 10 = MOVUPD -- move from E (mem or xmm) to G (xmm). */
    /* 66 0F 6F = MOVDQA -- move from E (mem or xmm) to G (xmm). */
-   if (sz == 2 && insn[0] == 0x0F 
+   if (has_66_pfx && insn[0] == 0x0F 
        && (insn[1] == 0x28 || insn[1] == 0x10 || insn[1] == 0x6F)) {
       const HChar* wot = insn[1]==0x28 ? "apd" :
                          insn[1]==0x10 ? "upd" : "dqa";
@@ -10677,7 +10680,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F 29 = MOVAPD -- move from G (xmm) to E (mem or xmm). */
    /* 66 0F 11 = MOVUPD -- move from G (xmm) to E (mem or xmm). */
-   if (sz == 2 && insn[0] == 0x0F 
+   if (has_66_pfx && insn[0] == 0x0F 
        && (insn[1] == 0x29 || insn[1] == 0x11)) {
       const HChar* wot = insn[1]==0x29 ? "apd" : "upd";
       modrm = getIByte(delta+2);
@@ -10696,7 +10699,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 6E = MOVD from r/m32 to xmm, zeroing high 3/4 of xmm. */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x6E) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x6E) {
       modrm = getIByte(delta+2);
       if (epartIsReg(modrm)) {
          delta += 2+1;
@@ -10719,7 +10722,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 7E = MOVD from xmm low 1/4 to r/m32. */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x7E) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x7E) {
       modrm = getIByte(delta+2);
       if (epartIsReg(modrm)) {
          delta += 2+1;
@@ -10738,7 +10741,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 7F = MOVDQA -- move from G (xmm) to E (mem or xmm). */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x7F) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x7F) {
       modrm = getIByte(delta+2);
       if (epartIsReg(modrm)) {
          delta += 2+1;
@@ -10760,7 +10763,7 @@ DisResult disInstr_X86_WRK (
    /* Unfortunately can't simply use the MOVDQA case since the
       prefix lengths are different (66 vs F3) */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x6F) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
          putXMMReg( gregOfRM(modrm), 
@@ -10783,7 +10786,7 @@ DisResult disInstr_X86_WRK (
    /* Unfortunately can't simply use the MOVDQA case since the
       prefix lengths are different (66 vs F3) */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x7F) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
          delta += 3+1;
@@ -10802,7 +10805,7 @@ DisResult disInstr_X86_WRK (
 
    /* F2 0F D6 = MOVDQ2Q -- move from E (lo half xmm, not mem) to G (mmx). */
    if (insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0xD6) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
          do_MMX_preamble();
@@ -10820,7 +10823,7 @@ DisResult disInstr_X86_WRK (
    /* 66 0F 16 = MOVHPD -- move from mem to high half of XMM. */
    /* These seems identical to MOVHPS.  This instruction encoding is
       completely crazy. */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x16) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x16) {
       modrm = getIByte(delta+2);
       if (epartIsReg(modrm)) {
          /* fall through; apparently reg-reg is not possible */
@@ -10837,7 +10840,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F 17 = MOVHPD -- move from high half of XMM to mem. */
    /* Again, this seems identical to MOVHPS. */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x17) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x17) {
       if (!epartIsReg(insn[2])) {
          delta += 2;
          addr = disAMode ( &alen, sorb, delta, dis_buf );
@@ -10854,7 +10857,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F 12 = MOVLPD -- move from mem to low half of XMM. */
    /* Identical to MOVLPS ? */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x12) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x12) {
       modrm = getIByte(delta+2);
       if (epartIsReg(modrm)) {
          /* fall through; apparently reg-reg is not possible */
@@ -10871,7 +10874,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F 13 = MOVLPD -- move from low half of XMM to mem. */
    /* Identical to MOVLPS ? */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x13) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x13) {
       if (!epartIsReg(insn[2])) {
          delta += 2;
          addr = disAMode ( &alen, sorb, delta, dis_buf );
@@ -10890,7 +10893,7 @@ DisResult disInstr_X86_WRK (
       2 lowest bits of ireg(G) */
    if (insn[0] == 0x0F && insn[1] == 0x50) {
       modrm = getIByte(delta+2);
-      if (sz == 2 && epartIsReg(modrm)) {
+      if (has_66_pfx && epartIsReg(modrm)) {
          Int src;
          t0 = newTemp(Ity_I32);
          t1 = newTemp(Ity_I32);
@@ -10915,7 +10918,7 @@ DisResult disInstr_X86_WRK (
    /* 66 0F F7 = MASKMOVDQU -- store selected bytes of double quadword */
    if (insn[0] == 0x0F && insn[1] == 0xF7) {
       modrm = getIByte(delta+2);
-      if (sz == 2 && epartIsReg(modrm)) {
+      if (has_66_pfx && epartIsReg(modrm)) {
          IRTemp regD    = newTemp(Ity_V128);
          IRTemp mask    = newTemp(Ity_V128);
          IRTemp olddata = newTemp(Ity_V128);
@@ -10959,7 +10962,7 @@ DisResult disInstr_X86_WRK (
    /* 66 0F E7 = MOVNTDQ -- for us, just a plain SSE store. */
    if (insn[0] == 0x0F && insn[1] == 0xE7) {
       modrm = getIByte(delta+2);
-      if (sz == 2 && !epartIsReg(modrm)) {
+      if (has_66_pfx && !epartIsReg(modrm)) {
          addr = disAMode ( &alen, sorb, delta+2, dis_buf );
          gen_SEGV_if_not_16_aligned( addr );
          storeLE( mkexpr(addr), getXMMReg(gregOfRM(modrm)) );
@@ -10973,7 +10976,7 @@ DisResult disInstr_X86_WRK (
 
    /* 0F C3 = MOVNTI -- for us, just a plain ireg store. */
    if (insn[0] == 0x0F && insn[1] == 0xC3) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       modrm = getIByte(delta+2);
       if (!epartIsReg(modrm)) {
          addr = disAMode ( &alen, sorb, delta+2, dis_buf );
@@ -10988,7 +10991,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F D6 = MOVQ -- move 64 bits from G (lo half xmm) to E (mem
       or lo half xmm).  */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xD6) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xD6) {
       modrm = getIByte(delta+2);
       if (epartIsReg(modrm)) {
          /* fall through, awaiting test case */
@@ -11006,7 +11009,7 @@ DisResult disInstr_X86_WRK (
    /* F3 0F D6 = MOVQ2DQ -- move from E (mmx) to G (lo half xmm, zero
       hi half). */
    if (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0xD6) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
          do_MMX_preamble();
@@ -11028,7 +11031,7 @@ DisResult disInstr_X86_WRK (
       If E is reg, upper half of G is unchanged. */
    if ((insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0x10)
        || (insn[0] == 0xF3 && insn[1] == 0x0F && insn[2] == 0x7E)) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
          putXMMRegLane64( gregOfRM(modrm), 0,
@@ -11057,7 +11060,7 @@ DisResult disInstr_X86_WRK (
    /* F2 0F 11 = MOVSD -- move 64 bits from G (lo half xmm) to E (mem
       or lo half xmm). */
    if (insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0x11) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
          putXMMRegLane64( eregOfRM(modrm), 0,
@@ -11077,26 +11080,26 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 59 = MULPD -- mul 64Fx2 from R/M to R */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x59) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x59) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "mulpd", Iop_Mul64Fx2 );
       goto decode_success;
    }
 
    /* F2 0F 59 = MULSD -- mul 64F0x2 from R/M to R */
    if (insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0x59) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_lo64( sorb, delta+3, "mulsd", Iop_Mul64F0x2 );
       goto decode_success;
    }
 
    /* 66 0F 56 = ORPD -- G = G and E */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x56) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x56) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "orpd", Iop_OrV128 );
       goto decode_success;
    }
 
    /* 66 0F C6 /r ib = SHUFPD -- shuffle packed F64s */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xC6) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xC6) {
       Int    select;
       IRTemp sV = newTemp(Ity_V128);
       IRTemp dV = newTemp(Ity_V128);
@@ -11145,7 +11148,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 51 = SQRTPD -- approx sqrt 64Fx2 from R/M to R */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x51) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x51) {
       delta = dis_SSE_E_to_G_unary_all( sorb, delta+2, 
                                         "sqrtpd", Iop_Sqrt64Fx2 );
       goto decode_success;
@@ -11153,21 +11156,21 @@ DisResult disInstr_X86_WRK (
 
    /* F2 0F 51 = SQRTSD -- approx sqrt 64F0x2 from R/M to R */
    if (insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0x51) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_unary_lo64( sorb, delta+3, 
                                          "sqrtsd", Iop_Sqrt64F0x2 );
       goto decode_success;
    }
 
    /* 66 0F 5C = SUBPD -- sub 64Fx2 from R/M to R */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x5C) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x5C) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "subpd", Iop_Sub64Fx2 );
       goto decode_success;
    }
 
    /* F2 0F 5C = SUBSD -- sub 64F0x2 from R/M to R */
    if (insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0x5C) {
-      vassert(sz == 4);
+      vassert(!has_66_pfx);
       delta = dis_SSE_E_to_G_lo64( sorb, delta+3, "subsd", Iop_Sub64F0x2 );
       goto decode_success;
    }
@@ -11175,7 +11178,7 @@ DisResult disInstr_X86_WRK (
    /* 66 0F 15 = UNPCKHPD -- unpack and interleave high part F64s */
    /* 66 0F 14 = UNPCKLPD -- unpack and interleave low part F64s */
    /* These just appear to be special cases of SHUFPS */
-   if (sz == 2 && insn[0] == 0x0F && (insn[1] == 0x15 || insn[1] == 0x14)) {
+   if (has_66_pfx && insn[0] == 0x0F && (insn[1] == 0x15 || insn[1] == 0x14)) {
       IRTemp s1 = newTemp(Ity_I64);
       IRTemp s0 = newTemp(Ity_I64);
       IRTemp d1 = newTemp(Ity_I64);
@@ -11219,13 +11222,13 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 57 = XORPD -- G = G and E */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x57) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x57) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "xorpd", Iop_XorV128 );
       goto decode_success;
    }
 
    /* 66 0F 6B = PACKSSDW */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x6B) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x6B) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "packssdw",
                                  Iop_QNarrowBin32Sto16Sx8, True );
@@ -11233,7 +11236,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 63 = PACKSSWB */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x63) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x63) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "packsswb",
                                  Iop_QNarrowBin16Sto8Sx16, True );
@@ -11241,7 +11244,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 67 = PACKUSWB */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x67) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x67) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "packuswb",
                                  Iop_QNarrowBin16Sto8Ux16, True );
@@ -11249,14 +11252,14 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F FC = PADDB */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xFC) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xFC) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "paddb", Iop_Add8x16, False );
       goto decode_success;
    }
 
    /* 66 0F FE = PADDD */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xFE) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xFE) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "paddd", Iop_Add32x4, False );
       goto decode_success;
@@ -11264,7 +11267,7 @@ DisResult disInstr_X86_WRK (
 
    /* ***--- this is an MMX class insn introduced in SSE2 ---*** */
    /* 0F D4 = PADDQ -- add 64x1 */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xD4) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xD4) {
       do_MMX_preamble();
       delta = dis_MMXop_regmem_to_reg ( 
                 sorb, delta+2, insn[1], "paddq", False );
@@ -11272,110 +11275,110 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F D4 = PADDQ */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xD4) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xD4) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "paddq", Iop_Add64x2, False );
       goto decode_success;
    }
 
    /* 66 0F FD = PADDW */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xFD) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xFD) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "paddw", Iop_Add16x8, False );
       goto decode_success;
    }
 
    /* 66 0F EC = PADDSB */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xEC) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xEC) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "paddsb", Iop_QAdd8Sx16, False );
       goto decode_success;
    }
 
    /* 66 0F ED = PADDSW */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xED) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xED) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "paddsw", Iop_QAdd16Sx8, False );
       goto decode_success;
    }
 
    /* 66 0F DC = PADDUSB */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xDC) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xDC) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "paddusb", Iop_QAdd8Ux16, False );
       goto decode_success;
    }
 
    /* 66 0F DD = PADDUSW */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xDD) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xDD) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "paddusw", Iop_QAdd16Ux8, False );
       goto decode_success;
    }
 
    /* 66 0F DB = PAND */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xDB) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xDB) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "pand", Iop_AndV128 );
       goto decode_success;
    }
 
    /* 66 0F DF = PANDN */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xDF) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xDF) {
       delta = dis_SSE_E_to_G_all_invG( sorb, delta+2, "pandn", Iop_AndV128 );
       goto decode_success;
    }
 
    /* 66 0F E0 = PAVGB */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xE0) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xE0) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "pavgb", Iop_Avg8Ux16, False );
       goto decode_success;
    }
 
    /* 66 0F E3 = PAVGW */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xE3) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xE3) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "pavgw", Iop_Avg16Ux8, False );
       goto decode_success;
    }
 
    /* 66 0F 74 = PCMPEQB */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x74) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x74) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "pcmpeqb", Iop_CmpEQ8x16, False );
       goto decode_success;
    }
 
    /* 66 0F 76 = PCMPEQD */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x76) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x76) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "pcmpeqd", Iop_CmpEQ32x4, False );
       goto decode_success;
    }
 
    /* 66 0F 75 = PCMPEQW */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x75) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x75) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "pcmpeqw", Iop_CmpEQ16x8, False );
       goto decode_success;
    }
 
    /* 66 0F 64 = PCMPGTB */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x64) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x64) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "pcmpgtb", Iop_CmpGT8Sx16, False );
       goto decode_success;
    }
 
    /* 66 0F 66 = PCMPGTD */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x66) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x66) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "pcmpgtd", Iop_CmpGT32Sx4, False );
       goto decode_success;
    }
 
    /* 66 0F 65 = PCMPGTW */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x65) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x65) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "pcmpgtw", Iop_CmpGT16Sx8, False );
       goto decode_success;
@@ -11385,7 +11388,7 @@ DisResult disInstr_X86_WRK (
       zero-extend of it in ireg(G). */
    if (insn[0] == 0x0F && insn[1] == 0xC5) {
       modrm = insn[2];
-      if (sz == 2 && epartIsReg(modrm)) {
+      if (has_66_pfx && epartIsReg(modrm)) {
          t5 = newTemp(Ity_V128);
          t4 = newTemp(Ity_I16);
          assign(t5, getXMMReg(eregOfRM(modrm)));
@@ -11413,7 +11416,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F C4 = PINSRW -- get 16 bits from E(mem or low half ireg) and
       put it into the specified lane of xmm(G). */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xC4) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xC4) {
       Int lane;
       t4 = newTemp(Ity_I16);
       modrm = insn[2];
@@ -11441,7 +11444,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F F5 = PMADDWD -- Multiply and add packed integers from
       E(xmm or mem) to G(xmm) */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xF5) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xF5) {
       IRTemp s1V  = newTemp(Ity_V128);
       IRTemp s2V  = newTemp(Ity_V128);
       IRTemp dV   = newTemp(Ity_V128);
@@ -11487,28 +11490,28 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F EE = PMAXSW -- 16x8 signed max */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xEE) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xEE) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "pmaxsw", Iop_Max16Sx8, False );
       goto decode_success;
    }
 
    /* 66 0F DE = PMAXUB -- 8x16 unsigned max */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xDE) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xDE) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "pmaxub", Iop_Max8Ux16, False );
       goto decode_success;
    }
 
    /* 66 0F EA = PMINSW -- 16x8 signed min */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xEA) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xEA) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "pminsw", Iop_Min16Sx8, False );
       goto decode_success;
    }
 
    /* 66 0F DA = PMINUB -- 8x16 unsigned min */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xDA) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xDA) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "pminub", Iop_Min8Ux16, False );
       goto decode_success;
@@ -11517,7 +11520,7 @@ DisResult disInstr_X86_WRK (
    /* 66 0F D7 = PMOVMSKB -- extract sign bits from each of 16 lanes
       in xmm(E), turn them into a byte, and put zero-extend of it in
       ireg(G). */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xD7) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xD7) {
       modrm = insn[2];
       if (epartIsReg(modrm)) {
          t0 = newTemp(Ity_I64);
@@ -11540,21 +11543,21 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F E4 = PMULHUW -- 16x8 hi-half of unsigned widening multiply */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xE4) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xE4) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "pmulhuw", Iop_MulHi16Ux8, False );
       goto decode_success;
    }
 
    /* 66 0F E5 = PMULHW -- 16x8 hi-half of signed widening multiply */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xE5) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xE5) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "pmulhw", Iop_MulHi16Sx8, False );
       goto decode_success;
    }
 
    /* 66 0F D5 = PMULHL -- 16x8 multiply */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xD5) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xD5) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "pmullw", Iop_Mul16x8, False );
       goto decode_success;
@@ -11563,7 +11566,7 @@ DisResult disInstr_X86_WRK (
    /* ***--- this is an MMX class insn introduced in SSE2 ---*** */
    /* 0F F4 = PMULUDQ -- unsigned widening multiply of 32-lanes 0 x
       0 to form 64-bit result */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xF4) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xF4) {
       IRTemp sV = newTemp(Ity_I64);
       IRTemp dV = newTemp(Ity_I64);
       t1 = newTemp(Ity_I32);
@@ -11598,7 +11601,7 @@ DisResult disInstr_X86_WRK (
       half */
    /* This is a really poor translation -- could be improved if
       performance critical */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xF4) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xF4) {
       IRTemp sV, dV;
       IRTemp s3, s2, s1, s0, d3, d2, d1, d0;
       sV = newTemp(Ity_V128);
@@ -11633,14 +11636,14 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F EB = POR */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xEB) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xEB) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "por", Iop_OrV128 );
       goto decode_success;
    }
 
    /* 66 0F F6 = PSADBW -- 2 x (8x8 -> 48 zeroes ++ u16) Sum Abs Diffs
       from E(xmm or mem) to G(xmm) */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xF6) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xF6) {
       IRTemp s1V  = newTemp(Ity_V128);
       IRTemp s2V  = newTemp(Ity_V128);
       IRTemp dV   = newTemp(Ity_V128);
@@ -11686,7 +11689,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 70 = PSHUFD -- rearrange 4x32 from E(xmm or mem) to G(xmm) */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x70) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x70) {
       Int order;
       IRTemp sV, dV, s3, s2, s1, s0;
       s3 = s2 = s1 = s0 = IRTemp_INVALID;
@@ -11811,7 +11814,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 72 /6 ib = PSLLD by immediate */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x72
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x72
        && epartIsReg(insn[2])
        && gregOfRM(insn[2]) == 6) {
       delta = dis_SSE_shiftE_imm( delta+2, "pslld", Iop_ShlN32x4 );
@@ -11819,13 +11822,13 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F F2 = PSLLD by E */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xF2) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xF2) {
       delta = dis_SSE_shiftG_byE( sorb, delta+2, "pslld", Iop_ShlN32x4 );
       goto decode_success;
    }
 
    /* 66 0F 73 /7 ib = PSLLDQ by immediate */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x73
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x73
        && epartIsReg(insn[2])
        && gregOfRM(insn[2]) == 7) {
       IRTemp sV, dV, hi64, lo64, hi64r, lo64r;
@@ -11885,7 +11888,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 73 /6 ib = PSLLQ by immediate */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x73
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x73
        && epartIsReg(insn[2])
        && gregOfRM(insn[2]) == 6) {
       delta = dis_SSE_shiftE_imm( delta+2, "psllq", Iop_ShlN64x2 );
@@ -11893,13 +11896,13 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F F3 = PSLLQ by E */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xF3) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xF3) {
       delta = dis_SSE_shiftG_byE( sorb, delta+2, "psllq", Iop_ShlN64x2 );
       goto decode_success;
    }
 
    /* 66 0F 71 /6 ib = PSLLW by immediate */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x71
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x71
        && epartIsReg(insn[2])
        && gregOfRM(insn[2]) == 6) {
       delta = dis_SSE_shiftE_imm( delta+2, "psllw", Iop_ShlN16x8 );
@@ -11907,13 +11910,13 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F F1 = PSLLW by E */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xF1) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xF1) {
       delta = dis_SSE_shiftG_byE( sorb, delta+2, "psllw", Iop_ShlN16x8 );
       goto decode_success;
    }
 
    /* 66 0F 72 /4 ib = PSRAD by immediate */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x72
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x72
        && epartIsReg(insn[2])
        && gregOfRM(insn[2]) == 4) {
       delta = dis_SSE_shiftE_imm( delta+2, "psrad", Iop_SarN32x4 );
@@ -11921,13 +11924,13 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F E2 = PSRAD by E */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xE2) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xE2) {
       delta = dis_SSE_shiftG_byE( sorb, delta+2, "psrad", Iop_SarN32x4 );
       goto decode_success;
    }
 
    /* 66 0F 71 /4 ib = PSRAW by immediate */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x71
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x71
        && epartIsReg(insn[2])
        && gregOfRM(insn[2]) == 4) {
       delta = dis_SSE_shiftE_imm( delta+2, "psraw", Iop_SarN16x8 );
@@ -11935,13 +11938,13 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F E1 = PSRAW by E */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xE1) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xE1) {
       delta = dis_SSE_shiftG_byE( sorb, delta+2, "psraw", Iop_SarN16x8 );
       goto decode_success;
    }
 
    /* 66 0F 72 /2 ib = PSRLD by immediate */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x72
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x72
        && epartIsReg(insn[2])
        && gregOfRM(insn[2]) == 2) {
       delta = dis_SSE_shiftE_imm( delta+2, "psrld", Iop_ShrN32x4 );
@@ -11949,13 +11952,13 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F D2 = PSRLD by E */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xD2) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xD2) {
       delta = dis_SSE_shiftG_byE( sorb, delta+2, "psrld", Iop_ShrN32x4 );
       goto decode_success;
    }
 
    /* 66 0F 73 /3 ib = PSRLDQ by immediate */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x73
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x73
        && epartIsReg(insn[2])
        && gregOfRM(insn[2]) == 3) {
       IRTemp sV, dV, hi64, lo64, hi64r, lo64r;
@@ -12016,7 +12019,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 73 /2 ib = PSRLQ by immediate */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x73
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x73
        && epartIsReg(insn[2])
        && gregOfRM(insn[2]) == 2) {
       delta = dis_SSE_shiftE_imm( delta+2, "psrlq", Iop_ShrN64x2 );
@@ -12024,13 +12027,13 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F D3 = PSRLQ by E */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xD3) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xD3) {
       delta = dis_SSE_shiftG_byE( sorb, delta+2, "psrlq", Iop_ShrN64x2 );
       goto decode_success;
    }
 
    /* 66 0F 71 /2 ib = PSRLW by immediate */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x71
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x71
        && epartIsReg(insn[2])
        && gregOfRM(insn[2]) == 2) {
       delta = dis_SSE_shiftE_imm( delta+2, "psrlw", Iop_ShrN16x8 );
@@ -12038,20 +12041,20 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F D1 = PSRLW by E */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xD1) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xD1) {
       delta = dis_SSE_shiftG_byE( sorb, delta+2, "psrlw", Iop_ShrN16x8 );
       goto decode_success;
    }
 
    /* 66 0F F8 = PSUBB */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xF8) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xF8) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "psubb", Iop_Sub8x16, False );
       goto decode_success;
    }
 
    /* 66 0F FA = PSUBD */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xFA) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xFA) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "psubd", Iop_Sub32x4, False );
       goto decode_success;
@@ -12059,7 +12062,7 @@ DisResult disInstr_X86_WRK (
 
    /* ***--- this is an MMX class insn introduced in SSE2 ---*** */
    /* 0F FB = PSUBQ -- sub 64x1 */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xFB) {
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xFB) {
       do_MMX_preamble();
       delta = dis_MMXop_regmem_to_reg ( 
                 sorb, delta+2, insn[1], "psubq", False );
@@ -12067,49 +12070,49 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F FB = PSUBQ */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xFB) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xFB) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "psubq", Iop_Sub64x2, False );
       goto decode_success;
    }
 
    /* 66 0F F9 = PSUBW */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xF9) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xF9) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "psubw", Iop_Sub16x8, False );
       goto decode_success;
    }
 
    /* 66 0F E8 = PSUBSB */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xE8) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xE8) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "psubsb", Iop_QSub8Sx16, False );
       goto decode_success;
    }
 
    /* 66 0F E9 = PSUBSW */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xE9) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xE9) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "psubsw", Iop_QSub16Sx8, False );
       goto decode_success;
    }
 
    /* 66 0F D8 = PSUBSB */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xD8) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xD8) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "psubusb", Iop_QSub8Ux16, False );
       goto decode_success;
    }
 
    /* 66 0F D9 = PSUBSW */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xD9) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xD9) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "psubusw", Iop_QSub16Ux8, False );
       goto decode_success;
    }
 
    /* 66 0F 68 = PUNPCKHBW */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x68) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x68) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "punpckhbw",
                                  Iop_InterleaveHI8x16, True );
@@ -12117,7 +12120,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 6A = PUNPCKHDQ */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x6A) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x6A) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "punpckhdq",
                                  Iop_InterleaveHI32x4, True );
@@ -12125,7 +12128,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 6D = PUNPCKHQDQ */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x6D) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x6D) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "punpckhqdq",
                                  Iop_InterleaveHI64x2, True );
@@ -12133,7 +12136,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 69 = PUNPCKHWD */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x69) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x69) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "punpckhwd",
                                  Iop_InterleaveHI16x8, True );
@@ -12141,7 +12144,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 60 = PUNPCKLBW */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x60) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x60) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "punpcklbw",
                                  Iop_InterleaveLO8x16, True );
@@ -12149,7 +12152,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 62 = PUNPCKLDQ */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x62) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x62) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "punpckldq",
                                  Iop_InterleaveLO32x4, True );
@@ -12157,7 +12160,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 6C = PUNPCKLQDQ */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x6C) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x6C) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "punpcklqdq",
                                  Iop_InterleaveLO64x2, True );
@@ -12165,7 +12168,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 61 = PUNPCKLWD */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x61) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x61) {
       delta = dis_SSEint_E_to_G( sorb, delta+2, 
                                  "punpcklwd",
                                  Iop_InterleaveLO16x8, True );
@@ -12173,7 +12176,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F EF = PXOR */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xEF) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xEF) {
       delta = dis_SSE_E_to_G_all( sorb, delta+2, "pxor", Iop_XorV128 );
       goto decode_success;
    }
@@ -12196,7 +12199,7 @@ DisResult disInstr_X86_WRK (
 //--    }
 
    /* 0F AE /7 = CLFLUSH -- flush cache line */
-   if (sz == 4 && insn[0] == 0x0F && insn[1] == 0xAE
+   if (!has_66_pfx && insn[0] == 0x0F && insn[1] == 0xAE
        && !epartIsReg(insn[2]) && gregOfRM(insn[2]) == 7) {
 
       /* This is something of a hack.  We need to know the size of the
@@ -12243,7 +12246,7 @@ DisResult disInstr_X86_WRK (
       duplicating some lanes (2:2:0:0). */
    /* F3 0F 16 = MOVSHDUP -- move from E (mem or xmm) to G (xmm),
       duplicating some lanes (3:3:1:1). */
-   if (sz == 4 && insn[0] == 0xF3 && insn[1] == 0x0F 
+   if (!has_66_pfx && insn[0] == 0xF3 && insn[1] == 0x0F 
        && (insn[2] == 0x12 || insn[2] == 0x16)) {
       IRTemp s3, s2, s1, s0;
       IRTemp sV  = newTemp(Ity_V128);
@@ -12276,7 +12279,7 @@ DisResult disInstr_X86_WRK (
 
    /* F2 0F 12 = MOVDDUP -- move from E (mem or xmm) to G (xmm),
       duplicating some lanes (0:1:0:1). */
-   if (sz == 4 && insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0x12) {
+   if (!has_66_pfx && insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0x12) {
       IRTemp sV = newTemp(Ity_V128);
       IRTemp d0 = newTemp(Ity_I64);
 
@@ -12300,7 +12303,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* F2 0F D0 = ADDSUBPS -- 32x4 +/-/+/- from E (mem or xmm) to G (xmm). */
-   if (sz == 4 && insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0xD0) {
+   if (!has_66_pfx && insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0xD0) {
       IRTemp a3, a2, a1, a0, s3, s2, s1, s0;
       IRTemp eV   = newTemp(Ity_V128);
       IRTemp gV   = newTemp(Ity_V128);
@@ -12337,7 +12340,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F D0 = ADDSUBPD -- 64x4 +/- from E (mem or xmm) to G (xmm). */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0xD0) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0xD0) {
       IRTemp eV   = newTemp(Ity_V128);
       IRTemp gV   = newTemp(Ity_V128);
       IRTemp addV = newTemp(Ity_V128);
@@ -12376,7 +12379,7 @@ DisResult disInstr_X86_WRK (
 
    /* F2 0F 7D = HSUBPS -- 32x4 sub across from E (mem or xmm) to G (xmm). */
    /* F2 0F 7C = HADDPS -- 32x4 add across from E (mem or xmm) to G (xmm). */
-   if (sz == 4 && insn[0] == 0xF2 && insn[1] == 0x0F 
+   if (!has_66_pfx && insn[0] == 0xF2 && insn[1] == 0x0F 
        && (insn[2] == 0x7C || insn[2] == 0x7D)) {
       IRTemp e3, e2, e1, e0, g3, g2, g1, g0;
       IRTemp eV     = newTemp(Ity_V128);
@@ -12419,7 +12422,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F 7D = HSUBPD -- 64x2 sub across from E (mem or xmm) to G (xmm). */
    /* 66 0F 7C = HADDPD -- 64x2 add across from E (mem or xmm) to G (xmm). */
-   if (sz == 2 && insn[0] == 0x0F && (insn[1] == 0x7C || insn[1] == 0x7D)) {
+   if (has_66_pfx && insn[0] == 0x0F && (insn[1] == 0x7C || insn[1] == 0x7D)) {
       IRTemp e1     = newTemp(Ity_I64);
       IRTemp e0     = newTemp(Ity_I64);
       IRTemp g1     = newTemp(Ity_I64);
@@ -12464,7 +12467,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* F2 0F F0 = LDDQU -- move from E (mem or xmm) to G (xmm). */
-   if (sz == 4 && insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0xF0) {
+   if (!has_66_pfx && insn[0] == 0xF2 && insn[1] == 0x0F && insn[2] == 0xF0) {
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
          goto decode_failure;
@@ -12489,7 +12492,7 @@ DisResult disInstr_X86_WRK (
 
    /* 0F 38 04 = PMADDUBSW -- Multiply and Add Packed Signed and
       Unsigned Bytes (MMX) */
-   if (sz == 4
+   if (!has_66_pfx
        && insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x04) {
       IRTemp sV        = newTemp(Ity_I64);
       IRTemp dV        = newTemp(Ity_I64);
@@ -12541,7 +12544,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F 38 04 = PMADDUBSW -- Multiply and Add Packed Signed and
       Unsigned Bytes (XMM) */
-   if (sz == 2
+   if (has_66_pfx
        && insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x04) {
       IRTemp sV        = newTemp(Ity_V128);
       IRTemp dV        = newTemp(Ity_V128);
@@ -12605,7 +12608,7 @@ DisResult disInstr_X86_WRK (
    /* 0F 38 06 = PHSUBD -- 32x2 sub across from E (mem or mmx) and G
       to G (mmx). */
 
-   if (sz == 4 
+   if (!has_66_pfx 
        && insn[0] == 0x0F && insn[1] == 0x38 
        && (insn[2] == 0x03 || insn[2] == 0x07 || insn[2] == 0x01
            || insn[2] == 0x05 || insn[2] == 0x02 || insn[2] == 0x06)) {
@@ -12671,7 +12674,7 @@ DisResult disInstr_X86_WRK (
    /* 66 0F 38 06 = PHSUBD -- 32x4 sub across from E (mem or xmm) and
       G to G (xmm). */
 
-   if (sz == 2
+   if (has_66_pfx
        && insn[0] == 0x0F && insn[1] == 0x38 
        && (insn[2] == 0x03 || insn[2] == 0x07 || insn[2] == 0x01
            || insn[2] == 0x05 || insn[2] == 0x02 || insn[2] == 0x06)) {
@@ -12744,7 +12747,7 @@ DisResult disInstr_X86_WRK (
 
    /* 0F 38 0B = PMULHRSW -- Packed Multiply High with Round and Scale
       (MMX) */
-   if (sz == 4 
+   if (!has_66_pfx 
        && insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x0B) {
       IRTemp sV = newTemp(Ity_I64);
       IRTemp dV = newTemp(Ity_I64);
@@ -12775,7 +12778,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F 38 0B = PMULHRSW -- Packed Multiply High with Round and
       Scale (XMM) */
-   if (sz == 2
+   if (has_66_pfx
        && insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x0B) {
       IRTemp sV  = newTemp(Ity_V128);
       IRTemp dV  = newTemp(Ity_V128);
@@ -12819,7 +12822,7 @@ DisResult disInstr_X86_WRK (
    /* 0F 38 08 = PSIGNB -- Packed Sign 8x8  (MMX) */
    /* 0F 38 09 = PSIGNW -- Packed Sign 16x4 (MMX) */
    /* 0F 38 09 = PSIGND -- Packed Sign 32x2 (MMX) */
-   if (sz == 4 
+   if (!has_66_pfx 
        && insn[0] == 0x0F && insn[1] == 0x38 
        && (insn[2] == 0x08 || insn[2] == 0x09 || insn[2] == 0x0A)) {
       IRTemp sV      = newTemp(Ity_I64);
@@ -12861,7 +12864,7 @@ DisResult disInstr_X86_WRK (
    /* 66 0F 38 08 = PSIGNB -- Packed Sign 8x16 (XMM) */
    /* 66 0F 38 09 = PSIGNW -- Packed Sign 16x8 (XMM) */
    /* 66 0F 38 09 = PSIGND -- Packed Sign 32x4 (XMM) */
-   if (sz == 2
+   if (has_66_pfx
        && insn[0] == 0x0F && insn[1] == 0x38 
        && (insn[2] == 0x08 || insn[2] == 0x09 || insn[2] == 0x0A)) {
       IRTemp sV      = newTemp(Ity_V128);
@@ -12915,7 +12918,7 @@ DisResult disInstr_X86_WRK (
    /* 0F 38 1C = PABSB -- Packed Absolute Value 8x8  (MMX) */
    /* 0F 38 1D = PABSW -- Packed Absolute Value 16x4 (MMX) */
    /* 0F 38 1E = PABSD -- Packed Absolute Value 32x2 (MMX) */
-   if (sz == 4 
+   if (!has_66_pfx 
        && insn[0] == 0x0F && insn[1] == 0x38 
        && (insn[2] == 0x1C || insn[2] == 0x1D || insn[2] == 0x1E)) {
       IRTemp sV      = newTemp(Ity_I64);
@@ -12955,7 +12958,7 @@ DisResult disInstr_X86_WRK (
    /* 66 0F 38 1C = PABSB -- Packed Absolute Value 8x16 (XMM) */
    /* 66 0F 38 1D = PABSW -- Packed Absolute Value 16x8 (XMM) */
    /* 66 0F 38 1E = PABSD -- Packed Absolute Value 32x4 (XMM) */
-   if (sz == 2
+   if (has_66_pfx
        && insn[0] == 0x0F && insn[1] == 0x38 
        && (insn[2] == 0x1C || insn[2] == 0x1D || insn[2] == 0x1E)) {
       IRTemp sV      = newTemp(Ity_V128);
@@ -13001,7 +13004,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 0F 3A 0F = PALIGNR -- Packed Align Right (MMX) */
-   if (sz == 4 
+   if (!has_66_pfx 
        && insn[0] == 0x0F && insn[1] == 0x3A && insn[2] == 0x0F) {
       IRTemp sV  = newTemp(Ity_I64);
       IRTemp dV  = newTemp(Ity_I64);
@@ -13055,7 +13058,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 3A 0F = PALIGNR -- Packed Align Right (XMM) */
-   if (sz == 2
+   if (has_66_pfx
        && insn[0] == 0x0F && insn[1] == 0x3A && insn[2] == 0x0F) {
       IRTemp sV  = newTemp(Ity_V128);
       IRTemp dV  = newTemp(Ity_V128);
@@ -13139,7 +13142,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 0F 38 00 = PSHUFB -- Packed Shuffle Bytes 8x8 (MMX) */
-   if (sz == 4 
+   if (!has_66_pfx 
        && insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x00) {
       IRTemp sV      = newTemp(Ity_I64);
       IRTemp dV      = newTemp(Ity_I64);
@@ -13179,7 +13182,7 @@ DisResult disInstr_X86_WRK (
    }
 
    /* 66 0F 38 00 = PSHUFB -- Packed Shuffle Bytes 8x16 (XMM) */
-   if (sz == 2
+   if (has_66_pfx
        && insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x00) {
       IRTemp sV         = newTemp(Ity_V128);
       IRTemp dV         = newTemp(Ity_V128);
@@ -13327,7 +13330,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F 38 17 /r = PTEST xmm1, xmm2/m128
       Logical compare (set ZF and CF from AND/ANDN of the operands) */
-   if ( sz == 2
+   if ( has_66_pfx
         && insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x17) {
          delta = dis_xTESTy_128( vbi, sorb, delta + 3 );
          goto decode_success;
@@ -13336,7 +13339,7 @@ DisResult disInstr_X86_WRK (
    /* 66 0F 38 2A /r MOVNTDQA xmm1, m128
       "non-temporal" "streaming" load
       Handle like MOVDQA but only memory operand is allowed */
-   if ( sz == 2
+   if ( has_66_pfx
 	&& insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x2A ) {
       modrm = insn[3];
       if ( !epartIsReg( modrm ) ) {
@@ -13352,7 +13355,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F 3A 22 /r ib = PINSRD xmm1, r/m32, imm8
       Extract Doubleword int from gen.reg/mem32 and insert into xmm1 */
-   if ( sz == 2
+   if ( has_66_pfx
         && insn[0] == 0x0F && insn[1] == 0x3A && insn[2] == 0x22 ) {
 
       Int imm8_10;
@@ -13408,7 +13411,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F 3A 42 /r ib MPSADBW xmm1, xmm2/m128, imm8
       Multiple Packed Sums of Absolute Difference */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x3A && insn[2] == 0x42) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x3A && insn[2] == 0x42) {
        Int    imm8;
        IRTemp src_vec = newTemp(Ity_V128);
        IRTemp dst_vec = newTemp(Ity_V128);
@@ -13441,44 +13444,44 @@ DisResult disInstr_X86_WRK (
      }
 
    /* 66 0F 3A 0D /r ib = BLENDPD */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x3A && insn[2] == 0x0D) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x3A && insn[2] == 0x0D) {
      decode_sse4_blend_imm(&delta, insn, "blendpd", math_BLENDPD_128, sorb);
      goto decode_success;
    }
 
    /* 66 0F 3A 0C /r ib = BLENDPS */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x3A && insn[2] == 0x0C) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x3A && insn[2] == 0x0C) {
      decode_sse4_blend_imm(&delta, insn, "blendps", math_BLENDPS_128, sorb);
      goto decode_success;
    }
 
    /* 66 0F 3A 0E /r ib = PBLENDW */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x3A && insn[2] == 0x0E) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x3A && insn[2] == 0x0E) {
      decode_sse4_blend_imm(&delta, insn, "pblendw", math_PBLENDW_128, sorb);
      goto decode_success;
    }
 
    /* 66 0F 38 10 /r = PBLENDVB xmm1, xmm2/m128 */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x10) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x10) {
      decode_sse4_blend(&delta, insn, "pblendvb", 1, sorb, Iop_SarN8x16);
      goto decode_success;
    }
 
    /* 66 0F 38 14 /r = BLENDVPS xmm1, xmm2/m128  */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x14) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x14) {
      decode_sse4_blend(&delta, insn, "blendvps", 4, sorb, Iop_SarN32x4);
      goto decode_success;
    }
 
    /* 66 0F 38 15 /r = BLENDVPD xmm1, xmm2/m128  */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x15) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x15) {
      decode_sse4_blend(&delta, insn, "blendvpd", 8, sorb, Iop_SarN64x2);
      goto decode_success;
    }
 
    /* 66 0F 38 29 = PCMPEQQ
       64x2 equality comparison */
-   if (sz == 2 && insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x29) {
+   if (has_66_pfx && insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x29) {
       delta = dis_SSEint_E_to_G( sorb, delta+3, "pcmpeqq",
                                  Iop_CmpEQ64x2, False);
       goto decode_success;
@@ -13488,7 +13491,7 @@ DisResult disInstr_X86_WRK (
       66 0F 38 3C /r  - PMAXSB xmm1, xmm2/m128
       Minimum/Maximum of Packed Signed Byte Integers (XMM)
    */
-   if (sz == 2
+   if (has_66_pfx
        && insn[0] == 0x0F && insn[1] == 0x38
        && (insn[2] == 0x38 || insn[2] == 0x3C)) {
      /* FIXME: this needs an alignment check */
@@ -13509,7 +13512,7 @@ DisResult disInstr_X86_WRK (
       39 = PMINSD (minimum of packed signed 32-bit integers)
       3D = PMAXSD (maximum of packed signed 32-bit integers)
       reference: Intel Software Developer Manual (Volume 2: Instruction Set Reference)  */
-   if (sz == 2
+   if (has_66_pfx
        && insn[0] == 0x0F && insn[1] == 0x38
        && (insn[2] == 0x39 || insn[2] == 0x3D)) {
      Bool isMAX = insn[2] == 0x3D;
@@ -13526,7 +13529,7 @@ DisResult disInstr_X86_WRK (
       66 0F 38 3E /r  - PMAXUW xmm1, xmm2/m128
       Minimum/Maximum of Packed Unsigned Word Integers (XMM)
    */
-   if (sz == 2
+   if (has_66_pfx
        && insn[0] == 0x0F && insn[1] == 0x38
        && (insn[2] == 0x3A || insn[2] == 0x3E)) {
      /* FIXME: this needs an alignment check */
@@ -13544,7 +13547,7 @@ DisResult disInstr_X86_WRK (
       66 0F 38 3F /r  - PMAXUD xmm1, xmm2/m128
       Minimum/Maximum of Packed Unsigned Doubleword Integers (XMM)
    */
-   if (sz == 2
+   if (has_66_pfx
        && insn[0] == 0x0F && insn[1] == 0x38
        && (insn[2] == 0x3B || insn[2] == 0x3F)) {
      /* FIXME: this needs an alignment check */
@@ -13560,7 +13563,7 @@ DisResult disInstr_X86_WRK (
 
    /* 66 0F 38 40 /r  - PMULLD xmm1, xmm2/m128
       32x4 integer multiply from xmm2/m128 to xmm1 */
-   if (sz == 2
+   if (has_66_pfx
        && insn[0] == 0x0F && insn[1] == 0x38 && insn[2] == 0x40) {
 
       modrm = insn[3];
@@ -13596,7 +13599,7 @@ DisResult disInstr_X86_WRK (
       66 0F 3A 0A /r ib = ROUNDSS imm8, xmm2/m32, xmm1
       (Limitations ditto)
    */
-   if (sz == 2 
+   if (has_66_pfx 
        && insn[0] == 0x0F && insn[1] == 0x3A
        && (insn[2] == 0x0B || insn[2] == 0x0A)) {
 
