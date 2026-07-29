@@ -139,7 +139,11 @@ typedef Addr64 Addr;
    it is 32 bits on a 32-bit host and 64 bits on a 64-bit host, and so
    it can safely be coerced to and from a pointer type on the host
    machine. */
+#ifdef _WIN64
+typedef  unsigned long long HWord;
+#else
 typedef  unsigned long HWord;
+#endif
 
 /* Size of GPRs */
 #if defined(__mips__) && (__mips == 64) && (_MIPS_SIM == _ABIN32)
@@ -154,13 +158,21 @@ typedef  unsigned long HWord;
 #undef VEX_HOST_WORDSIZE
 #undef VEX_REGPARM
 
-#if defined(__x86_64__)
+#if defined(__x86_64__) || defined(_WIN64)
 #   define VEX_HOST_WORDSIZE 8
 #   define VEX_REGPARM(_n) /* */
 
 #elif defined(__i386__)
 #   define VEX_HOST_WORDSIZE 4
 #   define VEX_REGPARM(_n) __attribute__((regparm(_n)))
+
+#elif defined(__wasm32__)
+#   define VEX_HOST_WORDSIZE 4
+#   define VEX_REGPARM(_n) /* */
+
+#elif defined(_WIN32) && !defined(_WIN64)
+#   define VEX_HOST_WORDSIZE 4
+#   define VEX_REGPARM(_n) /* ought to be __fastcall */
 
 #elif defined(__powerpc__) && defined(__powerpc64__)
 #   define VEX_HOST_WORDSIZE 8
