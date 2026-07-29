@@ -2934,6 +2934,7 @@ typedef
             ppIRStmt output: IR-NoOp
          */
          struct {
+            UInt dummy;
 	 } NoOp;
 
          /* META: instruction mark.  Marks the start of the statements

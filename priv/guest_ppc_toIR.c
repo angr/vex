@@ -286,6 +286,7 @@ static Bool OV32_CA32_supported = False;
 /*------------------------------------------------------------*/
 
 /* Pre DIP macro for prefix instruction printing.  */
+#ifndef _MSC_VER
 #define pDIP(flag,format, args...)     \
    if (vex_traceflags & VEX_TRACE_FE){				\
      if (flag) {vex_printf("p"); vex_printf(format, ## args);}	\
@@ -295,11 +296,23 @@ static Bool OV32_CA32_supported = False;
 #define DIPp(flag,format, args...)     	\
    if (vex_traceflags & VEX_TRACE_FE) {				\
      if (flag) {vex_printf(format, ## args); vex_printf("\n");}}
+#else
+#define pDIP(flag,format, ...)     \
+   if (vex_traceflags & VEX_TRACE_FE){				\
+     if (flag) {vex_printf("p"); vex_printf(format, __VA_ARGS__);}	\
+     else {vex_printf(format, __VA_ARGS__); vex_printf("\n");}}
+
+/* Post DIP macro to print additional args for prefix instruction printing.  */
+#define DIPp(flag,format, ...)     \
+   if (vex_traceflags & VEX_TRACE_FE) {				\
+     if (flag) {vex_printf(format, __VA_ARGS__); vex_printf("\n");}}
+#endif
 
 /* Post DIP macro with no additional args for prefix instruction printing.  */
 #define DIPn(flag)                     \
    if (vex_traceflags & VEX_TRACE_FE) {if (flag) vex_printf("\n");}
 
+#ifndef _MSC_VER
 #define DIP(format, args...)           \
    if (vex_traceflags & VEX_TRACE_FE)  \
       vex_printf(format, ## args)
@@ -307,6 +320,15 @@ static Bool OV32_CA32_supported = False;
 #define DIS(buf, format, args...)      \
    if (vex_traceflags & VEX_TRACE_FE)  \
       vex_sprintf(buf, format, ## args)
+#else
+#define DIP(format, ...)           \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_printf(format, __VA_ARGS__)
+
+#define DIS(buf, format, ...)      \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_sprintf(buf, format, __VA_ARGS__)
+#endif
 
 
 /*------------------------------------------------------------*/

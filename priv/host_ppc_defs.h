@@ -788,6 +788,7 @@ typedef
             loads and stores as much as possible before continuing.
             On PPC we emit a "sync". */
          struct {
+            Int nop;
          } MFence;
 
          /* PPC Floating point */
@@ -1137,6 +1138,7 @@ typedef
             /* No fields.  The address of the counter to inc is
                installed later, post-translation, by patching it in,
                as it is not known at translation time. */
+            Int nop;
          } ProfInc;
       } Pin;
    }

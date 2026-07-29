@@ -55,9 +55,15 @@ UInt disDSPInstr_MIPS_WRK ( UInt );
 /*---                  Debugging output                    ---*/
 /*------------------------------------------------------------*/
 
+#ifndef _MSC_VER
 #define DIP(format, args...)           \
    if (vex_traceflags & VEX_TRACE_FE)  \
       vex_printf(format, ## args)
+#else
+#define DIP(format, ...)           \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_printf(format, __VA_ARGS__)
+#endif
 
 /* ------------ MIPS32 DSP ASE(r2) accumulators ------------- */
 

@@ -375,6 +375,7 @@ static void unimplemented ( const HChar* str )
    vpanic(str);
 }
 
+#ifndef _MSC_VER
 #define DIP(format, args...)           \
    if (vex_traceflags & VEX_TRACE_FE)  \
       vex_printf(format, ## args)
@@ -382,6 +383,15 @@ static void unimplemented ( const HChar* str )
 #define DIS(buf, format, args...)      \
    if (vex_traceflags & VEX_TRACE_FE)  \
       vex_sprintf(buf, format, ## args)
+#else
+#define DIP(format, ...)           \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_printf(format, __VA_ARGS__)
+
+#define DIS(buf, format, ...)      \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_sprintf(buf, format, __VA_ARGS__)
+#endif
 
 
 /*------------------------------------------------------------*/

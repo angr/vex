@@ -3546,7 +3546,7 @@ static IRSB* cprop_BB_WRK ( IRSB* in, Bool mustRetainNoOps, Bool doFolding )
    IRExpr** env = LibVEX_Alloc_inline(n_tmps * sizeof(IRExpr*));
    /* Keep track of IRStmt_LoadGs that we need to revisit after
       processing all the other statements. */
-   const Int N_FIXUPS = 16;
+#  define N_FIXUPS 16
    Int fixups[N_FIXUPS]; /* indices in the stmt array of 'out' */
    Int n_fixups = 0;
 

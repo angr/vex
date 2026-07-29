@@ -580,6 +580,7 @@ typedef
          /* fstsw %ax */
          struct {
             /* no fields */
+            Int nop;
          }
          FpStSW_AX;
          /* Do a compare, generating the C320 bits into the dst. */
@@ -649,6 +650,7 @@ typedef
             /* No fields.  The address of the counter to inc is
                installed later, post-translation, by patching it in,
                as it is not known at translation time. */
+            Int nop;
          } ProfInc;
 
       } Xin;

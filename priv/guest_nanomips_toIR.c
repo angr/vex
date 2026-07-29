@@ -39,9 +39,15 @@
 
 #define P16 0x4
 
+#ifndef _MSC_VER
 #define DIP(format, args...)           \
    if (vex_traceflags & VEX_TRACE_FE)  \
       vex_printf(format, ## args)
+#else
+#define DIP(format, ...)           \
+   if (vex_traceflags & VEX_TRACE_FE)  \
+      vex_printf(format, __VA_ARGS__)
+#endif
 
 #define OFFB_PC offsetof(VexGuestMIPS32State, guest_PC)
 

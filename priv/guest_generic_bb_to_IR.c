@@ -579,6 +579,7 @@ typedef
       BlockEndTag tag;
       union {
          struct {
+            Int nop;
          } Other;
          struct {
             Long delta;
