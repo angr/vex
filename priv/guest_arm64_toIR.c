@@ -4995,7 +4995,8 @@ Bool dis_ARM64_load_store(/*MB_OUT*/DisResult* dres, UInt insn,
             address to the next page.
          */
          Bool earlyWBack
-           = wBack && simm9 < 0
+           = vex_control.arm64_allow_reordered_writeback
+             && wBack && simm9 < 0
              && (szB == 8 || szB == 4 || szB == 2 || szB == 1)
              && how == BITS2(1,1) && nn == 31 && !isLoad;
 
@@ -5099,7 +5100,8 @@ Bool dis_ARM64_load_store(/*MB_OUT*/DisResult* dres, UInt insn,
             address to the next page.
          */
          Bool earlyWBack
-           = bWBack && simm7 < 0
+           = vex_control.arm64_allow_reordered_writeback
+             && bWBack && simm7 < 0
              && INSN(24,23) == BITS2(1,1) && rN == 31 && bL == 0;
 
          if (bWBack && earlyWBack)
@@ -5641,7 +5643,8 @@ Bool dis_ARM64_load_store(/*MB_OUT*/DisResult* dres, UInt insn,
             address to the next page.
          */
          Bool earlyWBack
-           = wBack && simm7 < 0
+           = vex_control.arm64_allow_reordered_writeback
+             && wBack && simm7 < 0
              && INSN(24,23) == BITS2(1,1) && nn == 31 && !isLD;
 
          if (wBack && earlyWBack)
@@ -5912,7 +5915,8 @@ Bool dis_ARM64_load_store(/*MB_OUT*/DisResult* dres, UInt insn,
          "LDP,STP (immediate, simm7) (FP&VEC)" case just above.
       */
       Bool earlyWBack
-         = !atRN && !isLD && (ty == Ity_F64 || ty == Ity_V128)
+         = vex_control.arm64_allow_reordered_writeback
+           && !atRN && !isLD && (ty == Ity_F64 || ty == Ity_V128)
            && nn == 31 && ((Long)simm9) < 0;
 
       if (earlyWBack)
