@@ -375,6 +375,9 @@ typedef
       /* ARM64: does the host require us to use the fallback LLSC
          implementation? */
       Bool arm64_requires_fallback_LLSC;
+      /* x86 cr0 register value, useful for distinguishing real/protected
+       * mode when decoding instructions */
+      UInt x86_cr0;
    }
    VexArchInfo;
 
