@@ -121,10 +121,11 @@
    not change during translation of the instruction.
 */
 
-/* CONST: what is the host's endianness?  This has to do with float vs
+/* CONST: what is the guest's endianness?  This has to do with float vs
    double register accesses on VFP, but it's complex and not properly
    thought out. */
-static VexEndness host_endness;
+static VexEndness guest_endness;
+#define guest_memory_endness (guest_endness == VexEndnessBE ? Iend_BE : Iend_LE)
 
 /* CONST: The guest address for the instruction currently being
    translated.  This is the real, "decoded" address (not subject
@@ -186,25 +187,37 @@ static IRTemp r15kind;
 /*--- arm insn stream.                                     ---*/
 /*------------------------------------------------------------*/
 
-/* Do a little-endian load of a 32-bit word, regardless of the
+/* Do a guest-endness load of a 32-bit word, regardless of the
    endianness of the underlying host. */
 static inline UInt getUIntLittleEndianly ( const UChar* p )
 {
    UInt w = 0;
-   w = (w << 8) | p[3];
-   w = (w << 8) | p[2];
-   w = (w << 8) | p[1];
-   w = (w << 8) | p[0];
+   if (guest_endness == VexEndnessBE) {
+      w = (w << 8) | p[0];
+      w = (w << 8) | p[1];
+      w = (w << 8) | p[2];
+      w = (w << 8) | p[3];
+   } else {
+      w = (w << 8) | p[3];
+      w = (w << 8) | p[2];
+      w = (w << 8) | p[1];
+      w = (w << 8) | p[0];
+   }
    return w;
 }
 
-/* Do a little-endian load of a 16-bit word, regardless of the
+/* Do a guest-endness load of a 16-bit word, regardless of the
    endianness of the underlying host. */
 static inline UShort getUShortLittleEndianly ( const UChar* p )
 {
    UShort w = 0;
-   w = (w << 8) | p[1];
-   w = (w << 8) | p[0];
+   if (guest_endness == VexEndnessBE) {
+      w = (w << 8) | p[0];
+      w = (w << 8) | p[1];
+   } else {
+      w = (w << 8) | p[1];
+      w = (w << 8) | p[0];
+   }
    return w;
 }
 
@@ -316,9 +329,11 @@ static IRExpr* triop ( IROp op, IRExpr* a1, IRExpr* a2, IRExpr* a3 )
    return IRExpr_Triop(op, a1, a2, a3);
 }
 
+/* Despite the name, this and the other *LE helpers below follow the
+   guest's endianness, so that big-endian ARM guests are handled too. */
 static IRExpr* loadLE ( IRType ty, IRExpr* addr )
 {
-   return IRExpr_Load(Iend_LE, ty, addr);
+   return IRExpr_Load(guest_memory_endness, ty, addr);
 }
 
 /* Add a statement to the list held by "irbb". */
@@ -334,7 +349,7 @@ static void assign ( IRTemp dst, IRExpr* e )
 
 static void storeLE ( IRExpr* addr, IRExpr* data )
 {
-   stmt( IRStmt_Store(Iend_LE, addr, data) );
+   stmt( IRStmt_Store(guest_memory_endness, addr, data) );
 }
 
 static void storeGuardedLE ( IRExpr* addr, IRExpr* data, IRTemp guardT )
@@ -343,7 +358,7 @@ static void storeGuardedLE ( IRExpr* addr, IRExpr* data, IRTemp guardT )
       /* unconditional */
       storeLE(addr, data);
    } else {
-      stmt( IRStmt_StoreG(Iend_LE, addr, data,
+      stmt( IRStmt_StoreG(guest_memory_endness, addr, data,
                           binop(Iop_CmpNE32, mkexpr(guardT), mkU32(0))) );
    }
 }
@@ -375,7 +390,7 @@ static void loadGuardedLE ( IRTemp dst, IRLoadGOp cvt,
       /* Generate a guarded load into 'dst', but apply 'cvt' to the
          loaded data before putting the data in 'dst'.  If the load
          does not take place, 'alt' is placed directly in 'dst'. */
-      stmt( IRStmt_LoadG(Iend_LE, cvt, dst, addr, alt,
+      stmt( IRStmt_LoadG(guest_memory_endness, cvt, dst, addr, alt,
                          binop(Iop_CmpNE32, mkexpr(guardT), mkU32(0))) );
    }
 }
@@ -859,7 +874,7 @@ static Int floatGuestRegOffset ( UInt fregNo )
       128 bits (4 x F32). */
    vassert(fregNo < 64);
    off = doubleGuestRegOffset(fregNo >> 1);
-   if (host_endness == VexEndnessLE) {
+   if (guest_endness == VexEndnessLE) {
       if (fregNo & 1)
          off += 4;
    } else {
@@ -13416,8 +13431,8 @@ static Bool decode_V8_instruction (
               default: vassert(0);
            }
            IRTemp  res = newTemp(ty);
-           // FIXME: assumes little-endian guest
-           stmt( IRStmt_LLSC(Iend_LE, res, ea, NULL/*this is a load*/) );
+           stmt( IRStmt_LLSC(guest_memory_endness, res, ea,
+                             NULL/*this is a load*/) );
 
 #          define PUT_IREG(_nnz, _eez) \
               do { vassert((_nnz) <= 14); /* no writes to the PC */ \
@@ -13425,9 +13440,13 @@ static Bool decode_V8_instruction (
                        else { putIRegA((_nnz), (_eez), \
                               IRTemp_INVALID, Ijk_Boring); } } while(0)
            if (ty == Ity_I64) {
-              // FIXME: assumes little-endian guest
-              PUT_IREG(tt,  unop(Iop_64to32, mkexpr(res)));
-              PUT_IREG(tt2, unop(Iop_64HIto32, mkexpr(res)));
+              if (guest_endness == VexEndnessLE) {
+                 PUT_IREG(tt,  unop(Iop_64to32, mkexpr(res)));
+                 PUT_IREG(tt2, unop(Iop_64HIto32, mkexpr(res)));
+              } else {
+                 PUT_IREG(tt,  unop(Iop_64HIto32, mkexpr(res)));
+                 PUT_IREG(tt2, unop(Iop_64to32, mkexpr(res)));
+              }
            } else {
               PUT_IREG(tt, widen == Iop_INVALID
                               ? mkexpr(res) : unop(widen, mkexpr(res)));
@@ -13455,15 +13474,17 @@ static Bool decode_V8_instruction (
 #          define GET_IREG(_nnz) (isT ? getIRegT(_nnz) : getIRegA(_nnz))
            assign(data,
                   ty == Ity_I64
-                     // FIXME: assumes little-endian guest
-                     ? binop(Iop_32HLto64, GET_IREG(tt2), GET_IREG(tt))
+                     ? binop(Iop_32HLto64,
+                        guest_endness == VexEndnessLE
+                           ? GET_IREG(tt2) : GET_IREG(tt),
+                        guest_endness == VexEndnessLE
+                           ? GET_IREG(tt) : GET_IREG(tt2))
                      : narrow == Iop_INVALID
                         ? GET_IREG(tt)
                         : unop(narrow, GET_IREG(tt)));
 #          undef GET_IREG
            resSC1 = newTemp(Ity_I1);
-           // FIXME: assumes little-endian guest
-           stmt( IRStmt_LLSC(Iend_LE, resSC1, ea, mkexpr(data)) );
+           stmt( IRStmt_LLSC(guest_memory_endness, resSC1, ea, mkexpr(data)) );
 
            /* Set rDD to 1 on failure, 0 on success.  Currently we have
               resSC1 == 0 on failure, 1 on success. */
@@ -16187,7 +16208,7 @@ DisResult disInstr_ARM_WRK (
                                                /* orr r9,r9,r9 */) {
             /* IR injection */
             DIP("IR injection\n");
-            vex_inject_ir(irsb, Iend_LE);
+            vex_inject_ir(irsb, guest_memory_endness);
             // Invalidate the current insn. The reason is that the IRop we're
             // injecting here can change. In which case the translation has to
             // be redone. For ease of handling, we simply invalidate all the
@@ -17500,16 +17521,16 @@ DisResult disInstr_ARM_WRK (
          if (isB) {
             /* swpb */
             tOld = newTemp(Ity_I8);
-            stmt( IRStmt_LLSC(Iend_LE, tOld, mkexpr(tRn),
+            stmt( IRStmt_LLSC(guest_memory_endness, tOld, mkexpr(tRn),
                               NULL/*=>isLL*/) );
-            stmt( IRStmt_LLSC(Iend_LE, tSC1, mkexpr(tRn),
+            stmt( IRStmt_LLSC(guest_memory_endness, tSC1, mkexpr(tRn),
                               unop(Iop_32to8, mkexpr(tNew))) );
          } else {
             /* swp */
             tOld = newTemp(Ity_I32);
-            stmt( IRStmt_LLSC(Iend_LE, tOld, mkexpr(tRn),
+            stmt( IRStmt_LLSC(guest_memory_endness, tOld, mkexpr(tRn),
                               NULL/*=>isLL*/) );
-            stmt( IRStmt_LLSC(Iend_LE, tSC1, mkexpr(tRn),
+            stmt( IRStmt_LLSC(guest_memory_endness, tSC1, mkexpr(tRn),
                               mkexpr(tNew)) );
          }
          stmt( IRStmt_Exit(unop(Iop_Not1, mkexpr(tSC1)),
@@ -17563,15 +17584,20 @@ DisResult disInstr_ARM_WRK (
          }
          /* Ok, now we're unconditional.  Do the load. */
          res = newTemp(ty);
-         // FIXME: assumes little-endian guest
-         stmt( IRStmt_LLSC(Iend_LE, res, getIRegA(rN),
+         stmt( IRStmt_LLSC(guest_memory_endness, res, getIRegA(rN),
                            NULL/*this is a load*/) );
          if (ty == Ity_I64) {
-            // FIXME: assumes little-endian guest
-            putIRegA(rT+0, unop(Iop_64to32, mkexpr(res)),
-                           IRTemp_INVALID, Ijk_Boring);
-            putIRegA(rT+1, unop(Iop_64HIto32, mkexpr(res)),
-                           IRTemp_INVALID, Ijk_Boring);
+            if (guest_endness == VexEndnessLE) {
+               putIRegA(rT+0, unop(Iop_64to32, mkexpr(res)),
+                              IRTemp_INVALID, Ijk_Boring);
+               putIRegA(rT+1, unop(Iop_64HIto32, mkexpr(res)),
+                              IRTemp_INVALID, Ijk_Boring);
+            } else {
+               putIRegA(rT+0, unop(Iop_64HIto32, mkexpr(res)),
+                              IRTemp_INVALID, Ijk_Boring);
+               putIRegA(rT+1, unop(Iop_64to32, mkexpr(res)),
+                              IRTemp_INVALID, Ijk_Boring);
+            }
             DIP("ldrex%s%s r%u, r%u, [r%u]\n",
                 nm, nCC(INSN_COND), rT+0, rT+1, rN);
          } else {
@@ -17622,14 +17648,17 @@ DisResult disInstr_ARM_WRK (
          data = newTemp(ty);
          assign(data,
                 ty == Ity_I64
-                   // FIXME: assumes little-endian guest
-                   ? binop(Iop_32HLto64, getIRegA(rT+1), getIRegA(rT+0))
+                   ? binop(Iop_32HLto64,
+                      guest_endness == VexEndnessLE
+                         ? getIRegA(rT+1) : getIRegA(rT+0),
+                      guest_endness == VexEndnessLE
+                         ? getIRegA(rT+0) : getIRegA(rT+1))
                    : narrow == Iop_INVALID
                       ? getIRegA(rT)
                       : unop(narrow, getIRegA(rT)));
          resSC1 = newTemp(Ity_I1);
-         // FIXME: assumes little-endian guest
-         stmt( IRStmt_LLSC(Iend_LE, resSC1, getIRegA(rN), mkexpr(data)) );
+         stmt( IRStmt_LLSC(guest_memory_endness, resSC1,
+                           getIRegA(rN), mkexpr(data)) );
 
          /* Set rD to 1 on failure, 0 on success.  Currently we have
             resSC1 == 0 on failure, 1 on success. */
@@ -19044,7 +19073,7 @@ DisResult disInstr_THUMB_WRK (
                                                /* orr r9,r9,r9 */) {
             /* IR injection */
             DIP("IR injection\n");
-            vex_inject_ir(irsb, Iend_LE);
+            vex_inject_ir(irsb, guest_memory_endness);
             // Invalidate the current insn. The reason is that the IRop we're
             // injecting here can change. In which case the translation has to
             // be redone. For ease of handling, we simply invalidate all the
@@ -22867,7 +22896,7 @@ DisResult disInstr_THUMB_WRK (
          mk_skip_over_T32_if_cond_is_false( condT );
          // now uncond
          res = newTemp(Ity_I32);
-         stmt( IRStmt_LLSC(Iend_LE,
+         stmt( IRStmt_LLSC(guest_memory_endness,
                            res,
                            binop(Iop_Add32, getIRegT(rN), mkU32(imm8 * 4)),
                            NULL/*this is a load*/ ));
@@ -22889,7 +22918,7 @@ DisResult disInstr_THUMB_WRK (
          mk_skip_over_T32_if_cond_is_false( condT );
          // now uncond
          res = newTemp(isH ? Ity_I16 : Ity_I8);
-         stmt( IRStmt_LLSC(Iend_LE, res, getIRegT(rN),
+         stmt( IRStmt_LLSC(guest_memory_endness, res, getIRegT(rN),
                            NULL/*this is a load*/ ));
          putIRegT(rT, unop(isH ? Iop_16Uto32 : Iop_8Uto32, mkexpr(res)),
                       IRTemp_INVALID);
@@ -22909,12 +22938,15 @@ DisResult disInstr_THUMB_WRK (
          mk_skip_over_T32_if_cond_is_false( condT );
          // now uncond
          res = newTemp(Ity_I64);
-         // FIXME: assumes little-endian guest
-         stmt( IRStmt_LLSC(Iend_LE, res, getIRegT(rN),
+         stmt( IRStmt_LLSC(guest_memory_endness, res, getIRegT(rN),
                            NULL/*this is a load*/ ));
-         // FIXME: assumes little-endian guest
-         putIRegT(rT,  unop(Iop_64to32,   mkexpr(res)), IRTemp_INVALID);
-         putIRegT(rT2, unop(Iop_64HIto32, mkexpr(res)), IRTemp_INVALID);
+         if (guest_endness == VexEndnessLE) {
+            putIRegT(rT,  unop(Iop_64to32,   mkexpr(res)), IRTemp_INVALID);
+            putIRegT(rT2, unop(Iop_64HIto32, mkexpr(res)), IRTemp_INVALID);
+         } else {
+            putIRegT(rT,  unop(Iop_64HIto32, mkexpr(res)), IRTemp_INVALID);
+            putIRegT(rT2, unop(Iop_64to32,   mkexpr(res)), IRTemp_INVALID);
+         }
          DIP("ldrexd r%u, r%u, [r%u]\n", rT, rT2, rN);
          goto decode_success;
       }
@@ -22934,7 +22966,7 @@ DisResult disInstr_THUMB_WRK (
          // now uncond
          /* Ok, now we're unconditional.  Do the store. */
          resSC1 = newTemp(Ity_I1);
-         stmt( IRStmt_LLSC(Iend_LE,
+         stmt( IRStmt_LLSC(guest_memory_endness,
                            resSC1,
                            binop(Iop_Add32, getIRegT(rN), mkU32(imm8 * 4)),
                            getIRegT(rT)) );
@@ -22964,7 +22996,7 @@ DisResult disInstr_THUMB_WRK (
          // now uncond
          /* Ok, now we're unconditional.  Do the store. */
          resSC1 = newTemp(Ity_I1);
-         stmt( IRStmt_LLSC(Iend_LE, resSC1, getIRegT(rN),
+         stmt( IRStmt_LLSC(guest_memory_endness, resSC1, getIRegT(rN),
                            unop(isH ? Iop_32to16 : Iop_32to8,
                                 getIRegT(rT))) );
          /* Set rD to 1 on failure, 0 on success.  Currently we have
@@ -22993,10 +23025,11 @@ DisResult disInstr_THUMB_WRK (
          /* Ok, now we're unconditional.  Do the store. */
          resSC1 = newTemp(Ity_I1);
          data = newTemp(Ity_I64);
-         // FIXME: assumes little-endian guest
-         assign(data, binop(Iop_32HLto64, getIRegT(rT2), getIRegT(rT)));
-         // FIXME: assumes little-endian guest
-         stmt( IRStmt_LLSC(Iend_LE, resSC1, getIRegT(rN), mkexpr(data)));
+         assign(data, binop(Iop_32HLto64,
+               guest_endness == VexEndnessLE ? getIRegT(rT2) : getIRegT(rT),
+               guest_endness == VexEndnessLE ? getIRegT(rT) : getIRegT(rT2)));
+         stmt( IRStmt_LLSC(guest_memory_endness, resSC1,
+                           getIRegT(rN), mkexpr(data)));
          /* Set rD to 1 on failure, 0 on success.  Currently we have
             resSC1 == 0 on failure, 1 on success. */
          resSC32 = newTemp(Ity_I32);
@@ -23608,7 +23641,7 @@ DisResult disInstr_ARM ( IRSB*        irsb_IN,
    vassert(guest_arch == VexArchARM);
 
    irsb            = irsb_IN;
-   host_endness    = host_endness_IN;
+   guest_endness   = archinfo->endness;
    __curr_is_Thumb = isThumb;
 
    if (isThumb) {
