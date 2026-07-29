@@ -1419,7 +1419,6 @@ static
 IRExpr* handleSegOverride ( UChar sorb, IRExpr* virtual )
 {
    Int    sreg;
-   IRType hWordTy;
    IRTemp ldt_ptr, gdt_ptr, seg_selector, r64;
 
    if (sorb == 0)
@@ -1435,16 +1434,14 @@ IRExpr* handleSegOverride ( UChar sorb, IRExpr* virtual )
       default: vpanic("handleSegOverride(x86,guest)");
    }
 
-   hWordTy = sizeof(HWord)==4 ? Ity_I32 : Ity_I64;
-
    seg_selector = newTemp(Ity_I32);
-   ldt_ptr      = newTemp(hWordTy);
-   gdt_ptr      = newTemp(hWordTy);
+   ldt_ptr      = newTemp(Ity_I64);
+   gdt_ptr      = newTemp(Ity_I64);
    r64          = newTemp(Ity_I64);
 
    assign( seg_selector, unop(Iop_16Uto32, getSReg(sreg)) );
-   assign( ldt_ptr, IRExpr_Get( OFFB_LDT, hWordTy ));
-   assign( gdt_ptr, IRExpr_Get( OFFB_GDT, hWordTy ));
+   assign( ldt_ptr, IRExpr_Get( OFFB_LDT, Ity_I64 ));
+   assign( gdt_ptr, IRExpr_Get( OFFB_GDT, Ity_I64 ));
 
    /*
    Call this to do the translation and limit checks: 
