@@ -2528,9 +2528,11 @@ typedef
       Ijk_SigFPE,         /* current instruction synths generic SIGFPE */
       Ijk_SigFPE_IntDiv,  /* current instruction synths SIGFPE - IntDiv */
       Ijk_SigFPE_IntOvf,  /* current instruction synths SIGFPE - IntOvf */
+      Ijk_Privileged,     /* current instruction should fail depending on privilege level */
       /* Unfortunately, various guest-dependent syscall kinds.  They
 	 all mean: do a syscall before continuing. */
       Ijk_Sys_syscall,    /* amd64/x86 'syscall', ppc 'sc', arm 'svc #0' */
+      Ijk_Sys_int,        /* amd64/x86 'int *' */
       Ijk_Sys_int32,      /* amd64/x86 'int $0x20' */
       Ijk_Sys_int128,     /* amd64/x86 'int $0x80' */
       Ijk_Sys_int129,     /* amd64/x86 'int $0x81' */

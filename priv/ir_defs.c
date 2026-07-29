@@ -2075,7 +2075,9 @@ void ppIRJumpKind ( IRJumpKind kind )
       case Ijk_SigFPE:        vex_printf("SigFPE"); break;
       case Ijk_SigFPE_IntDiv: vex_printf("SigFPE_IntDiv"); break;
       case Ijk_SigFPE_IntOvf: vex_printf("SigFPE_IntOvf"); break;
+      case Ijk_Privileged:    vex_printf("Privileged"); break;
       case Ijk_Sys_syscall:   vex_printf("Sys_syscall"); break;
+      case Ijk_Sys_int:       vex_printf("Sys_int"); break;
       case Ijk_Sys_int32:     vex_printf("Sys_int32"); break;
       case Ijk_Sys_int128:    vex_printf("Sys_int128"); break;
       case Ijk_Sys_int129:    vex_printf("Sys_int129"); break;
