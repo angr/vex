@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -52,7 +50,14 @@
    into memory, the rate falls by about a factor of 3. 
 */
 
+#if defined(ENABLE_INNER)
+/* 5 times more memory to be on the safe side:  consider each allocation is
+   8 bytes, and we need 16 bytes redzone before and after. */
+#define N_TEMPORARY_BYTES (5*5000000)
+static Bool mempools_created = False;
+#else
 #define N_TEMPORARY_BYTES 5000000
+#endif
 
 static HChar  temporary[N_TEMPORARY_BYTES] __attribute__((aligned(REQ_ALIGN)));
 static HChar* temporary_first = &temporary[0];
@@ -61,7 +66,12 @@ static HChar* temporary_last  = &temporary[N_TEMPORARY_BYTES-1];
 
 static ULong  temporary_bytes_allocd_TOT = 0;
 
+#if defined(ENABLE_INNER)
+/* See N_TEMPORARY_BYTES */
+#define N_PERMANENT_BYTES (5*10000)
+#else
 #define N_PERMANENT_BYTES 10000
+#endif
 
 static HChar  permanent[N_PERMANENT_BYTES] __attribute__((aligned(REQ_ALIGN)));
 static HChar* permanent_first = &permanent[0];
@@ -178,6 +188,18 @@ void vexSetAllocModeTEMP_and_clear ( void )
    temporary_bytes_allocd_TOT 
       += (ULong)(private_LibVEX_alloc_curr - private_LibVEX_alloc_first);
 
+#if defined(ENABLE_INNER)
+   if (mempools_created) {
+      VALGRIND_MEMPOOL_TRIM(&temporary[0], &temporary[0], 0);
+   } else {
+      VALGRIND_CREATE_MEMPOOL(&temporary[0], VEX_REDZONE_SIZEB, 0);
+      VALGRIND_CREATE_MEMPOOL(&permanent[0], VEX_REDZONE_SIZEB, 0);
+      VALGRIND_MAKE_MEM_NOACCESS(&permanent[0], N_PERMANENT_BYTES);
+      mempools_created = True;
+   }
+   VALGRIND_MAKE_MEM_NOACCESS(&temporary[0], N_TEMPORARY_BYTES);
+#endif
+
    mode = VexAllocModeTEMP;
    temporary_curr            = &temporary[0];
    private_LibVEX_alloc_curr = &temporary[0];
@@ -235,10 +257,6 @@ void vpanic ( const HChar* str )
 /*---------------------------------------------------------*/
 /*--- vex_printf                                        ---*/
 /*---------------------------------------------------------*/
-
-/* This should be the only <...> include in the entire VEX library.
-   New code for vex_util.c should go above this point. */
-#include <stdarg.h>
 
 SizeT vex_strlen ( const HChar* str )
 {
@@ -444,6 +462,7 @@ UInt vprintf_wrk ( void(*sink)(HChar),
             PAD(len1); PUTSTR(str); PAD(len3);
             break;
          }
+         case 'i':
          case 'd': {
             Long l;
             vassert(is_sizet == False); // %zd is obscure; we don't allow it
@@ -521,8 +540,7 @@ UInt vprintf_wrk ( void(*sink)(HChar),
 
 
 /* A general replacement for printf().  Note that only low-level 
-   debugging info should be sent via here.  The official route is to
-   to use vg_message().  This interface is deprecated.
+   debugging info should be sent via here.
 */
 static HChar myprintf_buf[1000];
 static Int   n_myprintf_buf;
@@ -588,18 +606,25 @@ static void add_to_vg_sprintf_buf ( HChar c )
    *vg_sprintf_ptr++ = c;
 }
 
-UInt vex_sprintf ( HChar* buf, const HChar *format, ... )
+UInt vex_vsprintf ( HChar* buf, const HChar* format, va_list vargs )
 {
-   Int ret;
-   va_list vargs;
+   UInt ret;
 
    vg_sprintf_ptr = buf;
+   ret = vprintf_wrk(add_to_vg_sprintf_buf, format, vargs);
+   add_to_vg_sprintf_buf('\0');
+
+   vassert(vex_strlen(buf) == ret);
+   return ret;
+}
+
+UInt vex_sprintf ( HChar* buf, const HChar *format, ... )
+{
+   UInt ret;
+   va_list vargs;
 
    va_start(vargs,format);
-
-   ret = vprintf_wrk ( add_to_vg_sprintf_buf, format, vargs );
-   add_to_vg_sprintf_buf(0);
-
+   ret = vex_vsprintf(buf, format, vargs);
    va_end(vargs);
 
    vassert(vex_strlen(buf) == ret);
@@ -611,9 +636,9 @@ UInt vex_sprintf ( HChar* buf, const HChar *format, ... )
 /*--- Misaligned memory access support                  ---*/
 /*---------------------------------------------------------*/
 
-UInt read_misaligned_UInt_LE ( void* addr )
+UInt read_misaligned_UInt_LE ( const void* addr )
 {
-   UChar* p = (UChar*)addr;
+   const UChar* p = addr;
    UInt   w = 0;
    w = (w << 8) | p[3];
    w = (w << 8) | p[2];
@@ -622,9 +647,9 @@ UInt read_misaligned_UInt_LE ( void* addr )
    return w;
 }
 
-ULong read_misaligned_ULong_LE ( void* addr )
+ULong read_misaligned_ULong_LE ( const void* addr )
 {
-   UChar* p = (UChar*)addr;
+   const UChar* p = addr;
    ULong  w = 0;
    w = (w << 8) | p[7];
    w = (w << 8) | p[6];

@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -99,14 +99,17 @@
 /* No simulated version is currently implemented. */
 #define CALCULATE_FFLAGS_UNARY64_F(inst)                                       \
    do {                                                                        \
+      (void)rm_RISCV;                                                          \
       return 0;                                                                \
    } while (0)
 #define CALCULATE_FFLAGS_UNARY64_IF(inst)                                      \
    do {                                                                        \
+      (void)rm_RISCV;                                                          \
       return 0;                                                                \
    } while (0)
 #define CALCULATE_FFLAGS_UNARY64_FI(inst)                                      \
    do {                                                                        \
+      (void)rm_RISCV;                                                          \
       return 0;                                                                \
    } while (0)
 #endif
@@ -218,10 +221,12 @@ UInt riscv64g_calculate_fflags_fcvt_d_lu(ULong a1, UInt rm_RISCV)
 /* No simulated version is currently implemented. */
 #define CALCULATE_FFLAGS_BINARY64(inst)                                        \
    do {                                                                        \
+      (void)rm_RISCV;                                                          \
       return 0;                                                                \
    } while (0)
 #define CALCULATE_FFLAGS_BINARY64_IFF(inst)                                    \
    do {                                                                        \
+      (void)rm_RISCV;                                                          \
       return 0;                                                                \
    } while (0)
 #endif
@@ -324,6 +329,7 @@ UInt riscv64g_calculate_fflags_fle_d(Double a1, Double a2)
 /* No simulated version is currently implemented. */
 #define CALCULATE_FFLAGS_TERNARY64(inst)                                       \
    do {                                                                        \
+      (void)rm_RISCV;                                                          \
       return 0;                                                                \
    } while (0)
 #endif
@@ -367,48 +373,6 @@ UInt riscv64g_calculate_fflags_fmadd_d(Double a1,
 /* CALLED FROM GENERATED CODE: CLEAN HELPERS */
 ULong riscv64g_calculate_fclass_s(Float a1) { CALCULATE_FCLASS("fclass.s"); }
 ULong riscv64g_calculate_fclass_d(Double a1) { CALCULATE_FCLASS("fclass.d"); }
-
-/* CSR helpers for non-FP CSR operations */
-
-/* CALLED FROM GENERATED CODE */
-/* DIRTY HELPERS (non-referentially-transparent) */
-/* Generic implementation for CSR write operations.  Non-FP CSR writes can be intercepted here.
-   These helpers are called with the address of the CSR, whether or not the CSR is written and/or
-   read, and the value to write.  Additionally the guest state is passed in to allow for side effects
-   to be managed for arbitrary CSR operations.
- */
-
-/*
-  Called for read/write operations on full width values of the CSR.
- */
-ULong riscv_dirtyhelper_CSR_rw(VexGuestRISCV64State *st, UInt csr, Bool write, Bool read, ULong value)
-{
-  return 0;
-}
-
-/*
-  Called for operations that set a CSR value with a mask, rather than a full-width value.
- */
-ULong riscv_dirtyhelper_CSR_s(VexGuestRISCV64State *st, UInt csr, Bool write, Bool read, ULong value)
-{
-  return 0;
-}
-
-/*
-  Called for operations that clear a CSR value with a mask, rather than a full-width value.
- */
-ULong riscv_dirtyhelper_CSR_c(VexGuestRISCV64State *st, UInt csr, Bool write, Bool read, ULong value)
-{
-  return 0;
-}
-
-/*
-  Called for mret instructions.
- */
-ULong riscv_dirtyhelper_mret(VexGuestRISCV64State *st)
-{
-  return 0;
-}
 
 /*------------------------------------------------------------*/
 /*--- Flag-helpers translation-time function specialisers. ---*/

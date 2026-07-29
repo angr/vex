@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -211,52 +209,56 @@ typedef
       /* XER pieces */
       /* 1304 */ UChar guest_XER_SO; /* in lsb */
       /* 1305 */ UChar guest_XER_OV; /* in lsb */
-      /* 1306 */ UChar guest_XER_CA; /* in lsb */
-      /* 1307 */ UChar guest_XER_BC; /* all bits */
+      /* 1306 */ UChar guest_XER_OV32; /* in lsb */
+      /* 1307 */ UChar guest_XER_CA; /* in lsb */
+      /* 1308 */ UChar guest_XER_CA32; /* in lsb */
+      /* 1309 */ UChar guest_XER_BC; /* all bits */
 
       /* CR pieces */
-      /* 1308 */ UChar guest_CR0_321; /* in [3:1] */
-      /* 1309 */ UChar guest_CR0_0;   /* in lsb */
-      /* 1310 */ UChar guest_CR1_321; /* in [3:1] */
-      /* 1311 */ UChar guest_CR1_0;   /* in lsb */
-      /* 1312 */ UChar guest_CR2_321; /* in [3:1] */
-      /* 1313 */ UChar guest_CR2_0;   /* in lsb */
-      /* 1314 */ UChar guest_CR3_321; /* in [3:1] */
-      /* 1315 */ UChar guest_CR3_0;   /* in lsb */
-      /* 1316 */ UChar guest_CR4_321; /* in [3:1] */
-      /* 1317 */ UChar guest_CR4_0;   /* in lsb */
-      /* 1318 */ UChar guest_CR5_321; /* in [3:1] */
-      /* 1319 */ UChar guest_CR5_0;   /* in lsb */
-      /* 1320 */ UChar guest_CR6_321; /* in [3:1] */
-      /* 1321 */ UChar guest_CR6_0;   /* in lsb */
-      /* 1322 */ UChar guest_CR7_321; /* in [3:1] */
-      /* 1323 */ UChar guest_CR7_0;   /* in lsb */
+      /* 1310 */ UChar guest_CR0_321; /* in [3:1] */
+      /* 1311 */ UChar guest_CR0_0;   /* in lsb */
+      /* 1312 */ UChar guest_CR1_321; /* in [3:1] */
+      /* 1313 */ UChar guest_CR1_0;   /* in lsb */
+      /* 1314 */ UChar guest_CR2_321; /* in [3:1] */
+      /* 1315 */ UChar guest_CR2_0;   /* in lsb */
+      /* 1316 */ UChar guest_CR3_321; /* in [3:1] */
+      /* 1317 */ UChar guest_CR3_0;   /* in lsb */
+      /* 1318 */ UChar guest_CR4_321; /* in [3:1] */
+      /* 1319 */ UChar guest_CR4_0;   /* in lsb */
+      /* 1320 */ UChar guest_CR5_321; /* in [3:1] */
+      /* 1321 */ UChar guest_CR5_0;   /* in lsb */
+      /* 1322 */ UChar guest_CR6_321; /* in [3:1] */
+      /* 1323 */ UChar guest_CR6_0;   /* in lsb */
+      /* 1324 */ UChar guest_CR7_321; /* in [3:1] */
+      /* 1325 */ UChar guest_CR7_0;   /* in lsb */
 
       /* FP Status and  Control Register fields. Only rounding mode fields
        * and Floating-point Condition Code (FPCC) fields are supported.
        */
-      /* 1324 */ UChar guest_FPROUND; // Binary Floating Point Rounding Mode
-      /* 1325 */ UChar guest_DFPROUND; // Decimal Floating Point Rounding Mode
-      /* 1326 */ UChar guest_C_FPCC;   // Floating-point Condition Code
+      /* 1326 */ UChar guest_FPROUND; // Binary Floating Point Rounding Mode
+      /* 1327 */ UChar guest_DFPROUND; // Decimal Floating Point Rounding Mode
+      /* 1328 */ UChar guest_C_FPCC;   // Floating-point Condition Code
                                        // and Floating-point Condition Code
 
-      /* 1327 */ UChar pad2;
+      /* 1329 */ UChar pad2;
+      /* 1330 */ UChar pad3;
+      /* 1331 */ UChar pad4;
 
       /* Vector Save/Restore Register */
-      /* 1328 */ UInt guest_VRSAVE;
+      /* 1332 */ UInt guest_VRSAVE;
 
       /* Vector Status and Control Register */
-      /* 1332 */ UInt guest_VSCR;
+      /* 1336 */ UInt guest_VSCR;
 
       /* Emulation notes */
-      /* 1336 */ UInt guest_EMNOTE;
+      /* 1340 */ UInt guest_EMNOTE;
 
       /* gcc adds 4 bytes padding here: pre-empt it. */
-      /* 1340 */ UInt  padding;
+      /* 1344 */ UInt  padding;
 
       /* For icbi: record start and length of area to invalidate */
-      /* 1344 */ ULong guest_CMSTART;
-      /* 1352 */ ULong guest_CMLEN;
+      /* 1348 */ ULong guest_CMSTART;
+      /* 1356 */ ULong guest_CMLEN;
 
       /* Used to record the unredirected guest address at the start of
          a translation whose start has been redirected.  By reading
@@ -264,39 +266,79 @@ typedef
          find out what the corresponding no-redirection address was.
          Note, this is only set for wrap-style redirects, not for
          replace-style ones. */
-      /* 1360 */ ULong guest_NRADDR;
-      /* 1368 */ ULong guest_NRADDR_GPR2;
+      /* 1364 */ ULong guest_NRADDR;
+      /* 1372 */ ULong guest_NRADDR_GPR2;
 
      /* A grows-upwards stack for hidden saves/restores of LR and R2
         needed for function interception and wrapping on ppc64-linux.
         A horrible hack.  REDIR_SP points to the highest live entry,
         and so starts at -1. */
-      /* 1376 */ ULong guest_REDIR_SP;
-      /* 1384 */ ULong guest_REDIR_STACK[VEX_GUEST_PPC64_REDIR_STACK_SIZE];
-
-      /* Needed for Darwin: CIA at the last SC insn.  Used when backing up
-         to restart a syscall that has been interrupted by a signal. */
-      /* 1640 */ ULong guest_IP_AT_SYSCALL;
+      /* 1380 */ ULong guest_REDIR_SP;
+      /* 1388 */ ULong guest_REDIR_STACK[VEX_GUEST_PPC64_REDIR_STACK_SIZE];
 
       /* SPRG3, which AIUI is readonly in user space.  Needed for
          threading on AIX. */
       /* 1648 */ ULong guest_SPRG3_RO;
 
-      /* 1656 */ ULong guest_TFHAR;     // Transaction Failure Handler Address Register 
+      /* 1656 */ ULong guest_TFHAR;     // Transaction Failure Handler Address Register
       /* 1664 */ ULong guest_TEXASR;    // Transaction EXception And Summary Register
       /* 1672 */ ULong guest_TFIAR;     // Transaction Failure Instruction Address Register
       /* 1680 */ ULong guest_PPR;       // Program Priority register
       /* 1688 */ UInt  guest_TEXASRU;   // Transaction EXception And Summary Register Upper
       /* 1692 */ UInt  guest_PSPB;      // Problem State Priority Boost register
+      /* 1696 */ ULong guest_DSCR;      // Data Stream Control register
 
+      /* Historical note, Initial ACC support was implemented to use a separate
+         register file, but in practice (ISA 3.1) the hardware implementation
+         logically overlays over the existing VSR registers. This may change
+         in future hardware, so the current implementation assumes ACC and VSRs
+         logically contain the same data, but code remains in place to support
+         future implementations that may require a separate register file.
+         02/08/2022. */
+      /* The guest_ACC_entries must be in order and sequential.  The helper
+         routines get_ACC_entry(), write_ACC_entry() calculate the offset of
+         the ACC entry based on a address of guest_ACC_0_r0.  */
+      /* 1704 */   U128  guest_ACC_0_r0;
+      /* 1720 */   U128  guest_ACC_0_r1;
+      /* 1736 */   U128  guest_ACC_0_r2;
+      /* 1752 */   U128  guest_ACC_0_r3;
+      /* 1768 */   U128  guest_ACC_1_r0;
+      /* 1784 */   U128  guest_ACC_1_r1;
+      /* 1800 */   U128  guest_ACC_1_r2;
+      /* 1816 */   U128  guest_ACC_1_r3;
+      /* 1832 */   U128  guest_ACC_2_r0;
+      /* 1848 */   U128  guest_ACC_2_r1;
+      /* 1864 */   U128  guest_ACC_2_r2;
+      /* 1880 */   U128  guest_ACC_2_r3;
+      /* 1896 */   U128  guest_ACC_3_r0;
+      /* 1912 */   U128  guest_ACC_3_r1;
+      /* 1928 */   U128  guest_ACC_3_r2;
+      /* 1944 */   U128  guest_ACC_3_r3;
+      /* 1960 */   U128  guest_ACC_4_r0;
+      /* 1976 */   U128  guest_ACC_4_r1;
+      /* 1992 */   U128  guest_ACC_4_r2;
+      /* 2008 */   U128  guest_ACC_4_r3;
+      /* 2024 */   U128  guest_ACC_5_r0;
+      /* 2040 */   U128  guest_ACC_5_r1;
+      /* 2056 */   U128  guest_ACC_5_r2;
+      /* 2072 */   U128  guest_ACC_5_r3;
+      /* 2088 */   U128  guest_ACC_6_r0;
+      /* 2104 */   U128  guest_ACC_6_r1;
+      /* 2120 */   U128  guest_ACC_6_r2;
+      /* 2136 */   U128  guest_ACC_6_r3;
+      /* 2152 */   U128  guest_ACC_7_r0;
+      /* 2168 */   U128  guest_ACC_7_r1;
+      /* 2184 */   U128  guest_ACC_7_r2;
+      /* 2200 */   U128  guest_ACC_7_r3;
+
+      /* 2216 */   UInt guest_syscall_flag;
       /* Padding to make it have an 16-aligned size */
-      /* 1696   UInt  padding1;  currently not needed */
-      /* 1700   UInt  padding2;  currently not needed */
-      /* 1708   UInt  padding3;  currently not needed */
-
    }
    VexGuestPPC64State;
 
+#if defined(__LP64__)
+_Static_assert((sizeof(VexGuestPPC64State)%16)== 0, "sizeof VexGuestPPC64State is not a multiple of 16");
+#endif
 
 /*---------------------------------------------------------------*/
 /*--- Utility functions for PPC64 guest stuff.                ---*/

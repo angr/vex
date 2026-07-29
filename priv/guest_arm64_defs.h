@@ -6,12 +6,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2013-2015 OpenWorks
+   Copyright (C) 2013-2017 OpenWorks
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -20,9 +20,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -41,9 +39,6 @@
    guest_generic_bb_to_IR.h. */
 extern
 DisResult disInstr_ARM64 ( IRSB*        irbb,
-                           Bool         (*resteerOkFn) ( void*, Addr ),
-                           Bool         resteerCisOk,
-                           void*        callback_opaque,
                            const UChar* guest_code,
                            Long         delta,
                            Addr         guest_IP,
@@ -121,8 +116,21 @@ extern ULong arm64g_calc_crc32cw ( ULong acc, ULong bits );
 extern ULong arm64g_calc_crc32cx ( ULong acc, ULong bits );
 
 /* --- DIRTY HELPERS --- */
+extern ULong arm64g_dirtyhelper_MRS_DCZID_EL0 ( void );
 
 extern ULong arm64g_dirtyhelper_MRS_CNTVCT_EL0 ( void );
+
+extern ULong arm64g_dirtyhelper_MRS_CNTFRQ_EL0 ( void );
+
+extern ULong arm64g_dirtyhelper_MRS_MIDR_EL1 ( void );
+
+extern ULong arm64g_dirtyhelper_MRS_ID_AA64PFR0_EL1 ( void );
+
+extern ULong arm64g_dirtyhelper_MRS_ID_AA64MMFR0_EL1 ( void );
+extern ULong arm64g_dirtyhelper_MRS_ID_AA64MMFR1_EL1 ( void );
+
+extern ULong arm64g_dirtyhelper_MRS_ID_AA64ISAR0_EL1 ( void );
+extern ULong arm64g_dirtyhelper_MRS_ID_AA64ISAR1_EL1 ( void );
 
 extern void  arm64g_dirtyhelper_PMULLQ ( /*OUT*/V128* res,
                                          ULong arg1, ULong arg2 );
@@ -167,6 +175,19 @@ extern
 void arm64g_dirtyhelper_SHA256SU1 ( /*OUT*/V128* res, ULong dHi, ULong dLo,
                                     ULong nHi, ULong nLo,
                                     ULong mHi, ULong mLo );
+extern
+void arm64g_dirtyhelper_SHA512H2 ( /*OUT*/V128* res, ULong dHi, ULong dLo,
+                                   ULong nHi, ULong nLo, ULong mHi, ULong mLo );
+extern
+void arm64g_dirtyhelper_SHA512H ( /*OUT*/V128* res, ULong dHi, ULong dLo,
+                                  ULong nHi, ULong nLo, ULong mHi, ULong mLo );
+extern
+void arm64g_dirtyhelper_SHA512SU0 ( /*OUT*/V128* res, ULong dHi, ULong dLo,
+                                    ULong nHi, ULong nLo );
+extern
+void arm64g_dirtyhelper_SHA512SU1 ( /*OUT*/V128* res, ULong dHi, ULong dLo,
+                                    ULong nHi, ULong nLo,
+                                    ULong mHi, ULong mLo );
 
 
 /*---------------------------------------------------------*/
@@ -183,7 +204,7 @@ void arm64g_dirtyhelper_SHA256SU1 ( /*OUT*/V128* res, ULong dHi, ULong dLo,
 //ZZ 
 //ZZ #define ARMG_CC_MASK_N    (1 << ARMG_CC_SHIFT_N)
 //ZZ #define ARMG_CC_MASK_Z    (1 << ARMG_CC_SHIFT_Z)
-//ZZ #define ARMG_CC_MASK_C    (1 << ARMG_CC_SHIFT_C)
+#define ARM64G_CC_MASK_C    (1 << ARM64G_CC_SHIFT_C)
 //ZZ #define ARMG_CC_MASK_V    (1 << ARMG_CC_SHIFT_V)
 //ZZ #define ARMG_CC_MASK_Q    (1 << ARMG_CC_SHIFT_Q)
 
@@ -303,6 +324,17 @@ typedef
       ARM64CondNV = 15  /* always (unconditional)        : 1 */
    }
    ARM64Condcode;
+
+/* Vector element size specifiers */
+
+typedef
+   enum {
+      ARM64VSizeH = 0, /* 16 bits (integer halfword or half-precision FP)    */
+      ARM64VSizeS = 1, /* 32 bits (integer shortword or single-precision FP) */
+      ARM64VSizeD = 2  /* 64 bits (integer word or double-precision FP)      */
+   }
+   ARM64VecESize;
+
 
 #endif /* ndef __VEX_GUEST_ARM64_DEFS_H */
 

@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -106,12 +104,8 @@ typedef
          replace-style ones. */
       UInt guest_NRADDR;
 
-      /* Needed for Darwin (but mandated for all guest architectures):
-         program counter at the last syscall insn (int 0x80/81/82,
-         sysenter, syscall, svc).  Used when backing up to restart a
-         syscall that has been interrupted by a signal. */
       /* 124 */
-      UInt guest_IP_AT_SYSCALL;
+      UInt padding1;
 
       /* VFP state.  D0 .. D15 must be 8-aligned. */
       /* 128 */
@@ -158,6 +152,11 @@ typedef
          thread-related syscalls. */
       UInt guest_TPIDRURO;
 
+      /* TPIDRURW is also apparently used as a thread register, but one
+         controlled entirely by, and writable from, user space.  We model
+         it as a completely vanilla piece of integer state. */
+      UInt guest_TPIDRURW;
+
       /* Representation of the Thumb IT state.  ITSTATE is a 32-bit
          value with 4 8-bit lanes.  [7:0] pertain to the next insn to
          execute, [15:8] for the one after that, etc.  The per-insn
@@ -192,12 +191,10 @@ typedef
          to the top 24 bits of ITSTATE being zero.
       */
       UInt guest_ITSTATE;
-
-      /* Padding to make it have an 16-aligned size */
-      UInt padding1;
    }
    VexGuestARMState;
 
+_Static_assert(sizeof(VexGuestARMState)%16 == 0, "sizeof VexGuestX86State is not a multiple of 16");
 
 /*---------------------------------------------------------------*/
 /*--- Utility functions for ARM guest stuff.                  ---*/

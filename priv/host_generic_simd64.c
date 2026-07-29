@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -135,6 +133,14 @@ static inline UChar sel8x8_0 ( ULong w64 ) {
 static inline UChar index8x8 ( ULong w64, UChar ix ) {
    ix &= 7;
    return toUChar((w64 >> (8*ix)) & 0xFF);
+}
+
+static inline UChar indexOrZero8x8 ( ULong w64, UChar ix ) {
+   Char zeroingMask = (Char)ix;
+   zeroingMask ^= 0x80;
+   zeroingMask >>= 7;
+   ix &= 7;
+   return toUChar( ((w64 >> (8*ix)) & zeroingMask) & 0xFF );
 }
 
 
@@ -974,7 +980,8 @@ ULong h_generic_calc_CatEvenLanes16x4 ( ULong aa, ULong bb )
           );
 }
 
-/* misc hack looking for a proper home */
+/* ------------ Permutation ------------ */
+
 ULong h_generic_calc_Perm8x8 ( ULong aa, ULong bb )
 {
    return mk8x8(
@@ -986,6 +993,20 @@ ULong h_generic_calc_Perm8x8 ( ULong aa, ULong bb )
              index8x8(aa, sel8x8_2(bb)),
              index8x8(aa, sel8x8_1(bb)),
              index8x8(aa, sel8x8_0(bb))
+          );
+}
+
+ULong h_generic_calc_PermOrZero8x8 ( ULong aa, ULong bb )
+{
+   return mk8x8(
+             indexOrZero8x8(aa, sel8x8_7(bb)),
+             indexOrZero8x8(aa, sel8x8_6(bb)),
+             indexOrZero8x8(aa, sel8x8_5(bb)),
+             indexOrZero8x8(aa, sel8x8_4(bb)),
+             indexOrZero8x8(aa, sel8x8_3(bb)),
+             indexOrZero8x8(aa, sel8x8_2(bb)),
+             indexOrZero8x8(aa, sel8x8_1(bb)),
+             indexOrZero8x8(aa, sel8x8_0(bb))
           );
 }
 

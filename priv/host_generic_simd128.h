@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2015 OpenWorks GbR
+   Copyright (C) 2010-2017 OpenWorks GbR
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -68,9 +66,9 @@ extern VEX_REGPARM(3)
 extern VEX_REGPARM(3)
        void h_generic_calc_CmpGT64Sx2 ( /*OUT*/V128*, V128*, V128* );
 
-extern /*not-regparm*/
+extern VEX_REGPARM(3)
        void h_generic_calc_SarN64x2   ( /*OUT*/V128*, V128*, UInt );
-extern /*not-regparm*/
+extern VEX_REGPARM(3)
        void h_generic_calc_SarN8x16   ( /*OUT*/V128*, V128*, UInt );
 
 extern VEX_REGPARM(3)
@@ -85,6 +83,11 @@ extern VEX_REGPARM(3)
 
 extern VEX_REGPARM(3)
        void h_generic_calc_Perm32x4   ( /*OUT*/V128*, V128*, V128* );
+
+// This is correct and tested, but isn't used because we just generate
+// PSHUFB on amd64 instead.
+//extern VEX_REGPARM(3)
+//       void h_generic_calc_PermOrZero8x16 ( /*OUT*/V128*, V128*, V128* );
 
 extern /*not-regparm*/
        UInt  h_generic_calc_GetMSBs8x16 ( ULong w64hi, ULong w64lo );

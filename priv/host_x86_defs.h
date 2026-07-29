@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -47,12 +45,12 @@
 */
 
 #define ST_IN static inline
-ST_IN HReg hregX86_EAX   ( void ) { return mkHReg(False, HRcInt32,  0,  0); }
-ST_IN HReg hregX86_EBX   ( void ) { return mkHReg(False, HRcInt32,  3,  1); }
-ST_IN HReg hregX86_ECX   ( void ) { return mkHReg(False, HRcInt32,  1,  2); }
-ST_IN HReg hregX86_EDX   ( void ) { return mkHReg(False, HRcInt32,  2,  3); }
-ST_IN HReg hregX86_ESI   ( void ) { return mkHReg(False, HRcInt32,  6,  4); }
-ST_IN HReg hregX86_EDI   ( void ) { return mkHReg(False, HRcInt32,  7,  5); }
+ST_IN HReg hregX86_EBX   ( void ) { return mkHReg(False, HRcInt32,  3,  0); }
+ST_IN HReg hregX86_ESI   ( void ) { return mkHReg(False, HRcInt32,  6,  1); }
+ST_IN HReg hregX86_EDI   ( void ) { return mkHReg(False, HRcInt32,  7,  2); }
+ST_IN HReg hregX86_EAX   ( void ) { return mkHReg(False, HRcInt32,  0,  3); }
+ST_IN HReg hregX86_ECX   ( void ) { return mkHReg(False, HRcInt32,  1,  4); }
+ST_IN HReg hregX86_EDX   ( void ) { return mkHReg(False, HRcInt32,  2,  5); }
 
 ST_IN HReg hregX86_FAKE0 ( void ) { return mkHReg(False, HRcFlt64,  0,  6); }
 ST_IN HReg hregX86_FAKE1 ( void ) { return mkHReg(False, HRcFlt64,  1,  7); }
@@ -582,7 +580,6 @@ typedef
          /* fstsw %ax */
          struct {
             /* no fields */
-			Int nop;
          }
          FpStSW_AX;
          /* Do a compare, generating the C320 bits into the dst. */
@@ -652,7 +649,6 @@ typedef
             /* No fields.  The address of the counter to inc is
                installed later, post-translation, by patching it in,
                as it is not known at translation time. */
-			Int nop;
          } ProfInc;
 
       } Xin;
@@ -721,7 +717,7 @@ extern void         mapRegs_X86Instr     ( HRegRemap*, X86Instr*, Bool );
 extern Int          emit_X86Instr   ( /*MB_MOD*/Bool* is_profInc,
                                       UChar* buf, Int nbuf, const X86Instr* i, 
                                       Bool mode64,
-                                      VexEndness endness_host,
+                                      const VexArchInfo* archinfo_host,
                                       const void* disp_cp_chain_me_to_slowEP,
                                       const void* disp_cp_chain_me_to_fastEP,
                                       const void* disp_cp_xindir,

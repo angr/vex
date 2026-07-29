@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -193,6 +191,7 @@ typedef
       UShort guest_FS;
       UShort guest_GS;
       UShort guest_SS;
+      UInt paddingSeg;
       /* LDT/GDT stuff. */
       ULong  guest_LDT; /* host addr, a VexGuestX86SegDescr* */
       ULong  guest_GDT; /* host addr, a VexGuestX86SegDescr* */
@@ -215,16 +214,15 @@ typedef
       /* Used for Darwin syscall dispatching. */
       UInt guest_SC_CLASS;
 
-      /* Needed for Darwin (but mandated for all guest architectures):
-         EIP at the last syscall insn (int 0x80/81/82, sysenter,
-         syscall).  Used when backing up to restart a syscall that has
-         been interrupted by a signal. */
-      UInt guest_IP_AT_SYSCALL;
 
       /* Padding to make it have an 16-aligned size */
       UInt padding1;
+      UInt padding2;
+      UInt padding3;
    }
    VexGuestX86State;
+
+_Static_assert(sizeof(VexGuestX86State)%16 == 0, "sizeof VexGuestX86State is not a multiple of 16");
 
 #define VEX_GUEST_X86_LDT_NENT /*64*/ 8192 /* use complete LDT */
 #define VEX_GUEST_X86_GDT_NENT /*16*/ 8192 /* use complete GDT */

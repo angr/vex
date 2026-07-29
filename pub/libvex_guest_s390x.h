@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -109,60 +107,55 @@ typedef struct {
 /*--- gpr registers                                        ---*/
 /*------------------------------------------------------------*/
 
-   /*  568 */  ULong guest_r0;
-   /*  576 */  ULong guest_r1;
-   /*  584 */  ULong guest_r2;
-   /*  592 */  ULong guest_r3;
-   /*  600 */  ULong guest_r4;
-   /*  608 */  ULong guest_r5;
-   /*  616 */  ULong guest_r6;
-   /*  624 */  ULong guest_r7;
-   /*  632 */  ULong guest_r8;
-   /*  640 */  ULong guest_r9;
-   /*  648 */  ULong guest_r10;
-   /*  656 */  ULong guest_r11;
-   /*  664 */  ULong guest_r12;
-   /*  672 */  ULong guest_r13;
-   /*  680 */  ULong guest_r14;
-   /*  688 */  ULong guest_r15;
+   /*  576 */  ULong guest_r0;
+   /*  584 */  ULong guest_r1;
+   /*  592 */  ULong guest_r2;
+   /*  600 */  ULong guest_r3;
+   /*  608 */  ULong guest_r4;
+   /*  616 */  ULong guest_r5;
+   /*  624 */  ULong guest_r6;
+   /*  632 */  ULong guest_r7;
+   /*  640 */  ULong guest_r8;
+   /*  648 */  ULong guest_r9;
+   /*  656 */  ULong guest_r10;
+   /*  664 */  ULong guest_r11;
+   /*  672 */  ULong guest_r12;
+   /*  680 */  ULong guest_r13;
+   /*  688 */  ULong guest_r14;
+   /*  696 */  ULong guest_r15;
 
 /*------------------------------------------------------------*/
 /*--- S390 miscellaneous registers                         ---*/
 /*------------------------------------------------------------*/
 
-   /*  696 */  ULong guest_counter;
-   /*  704 */  UInt guest_fpc;
-   /*  708 */  UChar unused[4]; /* 4-byte hole to get 8-byte alignment */
-   /*  712 */  ULong guest_IA;
+   /*  704 */  ULong guest_counter;
+   /*  712 */  UInt guest_fpc;
+   /*  716 */  UChar unused[4]; /* 4-byte hole to get 8-byte alignment */
+   /*  720 */  ULong guest_IA;
 
 /*------------------------------------------------------------*/
 /*--- S390 pseudo registers                                ---*/
 /*------------------------------------------------------------*/
 
-   /*  720 */  ULong guest_SYSNO;
+   /*  728 */  ULong guest_SYSNO;
 
 /*------------------------------------------------------------*/
 /*--- 4-word thunk used to calculate the condition code    ---*/
 /*------------------------------------------------------------*/
 
-   /*  728 */  ULong guest_CC_OP;
-   /*  736 */  ULong guest_CC_DEP1;
-   /*  744 */  ULong guest_CC_DEP2;
-   /*  752 */  ULong guest_CC_NDEP;
+   /*  736 */  ULong guest_CC_OP;
+   /*  744 */  ULong guest_CC_DEP1;
+   /*  752 */  ULong guest_CC_DEP2;
+   /*  760 */  ULong guest_CC_NDEP;
 
 /*------------------------------------------------------------*/
 /*--- Pseudo registers. Required by all architectures      ---*/
 /*------------------------------------------------------------*/
 
    /* See comments at bottom of libvex.h */
-   /*  760 */  ULong guest_NRADDR;
-   /*  768 */  ULong guest_CMSTART;
-   /*  776 */  ULong guest_CMLEN;
-
-   /* Used when backing up to restart a syscall that has
-      been interrupted by a signal. See also comment in
-      libvex_ir.h */
-   /*  784 */  ULong guest_IP_AT_SYSCALL;
+   /*  768 */  ULong guest_NRADDR;
+   /*  776 */  ULong guest_CMSTART;
+   /*  784 */  ULong guest_CMLEN;
 
    /* Emulation notes; see comments in libvex_emnote.h */
    /*  792 */  UInt guest_EMNOTE;
@@ -174,11 +167,12 @@ typedef struct {
 /*------------------------------------------------------------*/
 /*--- Force alignment to 16 bytes                          ---*/
 /*------------------------------------------------------------*/
-   /*  808 */  UChar padding[0];
+   /*  808 */  ULong padding;
 
    /*  816 */  /* This is the size of the guest state */
 } VexGuestS390XState;
 
+_Static_assert((sizeof(VexGuestS390XState)%16)== 0, "sizeof VexGuestS390XState is not a multiple of 16");
 
 /*------------------------------------------------------------*/
 /*--- Function prototypes                                  ---*/

@@ -9,11 +9,11 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2012-2015  Florian Krohm   (britzel@acm.org)
+   Copyright (C) 2012-2017  Florian Krohm   (britzel@acm.org)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -22,19 +22,23 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
 
+/* !!! When running valgrind on applications that use IR injection
+   !!! --vex-guest-chase=no should be given on the command line. This
+   !!! avoids that vex_inject_ir is called speculatively.
+*/
 #include "libvex_basictypes.h"
 #include "libvex_ir.h"
 #include "libvex.h"
 #include "main_util.h"
+#include "main_globals.h"           // vex_control
 
 /* Convenience macros for readibility */
+#define mkU1(v)   IRExpr_Const(IRConst_U1(v))
 #define mkU8(v)   IRExpr_Const(IRConst_U8(v))
 #define mkU16(v)  IRExpr_Const(IRConst_U16(v))
 #define mkU32(v)  IRExpr_Const(IRConst_U32(v))
@@ -48,13 +52,12 @@
 
 /* The IR Injection Control Block. vex_inject_ir will query its contents
    to construct IR statements for testing purposes. */
-static IRICB iricb;
-
+static IRICB the_iricb;
 
 void
 LibVEX_InitIRI(const IRICB *iricb_in)
 {
-   iricb = *iricb_in;  // copy in
+   the_iricb = *iricb_in;  // copy in
 }
 
 
@@ -69,7 +72,8 @@ load_aux(IREndness endian, IRType type, IRExpr *addr)
                   IRExpr_Load(endian, Ity_I64, addr));
    }
    if (type == Ity_I1) {
-      /* A Boolean value is stored as a 32-bit entity (see store_aux). */
+      /* A Boolean value is stored as a 32-bit entity. For an explanation
+         see comment in vbit-test/vbits.h */
       return unop(Iop_32to1, IRExpr_Load(endian, Ity_I32, addr));
    }
 
@@ -87,7 +91,8 @@ load(IREndness endian, IRType type, HWord haddr)
 
    vassert(type == Ity_I1 || sizeofIRType(type) <= 16);
 
-   if (VEX_HOST_WORDSIZE == 8) {
+   if (VEX_HOST_WORDSIZE == 8 ||
+      (VEX_HOST_WORDSIZE == 4 && sizeof(RegWord) == 8)) {
       addr = mkU64(haddr);
       next_addr = binop(Iop_Add64, addr, mkU64(8));
    } else if (VEX_HOST_WORDSIZE == 4) {
@@ -132,8 +137,8 @@ store_aux(IRSB *irsb, IREndness endian, IRExpr *addr, IRExpr *data)
       data = unop(Iop_ReinterpD64asI64, data);
    }
    if (typeOfIRExpr(irsb->tyenv, data) == Ity_I1) {
-      /* We cannot store a single bit. So we store it in a 32-bit container.
-         See also load_aux. */
+      /* A Boolean value is stored as a 32-bit entity. For an explanation
+         see comment in vbit-test/vbits.h */
       data = unop(Iop_1Uto32, data);
    }
    stmt(irsb, IRStmt_Store(endian, addr, data));
@@ -148,7 +153,8 @@ store(IRSB *irsb, IREndness endian, HWord haddr, IRExpr *data)
    IROp high, low;
    IRExpr *addr, *next_addr;
 
-   if (VEX_HOST_WORDSIZE == 8) {
+   if (VEX_HOST_WORDSIZE == 8 ||
+      (VEX_HOST_WORDSIZE == 4 && sizeof(RegWord) == 8)) {
       addr = mkU64(haddr);
       next_addr = binop(Iop_Add64, addr, mkU64(8));
    } else if (VEX_HOST_WORDSIZE == 4) {
@@ -189,9 +195,10 @@ store(IRSB *irsb, IREndness endian, HWord haddr, IRExpr *data)
 
 /* Inject IR stmts depending on the data provided in the control
    block iricb. */
-void
-vex_inject_ir(IRSB *irsb, IREndness endian)
+static void
+vex_inject_ir_vbit(IRSB *irsb, IREndness endian)
 {
+   IRICB_vbit_payload iricb = the_iricb.vbit;
    IRExpr *data, *rounding_mode, *opnd1, *opnd2, *opnd3, *opnd4;
 
    rounding_mode = NULL;
@@ -317,6 +324,90 @@ vex_inject_ir(IRSB *irsb, IREndness endian)
          ppIRStmt(irsb->stmts[irsb->stmts_used - 1]);
       }
       vex_printf("\nEND inject\n");
+   }
+}
+
+
+static void
+vex_inject_ir_iropt(IRSB *irsb, IREndness endian)
+{
+   IRICB_iropt_payload iricb = the_iricb.iropt;
+   IRExpr *opnd1, *opnd2, *expr;
+   ULong val1, val2;
+
+   val1 = *(ULong *)iricb.opnd1;
+   switch (iricb.t_opnd1) {
+   case Ity_I1:  opnd1 = mkU1(val1);  break;
+   case Ity_I8:  opnd1 = mkU8(val1);  break;
+   case Ity_I16: opnd1 = mkU16(val1); break;
+   case Ity_I32: opnd1 = mkU32(val1); break;
+   case Ity_I64: opnd1 = mkU64(val1); break;
+   default:
+      vpanic("unsupported type");
+   }
+
+   switch (iricb.num_operands) {
+   case 1:
+      expr = unop(iricb.op, opnd1);
+      break;
+
+   case 2:
+      val2 = *(ULong *)iricb.opnd2;
+      switch (iricb.t_opnd2) {
+      case Ity_I1:  opnd2 = mkU1(val2);  break;
+      case Ity_I8:  opnd2 = mkU8(val2);  break;
+      case Ity_I16: opnd2 = mkU16(val2); break;
+      case Ity_I32: opnd2 = mkU32(val2); break;
+      case Ity_I64: opnd2 = mkU64(val2); break;
+      default:
+         vpanic("unsupported type");
+      }
+      expr = binop(iricb.op, opnd1, opnd2);
+      break;
+
+   default:
+      vpanic("unsupported operator");
+   }
+
+   if (! vex_control.iropt_fold_expr) {
+      store(irsb, endian, iricb.result_nofold, expr);
+      return;
+   }
+
+   /* Make sure the expression gets folded ! */
+   IRExpr *env[1] = { 0 };
+   IRExpr *res = foldIRExpr(env, expr);
+
+// vex_printf("FOLDED RESULT "); ppIRExpr(res); vex_printf("\n");
+
+   if (res->tag != Iex_Const) {
+      vex_printf("*** ");
+      ppIROp(iricb.op);
+      vex_printf(": not folded: result = ");
+      ppIRExpr(res);
+      vex_printf("\n");
+//      *(ULong *)iricb.result_fold = 0;     // whatever
+//      return;
+      res = mkU32(0);        // whatever
+   }
+   store(irsb, endian, iricb.result_fold, res);
+}
+
+
+void
+vex_inject_ir(IRSB *irsb, IREndness endian)
+{
+   switch (the_iricb.kind) {
+   case IRICB_vbit:
+      vex_inject_ir_vbit(irsb, endian);
+      break;
+
+   case IRICB_iropt:
+      vex_inject_ir_iropt(irsb, endian);
+      break;
+
+   default:
+      vpanic("unknown IRICB kind");
    }
 }
 

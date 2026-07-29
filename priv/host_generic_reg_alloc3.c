@@ -10,7 +10,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -19,9 +19,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -88,10 +86,6 @@ typedef
    }
    VRegState;
 
-#define Free 0      /* Not bound to any vreg. */
-#define Bound 1     /* Bound to a vreg, viz vreg. */
-#define Reserved 2  /* Reserved for an instruction. */
-
 /* The allocator also maintains a redundant array of indexes (rreg_state) from
    rreg numbers back to entries in vreg_state. It is redundant because iff
    rreg_state[r] == v then hregNumber(vreg_state[v].rreg) == r -- that is, the
@@ -106,7 +100,10 @@ typedef
 typedef
    struct {
       /* What is its current disposition? */
-      UInt disp;  /* Free, Bound, Reserved */
+      enum { Free,     /* Not bound to any vreg. */
+             Bound,    /* Bound to a vreg, viz vreg. */
+             Reserved  /* Reserved for an instruction. */
+           } disp;
 
       /* If .disp == Bound, what vreg is it bound to? */
       HReg vreg;
@@ -151,8 +148,9 @@ typedef
    }
    RRegLRState;
 
-#define IS_VALID_VREGNO(v) ((v) >= 0 && (v) < n_vregs)
-#define IS_VALID_RREGNO(r) ((r) >= 0 && (r) < n_rregs)
+/* v and r are always unsigned, wish we could static assert that */
+#define IS_VALID_VREGNO(v) ((v) < n_vregs)
+#define IS_VALID_RREGNO(r) ((r) < n_rregs)
 
 #define FREE_VREG(v)             \
    do {                          \
@@ -167,40 +165,6 @@ typedef
       (r)->eq_spill_slot = False;         \
    } while (0)
 
-
-#ifdef _MSC_VER
-#ifdef _M_AMD64
-static inline int __builtin_clzll(unsigned long long x) {
-    return (int)__lzcnt64(x);
-}
-
-static inline int __builtin_ctzll(unsigned long long x) {
-    unsigned long ret;
-    _BitScanForward64(&ret, x);
-    return (int)ret;
-}
-#else
-static inline int __builtin_clzll(unsigned long long x) {
-   int out = 0;
-   if (x == 0) return 64;
-   while ((long long)x > 0) {
-      x <<= 1;
-      out++;
-   }
-   return out;
-}
-
-static inline int __builtin_ctzll(unsigned long long x) {
-   int out = 0;
-   if (x == 0) return 64;
-   while (x & 1 == 0) {
-      x >>= 1;
-      out++;
-   }
-   return out;
-}
-#endif
-#endif
 
 /* Compute the index of the highest and lowest 1 in a ULong, respectively.
    Results are undefined if the argument is zero. Don't pass it zero :) */
@@ -586,9 +550,8 @@ HInstrArray* doRegisterAllocation_v3(
 /* Finds an rreg of the correct class.
    If a free rreg is not found, then spills a vreg not used by the current
    instruction and makes free the corresponding rreg. */
-#  define FIND_OR_MAKE_FREE_RREG(r, _ii, _v_idx, _reg_class, _reserve_phase)   \
-   UInt (r);                                                                   \
-   {                                                                           \
+#  define FIND_OR_MAKE_FREE_RREG(_ii, _v_idx, _reg_class, _reserve_phase)      \
+   ({                                                                          \
       Int _r_free_idx = find_free_rreg(                                        \
                       vreg_state, n_vregs, rreg_state, n_rregs, rreg_lr_state, \
                       (_v_idx), (_ii), (_reg_class), (_reserve_phase), con);   \
@@ -606,8 +569,8 @@ HInstrArray* doRegisterAllocation_v3(
                                                                                \
       vassert(IS_VALID_RREGNO(_r_free_idx));                                   \
                                                                                \
-      (r) = _r_free_idx;                                                       \
-   }
+      _r_free_idx;                                                             \
+   })
 
 
    /* --- Stage 0. Initialize the state. --- */
@@ -1177,7 +1140,7 @@ HInstrArray* doRegisterAllocation_v3(
                      }
                   } else {
                      /* Find or make a free rreg where to move this vreg to. */
-                     FIND_OR_MAKE_FREE_RREG(r_free_idx,
+                     UInt r_free_idx = FIND_OR_MAKE_FREE_RREG(
                                   ii, v_idx, vreg_state[v_idx].reg_class, True);
 
                      /* Generate "move" between real registers. */
@@ -1219,8 +1182,8 @@ HInstrArray* doRegisterAllocation_v3(
       /* If the instruction reads exactly one vreg which is currently spilled,
          and this is the last use of that vreg, see if we can convert
          the instruction into one that reads directly from the spill slot.
-         This is clearly only possible for x86 and amd64 targets, since ppc and
-         arm are load-store architectures. If successful, replace
+         This is clearly only possible for x86, amd64, and s390x targets,
+         since ppc and arm are load-store architectures. If successful, replace
          instrs_in->arr[ii] with this new instruction, and recompute
          its reg_usage, so that the change is invisible to the standard-case
          handling that follows. */
@@ -1315,9 +1278,8 @@ HInstrArray* doRegisterAllocation_v3(
             vassert(hregIsInvalid(rreg));
 
             /* Find or make a free rreg of the correct class. */
-            FIND_OR_MAKE_FREE_RREG(r_idx_,
+            r_idx = FIND_OR_MAKE_FREE_RREG(
                                  ii, v_idx, vreg_state[v_idx].reg_class, False);
-            r_idx = r_idx_;
             rreg = con->univ->regs[r_idx];
 
             /* Generate reload only if the vreg is spilled and is about to being

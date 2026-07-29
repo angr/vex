@@ -7,12 +7,11 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2015 RT-RK
-      mips-valgrind@rt-rk.com
+   Copyright (C) 2010-2017 RT-RK
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +20,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -43,9 +40,6 @@
 /* Convert one MIPS insn to IR. See the type DisOneInstrFn in 
    guest_generic_bb_to_IR.h. */
 extern DisResult disInstr_MIPS ( IRSB*        irbb,
-                                 Bool         (*resteerOkFn) (void *, Addr),
-                                 Bool         resteerCisOk,
-                                 void*        callback_opaque,
                                  const UChar* guest_code,
                                  Long         delta,
                                  Addr         guest_IP,
@@ -91,13 +85,34 @@ typedef enum {
    CVTDS,    CVTDW,   CVTSD,   CVTSW,
    CVTWS,    CVTWD,   CVTDL,   CVTLS,
    CVTLD,    CVTSL,   ADDS,    ADDD,
-   SUBS,     SUBD,    DIVS
+   SUBS,     SUBD,    DIVS,
+   RINTS,    RINTD,
+   MAXS,     MAXD,    MINS,    MIND,
+   MAXAS,    MAXAD,   MINAS,   MINAD,
+   CMPAFS,   CMPAFD,  CMPSAFS, CMPSAFD,
 } flt_op;
 
-#if defined(__mips__) && ((defined(__mips_isa_rev) && __mips_isa_rev >= 2))
-extern UInt mips32_dirtyhelper_rdhwr ( UInt rt, UInt rd );
-extern ULong mips64_dirtyhelper_rdhwr ( ULong rt, ULong rd );
+typedef enum {
+   FADDW=0, FADDD, FSUBW, FSUBD, FMULW, FMULD, FDIVW, FDIVD, FMADDW, FMADDD,
+   FCAFD, FCAFW, FSAFD, FSAFW, FCEQD, FCEQW, FSEQD, FSEQW, FCLTD, FCLTW, FSLTD,
+   FSLTW, FCLED, FCLEW, FSLED, FSLEW, FCNED, FCNEW, FSNED, FSNEW, FCUND, FCUNW,
+   FSUND, FSUNW, FCORD, FCORW, FSORD, FSORW, FCUEQD, FCUEQW, FSUEQD, FSUEQW,
+   FCUNED, FCUNEW, FSUNED, FSUNEW, FCULED, FCULEW, FSULED, FSULEW, FCULTD,
+   FCULTW, FSULTD, FSULTW, FEXP2W, FEXP2D, FMINW, FMIND, FMINAW, FMINAD, FMAXW,
+   FMAXD, FMAXAW, FMAXAD, FFINTSW, FFINTSD, FRCPW, FRCPD, FRSQRTW, FRSQRTD,
+   FSQRTW, FSQRTD, FRINTW, FRINTD, FTRUNCUW, FTRUNCUD, FTRUNCSW, FTRUNCSD,
+   FEXDOH, FEXDOW, FEXUPRD, FEXUPRW, FEXUPLD, FEXUPLW, FLOG2W, FLOG2D,
+   FTQH, FTQW, FFQRW, FFQRD,FFQLW, FFQLD, FTINT_SW, FTINT_SD,
+   FTINT_UW, FTINT_UD, FFINT_UW, FFINT_UD,
+} msa_flt_op;
+
+#if defined (_MIPSEL)
+   #define MIPS_IEND Iend_LE
+#else
+   #define MIPS_IEND Iend_BE
 #endif
+
+extern HWord mips_dirtyhelper_rdhwr ( UInt rd );
 
 /* Calculate FCSR in fp32 mode. */
 extern UInt mips_dirtyhelper_calculate_FCSR_fp32 ( void* guest_state, UInt fs,
@@ -105,6 +120,11 @@ extern UInt mips_dirtyhelper_calculate_FCSR_fp32 ( void* guest_state, UInt fs,
 /* Calculate FCSR in fp64 mode. */
 extern UInt mips_dirtyhelper_calculate_FCSR_fp64 ( void* guest_state, UInt fs,
                                                    UInt ft, flt_op op );
+
+extern UInt mips_dirtyhelper_calculate_MSACSR ( void* gs, UInt ws, UInt wt,
+                                                msa_flt_op inst );
+extern UInt mips_dirtyhelper_get_MSAIR ( void );
+
 
 /*---------------------------------------------------------*/
 /*---               Condition code stuff                ---*/

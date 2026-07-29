@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -29,9 +29,10 @@
 #ifndef __VEX_HOST_RISCV64_DEFS_H
 #define __VEX_HOST_RISCV64_DEFS_H
 
+#include "libvex.h"
 #include "libvex_basictypes.h"
-#include "libvex.h"             /* VexArch */
-#include "host_generic_regs.h"  /* HReg */
+
+#include "host_generic_regs.h"
 
 /*------------------------------------------------------------*/
 /*--- Registers                                            ---*/
@@ -335,6 +336,7 @@ typedef enum {
    RISCV64in_FpConvert,       /* Floating-point convert instruction. */
    RISCV64in_FpCompare,       /* Floating-point compare instruction. */
    RISCV64in_FpLdSt,          /* Floating-point load/store instruction. */
+   RISCV64in_FpCSEL,          /* Floating-point conditional-select pseudoinstruction.*/
    RISCV64in_CAS,             /* Compare-and-swap pseudoinstruction. */
    RISCV64in_FENCE,           /* Device I/O and memory fence. */
    RISCV64in_CSEL,            /* Conditional-select pseudoinstruction. */
@@ -454,6 +456,13 @@ typedef struct {
          HReg            base;
          Int             soff12; /* -2048 .. +2047 */
       } FpLdSt;
+      /* Floating-point conditional-select pseudoinstruction. */
+      struct {
+         HReg dst;
+         HReg iftrue;
+         HReg iffalse;
+         HReg cond;
+      } FpCSEL;
       /* Compare-and-swap pseudoinstruction. */
       struct {
          RISCV64CASOp op;
@@ -464,7 +473,6 @@ typedef struct {
       } CAS;
       /* Device I/O and memory fence. */
       struct {
-         Int _placeholder;
       } FENCE;
       /* Conditional-select pseudoinstruction. */
       struct {
@@ -524,7 +532,6 @@ typedef struct {
          /* No fields. The address of the counter to inc is installed later,
             post-translation, by patching it in, as it is not known at
             translation time. */
-         Int _placeholder;
       } ProfInc;
    } RISCV64in;
 } RISCV64Instr;
@@ -553,6 +560,8 @@ RISCV64Instr*
 RISCV64Instr_FpCompare(RISCV64FpCompareOp op, HReg dst, HReg src1, HReg src2);
 RISCV64Instr*
 RISCV64Instr_FpLdSt(RISCV64FpLdStOp op, HReg reg, HReg base, Int soff12);
+RISCV64Instr*
+RISCV64Instr_FpCSEL(HReg dst, HReg iftrue, HReg iffalse, HReg cond);
 RISCV64Instr*
 RISCV64Instr_CAS(RISCV64CASOp op, HReg old, HReg addr, HReg expd, HReg data);
 RISCV64Instr* RISCV64Instr_FENCE(void);
@@ -603,7 +612,7 @@ Int emit_RISCV64Instr(/*MB_MOD*/ Bool*    is_profInc,
                       Int                 nbuf,
                       const RISCV64Instr* i,
                       Bool                mode64,
-                      VexEndness          endness_host,
+                      const VexArchInfo*  archinfo_host,
                       const void*         disp_cp_chain_me_to_slowEP,
                       const void*         disp_cp_chain_me_to_fastEP,
                       const void*         disp_cp_xindir,

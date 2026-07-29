@@ -6,12 +6,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -20,9 +20,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -33,9 +31,6 @@
 #include "libvex_basictypes.h"
 #include "libvex.h"                      // VexArch
 #include "host_generic_regs.h"           // HReg
-
-extern UInt arm_hwcaps;
-
 
 /* --------- Registers. --------- */
 
@@ -886,11 +881,9 @@ typedef
             sorry.
          */
          struct {
-			 Int nop;
          } MFence;
          /* A CLREX instruction. */
          struct {
-			 Int nop;
          } CLREX;
          /* Neon data processing instruction: 3 registers of the same
             length */
@@ -980,7 +973,6 @@ typedef
             /* No fields.  The address of the counter to inc is
                installed later, post-translation, by patching it in,
                as it is not known at translation time. */
-			Int nop;
          } ProfInc;
       } ARMin;
    }
@@ -1062,7 +1054,7 @@ extern void mapRegs_ARMInstr     ( HRegRemap*, ARMInstr*, Bool );
 extern Int  emit_ARMInstr        ( /*MB_MOD*/Bool* is_profInc,
                                    UChar* buf, Int nbuf, const ARMInstr* i, 
                                    Bool mode64,
-                                   VexEndness endness_host,
+                                   const VexArchInfo* archinfo_host,
                                    const void* disp_cp_chain_me_to_slowEP,
                                    const void* disp_cp_chain_me_to_fastEP,
                                    const void* disp_cp_xindir,

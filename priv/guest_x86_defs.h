@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -51,9 +49,6 @@
    guest_generic_bb_to_IR.h. */
 extern
 DisResult disInstr_X86 ( IRSB*        irbb,
-                         Bool         (*resteerOkFn) ( void*, Addr ),
-                         Bool         resteerCisOk,
-                         void*        callback_opaque,
                          const UChar* guest_code,
                          Long         delta,
                          Addr         guest_IP,
@@ -164,11 +159,6 @@ extern void x86g_dirtyhelper_OUT ( UInt portno, UInt data,
 
 extern void x86g_dirtyhelper_SxDT ( void* address,
                                     UInt op /* 0 or 1 */ );
-
-extern void x86g_dirtyhelper_LGDT_LIDT ( void* address,
-                                         UInt op /* 2 or 3 */ );
-
-extern void x86g_dirtyhelper_write_cr0 ( UInt value );
 
 extern VexEmNote
             x86g_dirtyhelper_FXRSTOR ( VexGuestX86State*, HWord );

@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -26,15 +26,9 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#include "libvex_basictypes.h"
-#include "libvex_ir.h"
-#include "libvex.h"
-#include "ir_match.h"
-
-#include "main_util.h"
-#include "main_globals.h"
-#include "host_generic_regs.h"
 #include "host_riscv64_defs.h"
+#include "main_globals.h"
+#include "main_util.h"
 
 /*------------------------------------------------------------*/
 /*--- ISelEnv                                              ---*/
@@ -548,7 +542,7 @@ static Bool doHelperCall(/*OUT*/ UInt*   stackAdjustAfterCall,
       The same applies to nextFArgReg which records a number of used
       floating-point registers f10/fa0 .. f17/fa7.
     */
-   addInstr(env, RISCV64Instr_Call(*retloc, (Addr64)cee->addr, cond, nextArgReg,
+   addInstr(env, RISCV64Instr_Call(*retloc, (Addr64)(HWord)cee->addr, cond, nextArgReg,
                                    nextFArgReg));
 
    return True;
@@ -635,8 +629,10 @@ static HReg iselIntExpr_R_wrk(ISelEnv* env, IRExpr* e)
       case Iop_Xor32:
       case Iop_Or64:
       case Iop_Or32:
+      case Iop_Or1:
       case Iop_And64:
       case Iop_And32:
+      case Iop_And1:
       case Iop_Shl64:
       case Iop_Shl32:
       case Iop_Shr64:
@@ -669,10 +665,12 @@ static HReg iselIntExpr_R_wrk(ISelEnv* env, IRExpr* e)
             break;
          case Iop_Or64:
          case Iop_Or32:
+         case Iop_Or1:
             op = RISCV64op_OR;
             break;
          case Iop_And64:
          case Iop_And32:
+         case Iop_And1:
             op = RISCV64op_AND;
             break;
          case Iop_Shl64:
@@ -807,7 +805,7 @@ static HReg iselIntExpr_R_wrk(ISelEnv* env, IRExpr* e)
          addInstr(env, RISCV64Instr_ALU(RISCV64op_OR, dst, hi32, lo32));
          return dst;
       }
-      case Iop_DivModS64to32: {
+      case Iop_DivModS32to32: {
          /* TODO Improve in conjunction with Iop_64HIto32. */
          HReg argL = iselIntExpr_R(env, e->Iex.Binop.arg1);
          HReg argR = iselIntExpr_R(env, e->Iex.Binop.arg2);
@@ -829,7 +827,7 @@ static HReg iselIntExpr_R_wrk(ISelEnv* env, IRExpr* e)
          addInstr(env, RISCV64Instr_ALU(RISCV64op_OR, dst, remw_hi, divw_lo));
          return dst;
       }
-      case Iop_DivModU64to32: {
+      case Iop_DivModU32to32: {
          /* TODO Improve in conjunction with Iop_64HIto32. */
          HReg argL = iselIntExpr_R(env, e->Iex.Binop.arg1);
          HReg argR = iselIntExpr_R(env, e->Iex.Binop.arg2);
@@ -1163,6 +1161,10 @@ static HReg iselIntExpr_R_wrk(ISelEnv* env, IRExpr* e)
          vassert(ty == Ity_I8);
          u = vex_sx_to_64(e->Iex.Const.con->Ico.U8, 8);
          break;
+      case Ico_U1:
+         vassert(ty == Ity_I1);
+         u = e->Iex.Const.con->Ico.U1 ? 1 : 0;
+         break;
       default:
          goto irreducible;
       }
@@ -1233,7 +1235,8 @@ static void iselInt128Expr_wrk(HReg* rHi, HReg* rLo, ISelEnv* env, IRExpr* e)
       }
 
       /* 64 x 64 -> (64(rem),64(div)) division */
-      case Iop_DivModS64to64: {
+      case Iop_DivModS64to64:
+      case Iop_DivModU64to64: {
          HReg argL = iselIntExpr_R(env, e->Iex.Binop.arg1);
          HReg argR = iselIntExpr_R(env, e->Iex.Binop.arg2);
          *rHi      = newVRegI(env);
@@ -1552,6 +1555,17 @@ static HReg iselFltExpr_wrk(ISelEnv* env, IRExpr* e)
       return dst;
    }
 
+   /* ---------------------- MULTIPLEX ---------------------- */
+   case Iex_ITE: {
+      /* ITE(ccexpr, iftrue, iffalse) */
+      HReg cond    = iselIntExpr_R(env, e->Iex.ITE.cond);
+      HReg iftrue  = iselFltExpr(env, e->Iex.ITE.iftrue);
+      HReg iffalse = iselFltExpr(env, e->Iex.ITE.iffalse);
+      HReg dst     = newVRegF(env);
+      addInstr(env, RISCV64Instr_FpCSEL(dst, iftrue, iffalse, cond));
+      return dst;
+   }
+
    default:
       break;
    }
@@ -1824,6 +1838,12 @@ static void iselStmt(ISelEnv* env, IRStmt* stmt)
    case Ist_IMark:
       return;
 
+   /* ---------------------- ABI HINT ----------------------- */
+   /* These have no meaning (denotation in the IR) and so we ignore them ... if
+      any actually made it this far. */
+   case Ist_AbiHint:
+       return;
+
    /* ------------------------ NO-OP ------------------------ */
    case Ist_NoOp:
       return;
@@ -1994,7 +2014,7 @@ HInstrArray* iselSB_RISCV64(const IRSB*        bb,
 {
    Int      i, j;
    HReg     hreg, hregHI;
-   ISelEnv* env;
+   ISelEnv *env, envmem;
 
    /* Do some sanity checks. */
    vassert(arch_host == VexArchRISCV64);
@@ -2006,7 +2026,7 @@ HInstrArray* iselSB_RISCV64(const IRSB*        bb,
    vassert(sizeof(RISCV64Instr) <= 32);
 
    /* Make up an initial environment to use. */
-   env           = LibVEX_Alloc_inline(sizeof(ISelEnv));
+   env           = &envmem;
    env->vreg_ctr = 0;
 
    /* Set up output code array. */

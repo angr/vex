@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -26,47 +26,10 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#include "libvex_basictypes.h"
-#include "libvex.h"
 #include "libvex_trc_values.h"
 
-#include "main_util.h"
-#include "host_generic_regs.h"
 #include "host_riscv64_defs.h"
-
-#ifdef _MSC_VER
-#ifdef _M_AMD64
-static inline int __builtin_clzll(unsigned long long x) {
-    return (int)__lzcnt64(x);
-}
-
-static inline int __builtin_ctzll(unsigned long long x) {
-    unsigned long ret;
-    _BitScanForward64(&ret, x);
-    return (int)ret;
-}
-#else
-static inline int __builtin_clzll(unsigned long long x) {
-   int out = 0;
-   if (x == 0) return 64;
-   while ((long long)x > 0) {
-      x <<= 1;
-      out++;
-   }
-   return out;
-}
-
-static inline int __builtin_ctzll(unsigned long long x) {
-   int out = 0;
-   if (x == 0) return 64;
-   while (x & 1 == 0) {
-      x >>= 1;
-      out++;
-   }
-   return out;
-}
-#endif
-#endif
+#include "main_util.h"
 
 /*------------------------------------------------------------*/
 /*--- Registers                                            ---*/
@@ -601,6 +564,18 @@ RISCV64Instr_FpLdSt(RISCV64FpLdStOp op, HReg reg, HReg base, Int soff12)
 }
 
 RISCV64Instr*
+RISCV64Instr_FpCSEL(HReg dst, HReg iftrue, HReg iffalse, HReg cond)
+{
+   RISCV64Instr* i             = LibVEX_Alloc_inline(sizeof(RISCV64Instr));
+   i->tag                      = RISCV64in_FpCSEL;
+   i->RISCV64in.FpCSEL.dst     = dst;
+   i->RISCV64in.FpCSEL.iftrue  = iftrue;
+   i->RISCV64in.FpCSEL.iffalse = iffalse;
+   i->RISCV64in.FpCSEL.cond    = cond;
+   return i;
+}
+
+RISCV64Instr*
 RISCV64Instr_CAS(RISCV64CASOp op, HReg old, HReg addr, HReg expd, HReg data)
 {
    RISCV64Instr* i       = LibVEX_Alloc_inline(sizeof(RISCV64Instr));
@@ -820,6 +795,20 @@ void ppRISCV64Instr(const RISCV64Instr* i, Bool mode64)
       ppHRegRISCV64(i->RISCV64in.FpLdSt.base);
       vex_printf(")");
       return;
+   case RISCV64in_FpCSEL: {
+      vex_printf("(FpCSEL) beq ");
+      ppHRegRISCV64(i->RISCV64in.FpCSEL.cond);
+      vex_printf(", zero, 1f; fmv.d ");
+      ppHRegRISCV64(i->RISCV64in.FpCSEL.dst);
+      vex_printf(", ");
+      ppHRegRISCV64(i->RISCV64in.FpCSEL.iftrue);
+      vex_printf("; c.j 2f; 1: fmv.d ");
+      ppHRegRISCV64(i->RISCV64in.FpCSEL.dst);
+      vex_printf(", ");
+      ppHRegRISCV64(i->RISCV64in.FpCSEL.iffalse);
+      vex_printf("; 2:");
+      return;
+   }
    case RISCV64in_CAS: {
       vassert(i->RISCV64in.CAS.op == RISCV64op_CAS_D ||
               i->RISCV64in.CAS.op == RISCV64op_CAS_W);
@@ -949,7 +938,6 @@ const RRegUniverse* getRRegUniverse_RISCV64(void)
    RRegUniverse__init(ru);
 
    /* Add the registers that are available to the register allocator. */
-   /* TODO */
    ru->allocable_start[HRcInt64] = ru->size;
    ru->regs[ru->size++]          = hregRISCV64_x18(); /* s2 */
    ru->regs[ru->size++]          = hregRISCV64_x19(); /* s3 */
@@ -997,7 +985,6 @@ const RRegUniverse* getRRegUniverse_RISCV64(void)
    ru->allocable                 = ru->size;
 
    /* Add the registers that are not available for allocation. */
-   /* TODO */
    ru->regs[ru->size++] = hregRISCV64_x0(); /* zero */
    ru->regs[ru->size++] = hregRISCV64_x2(); /* sp */
    ru->regs[ru->size++] = hregRISCV64_x8(); /* s0 */
@@ -1093,6 +1080,12 @@ void getRegUsage_RISCV64Instr(HRegUsage* u, const RISCV64Instr* i, Bool mode64)
          break;
       }
       addHRegUse(u, HRmRead, i->RISCV64in.FpLdSt.base);
+      return;
+   case RISCV64in_FpCSEL:
+      addHRegUse(u, HRmWrite, i->RISCV64in.FpCSEL.dst);
+      addHRegUse(u, HRmRead, i->RISCV64in.FpCSEL.iftrue);
+      addHRegUse(u, HRmRead, i->RISCV64in.FpCSEL.iffalse);
+      addHRegUse(u, HRmRead, i->RISCV64in.FpCSEL.cond);
       return;
    case RISCV64in_CAS:
       addHRegUse(u, HRmWrite, i->RISCV64in.CAS.old);
@@ -1305,6 +1298,12 @@ void mapRegs_RISCV64Instr(HRegRemap* m, RISCV64Instr* i, Bool mode64)
    case RISCV64in_FpLdSt:
       mapReg(m, &i->RISCV64in.FpLdSt.reg);
       mapReg(m, &i->RISCV64in.FpLdSt.base);
+      return;
+   case RISCV64in_FpCSEL:
+      mapReg(m, &i->RISCV64in.FpCSEL.dst);
+      mapReg(m, &i->RISCV64in.FpCSEL.iftrue);
+      mapReg(m, &i->RISCV64in.FpCSEL.iffalse);
+      mapReg(m, &i->RISCV64in.FpCSEL.cond);
       return;
    case RISCV64in_CAS:
       mapReg(m, &i->RISCV64in.CAS.old);
@@ -1709,9 +1708,6 @@ static UChar* imm64_to_ireg(UChar* p, UInt dst, ULong imm64)
    the Sv48 format, that is bits [63:48] must be all equal to bit 47.
    Utilizing the fact that the address is only 48-bits in size allows to save 2
    instructions compared to materializing a full 64-bit address.
-
-   TODO Review if generating instead 'c.ld dst, 1f; c.j 2f; .align 3;
-   1: .quad imm; 2:' is possible and would be better.
    */
 static UChar* addr48_to_ireg_EXACTLY_18B(UChar* p, UInt dst, ULong imm48)
 {
@@ -1778,7 +1774,7 @@ Int emit_RISCV64Instr(/*MB_MOD*/ Bool*    is_profInc,
                       Int                 nbuf,
                       const RISCV64Instr* i,
                       Bool                mode64,
-                      VexEndness          endness_host,
+                      const VexArchInfo*  archinfo_host,
                       const void*         disp_cp_chain_me_to_slowEP,
                       const void*         disp_cp_chain_me_to_fastEP,
                       const void*         disp_cp_xindir,
@@ -2269,6 +2265,23 @@ Int emit_RISCV64Instr(/*MB_MOD*/ Bool*    is_profInc,
       }
       break;
    }
+   case RISCV64in_FpCSEL: {
+      /*    beq cond, zero, 1f
+            fmv.d dst, iftrue
+            c.j 2f
+         1: fmv.d dst, iffalse
+         2:
+       */
+      UInt dst     = fregEnc(i->RISCV64in.FpCSEL.dst);
+      UInt iftrue  = fregEnc(i->RISCV64in.FpCSEL.iftrue);
+      UInt iffalse = fregEnc(i->RISCV64in.FpCSEL.iffalse);
+      UInt cond    = iregEnc(i->RISCV64in.FpCSEL.cond);
+      p = emit_B(p, 0b1100011, (10 >> 1) & 0xfff, 0b000, cond, 0 /*x0/zero*/);
+      p = emit_R(p, 0b1010011, dst, 0b000, iftrue, iftrue, 0b0010001);
+      p = emit_CJ(p, 0b01, (6 >> 1) & 0x7ff, 0b101);
+      p = emit_R(p, 0b1010011, dst, 0b000, iffalse, iffalse, 0b0010001);
+      goto done;
+   }
    case RISCV64in_CAS: {
       /* 1: lr.<size> old, (addr)
             bne old, expd, 2f
@@ -2395,7 +2408,7 @@ Int emit_RISCV64Instr(/*MB_MOD*/ Bool*    is_profInc,
                                         ? disp_cp_chain_me_to_fastEP
                                         : disp_cp_chain_me_to_slowEP;
 
-      p = addr48_to_ireg_EXACTLY_18B(p, 5 /*x5/t0*/, (ULong)disp_cp_chain_me);
+      p = addr48_to_ireg_EXACTLY_18B(p, 5 /*x5/t0*/, (ULong)(HWord)disp_cp_chain_me);
 
       /* c.jalr 0(t0) */
       p = emit_CR(p, 0b10, 0 /*x0/zero*/, 5 /*x5/t0*/, 0b1001);
@@ -2447,7 +2460,7 @@ Int emit_RISCV64Instr(/*MB_MOD*/ Bool*    is_profInc,
       }
 
       /* li t0, VG_(disp_cp_xindir) */
-      p = imm64_to_ireg(p, 5 /*x5/t0*/, (ULong)disp_cp_xindir);
+      p = imm64_to_ireg(p, 5 /*x5/t0*/, (ULong)(HWord)disp_cp_xindir);
 
       /* c.jr 0(t0) */
       p = emit_CR(p, 0b10, 0 /*x0/zero*/, 5 /*x5/t0*/, 0b1000);
@@ -2521,7 +2534,7 @@ Int emit_RISCV64Instr(/*MB_MOD*/ Bool*    is_profInc,
       p = imm64_to_ireg(p, 8 /*x8/s0*/, trcval);
 
       /* li t0, VG_(disp_cp_xassisted) */
-      p = imm64_to_ireg(p, 5 /*x5/t0*/, (ULong)disp_cp_xassisted);
+      p = imm64_to_ireg(p, 5 /*x5/t0*/, (ULong)(HWord)disp_cp_xassisted);
 
       /* c.jr 0(t0) */
       p = emit_CR(p, 0b10, 0 /*x0/zero*/, 5 /*x5/t0*/, 0b1000);
@@ -2640,7 +2653,7 @@ VexInvalRange chainXDirect_RISCV64(VexEndness  endness_host,
    UChar* p = place_to_chain;
    vassert(((HWord)p & 1) == 0);
    vassert(is_addr48_to_ireg_EXACTLY_18B(p, 5 /*x5/t0*/,
-                                         (ULong)disp_cp_chain_me_EXPECTED));
+                                         (ULong)(HWord)disp_cp_chain_me_EXPECTED));
    vassert(p[18] == 0x82 && p[19] == 0x92);
 
    /* And what we want to change it to is:
@@ -2657,7 +2670,7 @@ VexInvalRange chainXDirect_RISCV64(VexEndness  endness_host,
 
       The replacement has the same length as the original.
    */
-   (void)addr48_to_ireg_EXACTLY_18B(p, 5 /*x5/t0*/, (ULong)place_to_jump_to);
+   (void)addr48_to_ireg_EXACTLY_18B(p, 5 /*x5/t0*/, (ULong)(HWord)place_to_jump_to);
    p[18] = 0x82;
    p[19] = 0x82;
 
@@ -2689,7 +2702,7 @@ VexInvalRange unchainXDirect_RISCV64(VexEndness  endness_host,
    UChar* p = place_to_unchain;
    vassert(((HWord)p & 1) == 0);
    vassert(is_addr48_to_ireg_EXACTLY_18B(p, 5 /*x5/t0*/,
-                                         (ULong)place_to_jump_to_EXPECTED));
+                                         (ULong)(HWord)place_to_jump_to_EXPECTED));
    vassert(p[18] == 0x82 && p[19] == 0x82);
 
    /* And what we want to change it to is:
@@ -2706,7 +2719,7 @@ VexInvalRange unchainXDirect_RISCV64(VexEndness  endness_host,
 
       The replacement has the same length as the original.
    */
-   (void)addr48_to_ireg_EXACTLY_18B(p, 5 /*x5/t0*/, (ULong)disp_cp_chain_me);
+   (void)addr48_to_ireg_EXACTLY_18B(p, 5 /*x5/t0*/, (ULong)(HWord)disp_cp_chain_me);
    p[18] = 0x82;
    p[19] = 0x89;
 
@@ -2728,7 +2741,7 @@ VexInvalRange patchProfInc_RISCV64(VexEndness   endness_host,
    vassert(p[18] == 0x83 && p[19] == 0x32 && p[20] == 0x03 && p[21] == 0x00);
    vassert(p[22] == 0x85 && p[23] == 0x02);
    vassert(p[24] == 0x23 && p[25] == 0x30 && p[26] == 0x53 && p[27] == 0x00);
-   (void)addr48_to_ireg_EXACTLY_18B(p, 6 /*x6/t1*/, (ULong)location_of_counter);
+   (void)addr48_to_ireg_EXACTLY_18B(p, 6 /*x6/t1*/, (ULong)(HWord)location_of_counter);
    VexInvalRange vir = {(HWord)p, 28};
    return vir;
 }

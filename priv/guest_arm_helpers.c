@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -1019,20 +1017,6 @@ IRExpr* guest_arm_spechelper ( const HChar* function_name,
                       mkU32(0));
       }
 
-      /*---------------- ADD ----------------*/
-      if (isU32(cond_n_op, (ARMCondEQ << 4) | ARMG_CC_OP_ADD)) {
-         /* argL + argR == 0 --> argL == - argR */
-
-         return unop(Iop_1Uto32,
-                     binop(Iop_CmpEQ32, cc_dep1, binop(Iop_Sub32, mkU32(0), cc_dep2)));
-      }
-      if (isU32(cond_n_op, (ARMCondNE << 4) | ARMG_CC_OP_ADD)) {
-         /* argL + argR != 0 --> argL != - argR */
-
-         return unop(Iop_1Uto32,
-                     binop(Iop_CmpNE32, cc_dep1, binop(Iop_Sub32, mkU32(0), cc_dep2)));
-      }
-
       /*----------------- AL -----------------*/
 
       /* A critically important case for Thumb code.
@@ -1307,7 +1291,7 @@ void LibVEX_GuestARM_initialise ( /*OUT*/VexGuestARMState* vex_state )
    vex_state->guest_CMSTART = 0;
    vex_state->guest_CMLEN   = 0;
    vex_state->guest_NRADDR  = 0;
-   vex_state->guest_IP_AT_SYSCALL = 0;
+   vex_state->padding1      = 0;
 
    vex_state->guest_D0  = 0;
    vex_state->guest_D1  = 0;
@@ -1348,11 +1332,10 @@ void LibVEX_GuestARM_initialise ( /*OUT*/VexGuestARMState* vex_state )
    vex_state->guest_FPSCR = 0;
 
    vex_state->guest_TPIDRURO = 0;
+   vex_state->guest_TPIDRURW = 0;
 
    /* Not in a Thumb IT block. */
    vex_state->guest_ITSTATE = 0;
-
-   vex_state->padding1 = 0;
 }
 
 
@@ -1440,7 +1423,7 @@ VexGuestLayout
 
           /* Describe any sections to be regarded by Memcheck as
              'always-defined'. */
-          .n_alwaysDefd = 10,
+          .n_alwaysDefd = 9,
 
           /* flags thunk: OP is always defd, whereas DEP1 and DEP2
              have to be tracked.  See detailed comment in gdefs.h on
@@ -1453,9 +1436,8 @@ VexGuestLayout
                  /* 4 */ ALWAYSDEFD(guest_CMSTART),
                  /* 5 */ ALWAYSDEFD(guest_CMLEN),
                  /* 6 */ ALWAYSDEFD(guest_NRADDR),
-                 /* 7 */ ALWAYSDEFD(guest_IP_AT_SYSCALL),
-                 /* 8 */ ALWAYSDEFD(guest_TPIDRURO),
-                 /* 9 */ ALWAYSDEFD(guest_ITSTATE)
+                 /* 7 */ ALWAYSDEFD(guest_TPIDRURO),
+                 /* 8 */ ALWAYSDEFD(guest_ITSTATE)
                }
         };
 
