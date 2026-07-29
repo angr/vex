@@ -21326,6 +21326,10 @@ Long dis_ESC_NONE (
       }
       stmt( IRStmt_Exit(cond, Ijk_Boring, IRConst_U64(d64), OFFB_RIP) );
 
+      if (vex_control.strict_block_end) {
+         jmp_lit(dres, Ijk_Boring, guest_RIP_bbstart+delta);
+      }
+
       DIP("loop%s%s 0x%llx\n", xtra, haveASO(pfx) ? "l" : "", (ULong)d64);
       return delta;
     }
@@ -21355,6 +21359,9 @@ Long dis_ESC_NONE (
                             OFFB_RIP
                ));
          DIP("jrcxz 0x%llx\n", (ULong)d64);
+      }
+      if (vex_control.strict_block_end) {
+         jmp_lit(dres, Ijk_Boring, guest_RIP_bbstart+delta);
       }
       return delta;
 
