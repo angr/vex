@@ -1,18 +1,16 @@
-
 /*---------------------------------------------------------------*/
-/*--- begin                              libvex_guest_amd64.h ---*/
+/*--- begin                         libvex_guest_amd_AVX512.h ---*/
 /*---------------------------------------------------------------*/
-
 /*
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2017 OpenWorks LLP
-      info@open-works.net
+   Copyright (C) 2021 Intel Corporation
+      tatyana.a.volnina@intel.com
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 3 of the
+   published by the Free Software Foundation; either version 2 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -24,29 +22,30 @@
    along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
-
-   Neither the names of the U.S. Department of Energy nor the
-   University of California nor the names of its contributors may be
-   used to endorse or promote products derived from this software
-   without prior written permission.
 */
+#ifdef AVX_512
 
-#ifndef __LIBVEX_PUB_GUEST_AMD64_H
-#define __LIBVEX_PUB_GUEST_AMD64_H
-
-#ifndef AVX_512
+#ifndef __LIBVEX_PUB_GUEST_AMD512_H
+#define __LIBVEX_PUB_GUEST_AMD512_H
 
 #include "libvex_basictypes.h"
 #include "libvex_emnote.h"
 
 
 /*---------------------------------------------------------------*/
-/*--- Vex's representation of the AMD64 CPU state.            ---*/
+/*--- EVEX's representation of the AMD64 CPU state.            ---*/
 /*---------------------------------------------------------------*/
 
 /* See detailed comments at the top of libvex_guest_x86.h for
    further info.  This representation closely follows the
    x86 representation.
+
+   NOTE: this is the AVX-512 variant of the guest state.  Field order
+   must stay in sync with the non-AVX_512 struct in
+   libvex_guest_amd64.h (which carries this fork's extra fields:
+   guest_ACFLAG next to RIP, the CR0..CR15 block, and the segment
+   selector registers), with the YMM0..YMM16 array replaced by
+   ZMM0..ZMM32 plus the 8 opmask registers.
 */
 
 
@@ -97,28 +96,46 @@ typedef
          the 64-bit offset associated with this constant %fs value. */
       /* 200 */ ULong guest_FS_CONST;
 
-      /* YMM registers.  Note that these must be allocated
+      /* ZMM registers.  Note that these must be allocated
          consecutively in order that the SSE4.2 PCMP{E,I}STR{I,M}
-         helpers can treat them as an array.  YMM16 is a fake reg used
-         as an intermediary in handling aforementioned insns. */
-      /* 216 */ULong guest_SSEROUND;
-      /* 224 */U256  guest_YMM0;
-      U256  guest_YMM1;
-      U256  guest_YMM2;
-      U256  guest_YMM3;
-      U256  guest_YMM4;
-      U256  guest_YMM5;
-      U256  guest_YMM6;
-      U256  guest_YMM7;
-      U256  guest_YMM8;
-      U256  guest_YMM9;
-      U256  guest_YMM10;
-      U256  guest_YMM11;
-      U256  guest_YMM12;
-      U256  guest_YMM13;
-      U256  guest_YMM14;
-      U256  guest_YMM15;
-      U256  guest_YMM16;
+         helpers can treat them as an array.
+         ZMM32 is a fake reg used as an intermediary */
+      /* 216 */ ULong guest_SSEROUND;
+      /* 224 */
+      U512 guest_ZMM0;
+      U512 guest_ZMM1;
+      U512 guest_ZMM2;
+      U512 guest_ZMM3;
+      U512 guest_ZMM4;
+      U512 guest_ZMM5;
+      U512 guest_ZMM6;
+      U512 guest_ZMM7;
+      U512 guest_ZMM8;
+      U512 guest_ZMM9;
+      U512 guest_ZMM10;
+      U512 guest_ZMM11;
+      U512 guest_ZMM12;
+      U512 guest_ZMM13;
+      U512 guest_ZMM14;
+      U512 guest_ZMM15;
+      U512 guest_ZMM16;
+      U512 guest_ZMM17;
+      U512 guest_ZMM18;
+      U512 guest_ZMM19;
+      U512 guest_ZMM20;
+      U512 guest_ZMM21;
+      U512 guest_ZMM22;
+      U512 guest_ZMM23;
+      U512 guest_ZMM24;
+      U512 guest_ZMM25;
+      U512 guest_ZMM26;
+      U512 guest_ZMM27;
+      U512 guest_ZMM28;
+      U512 guest_ZMM29;
+      U512 guest_ZMM30;
+      U512 guest_ZMM31;
+      U512 guest_ZMM32; //NULL
+      /* 2336 */ ULong guest_MASKREG[8];
 
       /* FPU */
       /* Note.  Setting guest_FTOP to be ULong messes up the
@@ -205,6 +222,24 @@ typedef
    }
    VexGuestAMD64State;
 
+#define guest_YMM0 guest_ZMM0
+#define guest_YMM1 guest_ZMM1
+#define guest_YMM2 guest_ZMM2
+#define guest_YMM3 guest_ZMM3
+#define guest_YMM4 guest_ZMM4
+#define guest_YMM5 guest_ZMM5
+#define guest_YMM6 guest_ZMM6
+#define guest_YMM7 guest_ZMM7
+#define guest_YMM8 guest_ZMM8
+#define guest_YMM9 guest_ZMM9
+#define guest_YMM10 guest_ZMM10
+#define guest_YMM11 guest_ZMM11
+#define guest_YMM12 guest_ZMM12
+#define guest_YMM13 guest_ZMM13
+#define guest_YMM14 guest_ZMM14
+#define guest_YMM15 guest_ZMM15
+#define guest_YMM16 guest_ZMM16
+
 VEX_STATIC_ASSERT(sizeof(VexGuestAMD64State) % 16 == 0,
                   "sizeof VexGuestAMD64State is not a multiple of 16");
 
@@ -220,6 +255,8 @@ VEX_STATIC_ASSERT(sizeof(VexGuestAMD64State) % 16 == 0,
    mode. */
 extern
 void LibVEX_GuestAMD64_initialise ( /*OUT*/VexGuestAMD64State* vex_state );
+extern
+void LibVEX_GuestAMD64_initialise_ZMM ( /*OUT*/VexGuestAMD64State* vex_state );
 
 
 /* Extract from the supplied VexGuestAMD64State structure the
@@ -252,12 +289,8 @@ extern
 VexEmNote LibVEX_GuestAMD64_fxrstor ( /*IN*/HWord fp_state,
                                       /*MOD*/VexGuestAMD64State* gst );
 
-#else /* #ifdef AVX_512 */
-#include "libvex_guest_amd_AVX512.h"
-#endif
-
-#endif /* ndef __LIBVEX_PUB_GUEST_AMD64_H */
-
+#endif /* ndef __LIBVEX_PUB_GUEST_AMD512_H */
+#endif /* ndef AVX_512 */
 /*---------------------------------------------------------------*/
-/*---                                    libvex_guest_amd64.h ---*/
+/*---                               libvex_guest_amd_AVX512.h ---*/
 /*---------------------------------------------------------------*/

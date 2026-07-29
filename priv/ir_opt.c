@@ -1383,6 +1383,10 @@ static Bool notBool ( Bool b )
    primop. */
 static IRExpr* mkZeroOfPrimopResultType ( IROp op )
 {
+#ifdef AVX_512
+   /* EVEX ops are not IROp enumerators; keep them out of the switch. */
+   if (op == (IROp)Iop_AndV512) return IRExpr_Const(IRConst_V512(0));
+#endif
    switch (op) {
       case Iop_Sub8:
       case Iop_Mul8:
@@ -3678,7 +3682,12 @@ static IRSB* cprop_BB_WRK ( IRSB* in, Bool mustRetainNoOps, Bool doFolding )
       switch (lg->cvt) {
          case ILGop_IdentV128:
          case ILGop_Ident64:
-         case ILGop_Ident32: break;
+         case ILGop_Ident32:
+#ifdef AVX_512
+         case ILGop_Ident16:
+         case ILGop_Ident8:
+#endif
+            break;
          case ILGop_8Uto32:  cvtOp = Iop_8Uto32;  break;
          case ILGop_8Sto32:  cvtOp = Iop_8Sto32;  break;
          case ILGop_16Uto32: cvtOp = Iop_16Uto32; break;
@@ -7277,6 +7286,9 @@ static void considerExpensives ( /*OUT*/Bool* hasGetIorPutI,
                   break;
                case Ity_F16: case Ity_F32: case Ity_F64: case Ity_F128:
                case Ity_V128: case Ity_V256:
+#ifdef AVX_512
+               case Ity_V512:
+#endif
                   *hasVorFtemps = True;
                   break;
                case Ity_D32: case Ity_D64: case Ity_D128:

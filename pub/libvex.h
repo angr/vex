@@ -104,6 +104,8 @@ typedef
 #define VEX_HWCAPS_AMD64_RDSEED (1<<15) /* RDSEED instructions */
 #define VEX_HWCAPS_AMD64_FMA3   (1<<16) /* FMA3 instructions */
 #define VEX_HWCAPS_AMD64_FMA4   (1<<17) /* FMA4 instructions */
+#define VEX_HWCAPS_AMD64_AVX512_KNL (1<<18) /* AVX512 F, CD, PF, ER instructions */
+#define VEX_HWCAPS_AMD64_AVX512_SKX (1<<19) /* AVX512 F, CD, VL, BW, DQ instructions */
 
 /* ppc32: baseline capability is integer only */
 #define VEX_HWCAPS_PPC32_F     (1<<8)  /* basic (non-optional) FP */
@@ -655,7 +657,11 @@ typedef
    16-aligned size and be 16-aligned, and placed back-to-back.
 */
 
+#ifdef AVX_512
+#define LibVEX_N_SPILL_BYTES 8192
+#else
 #define LibVEX_N_SPILL_BYTES 4096
+#endif
 
 /* The size of the guest state must be a multiple of this number. */
 #define LibVEX_GUEST_STATE_ALIGN 16

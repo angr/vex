@@ -280,6 +280,9 @@ typedef  unsigned long HWord;
 #   error "Vex: Fatal: Can't establish the host architecture"
 #endif
 
+#ifdef AVX_512
+#include "libvex_basictypes_AVX512.h"
+#endif
 
 #endif /* ndef __LIBVEX_BASICTYPES_H */
 

@@ -37,6 +37,10 @@
 
 #include "main_util.h"
 
+#define IS_VALID_VECTOR_TYPE(x)((x) == Ity_V128 || (x) == Ity_V256)
+#ifdef AVX_512
+#include "ir_defs_AVX512.h"
+#endif
 
 /*---------------------------------------------------------------*/
 /*--- Printing the IR                                         ---*/
@@ -61,8 +65,12 @@ void ppIRType ( IRType ty )
       case Ity_D128:    vex_printf( "D128"); break;
       case Ity_V128:    vex_printf( "V128"); break;
       case Ity_V256:    vex_printf( "V256"); break;
+#ifdef AVX_512
+      default:          ppIRType_AVX512(ty);
+#else
       default: vex_printf("ty = 0x%x\n", (UInt)ty);
                vpanic("ppIRType");
+#endif
    }
 }
 
@@ -87,7 +95,11 @@ void ppIRConst ( const IRConst* con )
       case Ico_F64i: vex_printf( "F64i{0x%llx}", con->Ico.F64i); break;
       case Ico_V128: vex_printf( "V128{0x%04x}", (UInt)(con->Ico.V128)); break;
       case Ico_V256: vex_printf( "V256{0x%08x}", con->Ico.V256); break;
+#ifdef AVX_512
+      default:       ppIRConst_AVX512(con);
+#else
       default: vpanic("ppIRConst");
+#endif
    }
 }
 
@@ -1408,7 +1420,11 @@ void ppIROp ( IROp op )
       case Iop_2xMultU64Add128CarryOut: vex_printf("2xMultU64Add128CarryOut");
          return;
 
+#ifdef AVX_512
+      default: ppIROp_AVX512(op); return;
+#else
       default: vpanic("ppIROp(1)");
+#endif
    }
 
    vassert(str);  
@@ -1857,12 +1873,22 @@ Bool primopMightTrap ( IROp op )
    case Iop_2xMultU64Add128CarryOut:
       return False;
 
-   case Iop_INVALID: case Iop_LAST:
+   case Iop_INVALID:
+#ifdef AVX_512
+   case Iop_LAST_NOT_EVEX:
+#else
+   case Iop_LAST:
+#endif
       vpanic("primopMightTrap INVALID, LAST");
 
    }
 
+#ifdef AVX_512
+   /* EVEX ops live in the IROp_EVEX enum, past Iop_LAST_NOT_EVEX. */
+   return primopMightTrap_AVX512(op);
+#else
    vpanic("primopMightTrap");
+#endif
 }
 
 void ppIRExpr ( const IRExpr* e )
@@ -2077,6 +2103,10 @@ void ppIRLoadGOp ( IRLoadGOp cvt )
       case ILGop_IdentV128: vex_printf("IdentV128"); break;      
       case ILGop_Ident64:   vex_printf("Ident64"); break;      
       case ILGop_Ident32:   vex_printf("Ident32"); break;      
+#ifdef AVX_512
+      case ILGop_Ident16:   vex_printf("Ident16"); break;      
+      case ILGop_Ident8:    vex_printf("Ident8");  break;      
+#endif
       case ILGop_16Uto32:   vex_printf("16Uto32"); break;      
       case ILGop_16Sto32:   vex_printf("16Sto32"); break;      
       case ILGop_8Uto32:    vex_printf("8Uto32"); break;      
@@ -2364,6 +2394,10 @@ IRConst* IRConst_V256 ( UInt con )
    c->Ico.V256 = con;
    return c;
 }
+
+#ifdef AVX_512
+IRConst* IRConst_V512 ( ULong con ) ;
+#endif
 
 /* Constructors -- IRCallee */
 
@@ -2945,7 +2979,11 @@ IRConst* deepCopyIRConst ( const IRConst* c )
       case Ico_F64i: return IRConst_F64i(c->Ico.F64i);
       case Ico_V128: return IRConst_V128(c->Ico.V128);
       case Ico_V256: return IRConst_V256(c->Ico.V256);
+#ifdef AVX_512
+      default:       return deepCopyIRConst_AVX512(c);
+#else
       default: vpanic("deepCopyIRConst");
+#endif
    }
 }
 
@@ -4251,9 +4289,14 @@ void typeOfPrimop ( IROp op,
       case Iop_Rotx64:
          QUATERNARY(Ity_I64, Ity_I8, Ity_I8, Ity_I8, Ity_I64);
 
+#ifdef AVX_512
+      default:
+         typeOfPrimop_AVX512 ( op, t_dst, t_arg1, t_arg2, t_arg3, t_arg4);
+#else
       default:
          ppIROp(op);
          vpanic("typeOfPrimop");
+#endif
    }
 #  undef UNARY
 #  undef BINARY
@@ -4338,7 +4381,11 @@ IRType typeOfIRConst ( const IRConst* con )
       case Ico_F64i:  return Ity_F64;
       case Ico_V128:  return Ity_V128;
       case Ico_V256:  return Ity_V256;
+#ifdef AVX_512
+      default:        return typeOfIRConst_AVX512 ( con );
+#else
       default: vpanic("typeOfIRConst");
+#endif
    }
 }
 
@@ -4352,6 +4399,12 @@ void typeOfIRLoadGOp ( IRLoadGOp cvt,
          *t_res = Ity_I64; *t_arg = Ity_I64; break;
       case ILGop_Ident32:
          *t_res = Ity_I32; *t_arg = Ity_I32; break;
+#ifdef AVX_512
+      case ILGop_Ident16:
+         *t_res = Ity_I16; *t_arg = Ity_I16; break;
+      case ILGop_Ident8:
+         *t_res = Ity_I8; *t_arg = Ity_I8; break;
+#endif
       case ILGop_16Uto32: case ILGop_16Sto32:
          *t_res = Ity_I32; *t_arg = Ity_I16; break;
       case ILGop_8Uto32: case ILGop_8Sto32:
@@ -4422,7 +4475,11 @@ Bool isPlausibleIRType ( IRType ty )
       case Ity_V128: case Ity_V256:
          return True;
       default: 
+#ifdef AVX_512
+         return isPlausibleIRType_AVX512(ty);
+#else
          return False;
+#endif
    }
 }
 
@@ -5303,14 +5360,14 @@ void tcStmt ( const IRSB* bb, const IRStmt* stmt, IRType gWordTy )
                sanityCheckFail(bb,stmt,"IRStmt.Dirty.args: > 1 GSPTR arg");
             }
             if (nVECRETs == 1) {
-               /* Fn must return V128 or V256. */
-               if (retTy != Ity_V128 && retTy != Ity_V256)
+               /* Fn must return V128, V256 or V512 */
+               if (! IS_VALID_VECTOR_TYPE(retTy))
                   sanityCheckFail(bb,stmt,
                                   "IRStmt.Dirty.args: VECRET present, "
                                   "but fn does not return V128 or V256");
             } else if (nVECRETs == 0) {
-               /* Fn must not return V128 or V256 */
-               if (retTy == Ity_V128 || retTy == Ity_V256)
+               /* Fn must not return V128, V256 or V512 */
+               if (IS_VALID_VECTOR_TYPE(retTy))
                   sanityCheckFail(bb,stmt,
                                   "IRStmt.Dirty.args: VECRET not present, "
                                   "but fn returns V128 or V256");
@@ -5451,6 +5508,9 @@ Bool eqIRConst ( const IRConst* c1, const IRConst* c2 )
       case Ico_F64i: return toBool( c1->Ico.F64i == c2->Ico.F64i );
       case Ico_V128: return toBool( c1->Ico.V128 == c2->Ico.V128 );
       case Ico_V256: return toBool( c1->Ico.V256 == c2->Ico.V256 );
+#ifdef AVX_512
+      case Ico_V512: return toBool( c1->Ico.V512 == c2->Ico.V512 );
+#endif
       default: vpanic("eqIRConst");
    }
 }
@@ -5479,8 +5539,12 @@ Int sizeofIRType ( IRType ty )
       case Ity_D128: return 16;
       case Ity_V128: return 16;
       case Ity_V256: return 32;
+#ifdef AVX_512
+      default:       return sizeofIRType_AVX512(ty);
+#else
       default: vex_printf("\n"); ppIRType(ty); vex_printf("\n");
                vpanic("sizeofIRType");
+#endif
    }
 }
 

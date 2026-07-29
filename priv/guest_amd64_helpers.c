@@ -4716,6 +4716,10 @@ void LibVEX_GuestAMD64_initialise ( /*OUT*/VexGuestAMD64State* vex_state )
    /* Initialise the simulated FPU */
    amd64g_dirtyhelper_FINIT( vex_state );
 
+#ifdef AVX_512
+   LibVEX_GuestAMD64_initialise_ZMM(vex_state);
+#else
+
    /* Initialise the AVX state. */
 #  define AVXZERO(_ymm) \
       do { _ymm[0]=_ymm[1]=_ymm[2]=_ymm[3] = 0; \
@@ -4741,6 +4745,7 @@ void LibVEX_GuestAMD64_initialise ( /*OUT*/VexGuestAMD64State* vex_state )
    AVXZERO(vex_state->guest_YMM16);
 
 #  undef AVXZERO
+#endif
 
    vex_state->guest_EMNOTE = EmNote_NONE;
 

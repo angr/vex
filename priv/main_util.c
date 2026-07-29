@@ -55,6 +55,8 @@
    8 bytes, and we need 16 bytes redzone before and after. */
 #define N_TEMPORARY_BYTES (5*5000000)
 static Bool mempools_created = False;
+#elif defined(AVX_512)
+#define N_TEMPORARY_BYTES (20*5000000)
 #else
 #define N_TEMPORARY_BYTES 5000000
 #endif

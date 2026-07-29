@@ -38,6 +38,7 @@ CFLAGS := -Ipub -Ipriv \
 	-Wwrite-strings -Wformat -Wformat-security \
 	-std=gnu99 -fstrict-aliasing -fPIC \
 	-DPYVEX \
+	-DAVX_512 \
 	$(EXTRA_CFLAGS)
 
 # If not debugging, put -g -O2 after any flags we inherit from our invoker

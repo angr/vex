@@ -77,6 +77,24 @@
    )
 #endif
 
+#ifdef _WIN64
+#define GENOFFSET_ARRAY_ELEM(_structUppercase,_structLowercase,_fieldname,_name,_idx)  \
+      printf("#define OFFSET_%s_%s %#llx\n", \
+      VG_STRINGIFY(_structLowercase), \
+      VG_STRINGIFY(_name), \
+         (long long)(my_offsetof(VexGuest##_structUppercase##State, \
+          guest_##_fieldname[_idx])) \
+   )
+#else
+#define GENOFFSET_ARRAY_ELEM(_structUppercase,_structLowercase,_fieldname,_name,_idx)  \
+      printf("#define OFFSET_%s_%s %#lx\n", \
+      VG_STRINGIFY(_structLowercase), \
+      VG_STRINGIFY(_name), \
+         (long)(my_offsetof(VexGuest##_structUppercase##State, \
+          guest_##_fieldname[_idx])) \
+   )
+#endif
+
 
 int main(int argc, char **argv)
 {
@@ -171,6 +189,52 @@ int main(int argc, char **argv)
    GENOFFSET(AMD64,amd64,IDFLAG);
    GENOFFSET(AMD64,amd64,FS_CONST);
    GENOFFSET(AMD64,amd64,SSEROUND);
+#ifdef AVX_512
+   GENOFFSET(AMD64,amd64,ZMM0);
+   GENOFFSET(AMD64,amd64,ZMM1);
+   GENOFFSET(AMD64,amd64,ZMM2);
+   GENOFFSET(AMD64,amd64,ZMM3);
+   GENOFFSET(AMD64,amd64,ZMM4);
+   GENOFFSET(AMD64,amd64,ZMM5);
+   GENOFFSET(AMD64,amd64,ZMM6);
+   GENOFFSET(AMD64,amd64,ZMM7);
+   GENOFFSET(AMD64,amd64,ZMM8);
+   GENOFFSET(AMD64,amd64,ZMM9);
+   GENOFFSET(AMD64,amd64,ZMM10);
+   GENOFFSET(AMD64,amd64,ZMM11);
+   GENOFFSET(AMD64,amd64,ZMM12);
+   GENOFFSET(AMD64,amd64,ZMM13);
+   GENOFFSET(AMD64,amd64,ZMM14);
+   GENOFFSET(AMD64,amd64,ZMM15);
+   GENOFFSET(AMD64,amd64,ZMM16);
+   GENOFFSET(AMD64,amd64,ZMM17);
+   GENOFFSET(AMD64,amd64,ZMM18);
+   GENOFFSET(AMD64,amd64,ZMM19);
+   GENOFFSET(AMD64,amd64,ZMM20);
+   GENOFFSET(AMD64,amd64,ZMM21);
+   GENOFFSET(AMD64,amd64,ZMM22);
+   GENOFFSET(AMD64,amd64,ZMM23);
+   GENOFFSET(AMD64,amd64,ZMM24);
+   GENOFFSET(AMD64,amd64,ZMM25);
+   GENOFFSET(AMD64,amd64,ZMM26);
+   GENOFFSET(AMD64,amd64,ZMM27);
+   GENOFFSET(AMD64,amd64,ZMM28);
+   GENOFFSET(AMD64,amd64,ZMM29);
+   GENOFFSET(AMD64,amd64,ZMM30);
+   GENOFFSET(AMD64,amd64,ZMM31);
+   GENOFFSET(AMD64,amd64,ZMM32);
+   /* Opmask registers k0..k7 live in the guest_MASKREG[8] array; emit
+      one offset per register so consumers (archinfo, unicorn glue) can
+      resolve them by name. */
+   GENOFFSET_ARRAY_ELEM(AMD64,amd64,MASKREG,K0,0);
+   GENOFFSET_ARRAY_ELEM(AMD64,amd64,MASKREG,K1,1);
+   GENOFFSET_ARRAY_ELEM(AMD64,amd64,MASKREG,K2,2);
+   GENOFFSET_ARRAY_ELEM(AMD64,amd64,MASKREG,K3,3);
+   GENOFFSET_ARRAY_ELEM(AMD64,amd64,MASKREG,K4,4);
+   GENOFFSET_ARRAY_ELEM(AMD64,amd64,MASKREG,K5,5);
+   GENOFFSET_ARRAY_ELEM(AMD64,amd64,MASKREG,K6,6);
+   GENOFFSET_ARRAY_ELEM(AMD64,amd64,MASKREG,K7,7);
+#else
    GENOFFSET(AMD64,amd64,YMM0);
    GENOFFSET(AMD64,amd64,YMM1);
    GENOFFSET(AMD64,amd64,YMM2);
@@ -188,6 +252,7 @@ int main(int argc, char **argv)
    GENOFFSET(AMD64,amd64,YMM14);
    GENOFFSET(AMD64,amd64,YMM15);
    GENOFFSET(AMD64,amd64,YMM16);
+#endif
    GENOFFSET(AMD64,amd64,FTOP);
    GENOFFSET(AMD64,amd64,FPREG);
    GENOFFSET(AMD64,amd64,FPTAG);

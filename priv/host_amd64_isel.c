@@ -46,6 +46,10 @@
 #include "host_generic_maddf.h"
 #include "host_amd64_defs.h"
 
+#ifdef AVX_512
+#include "host_generic_AVX512.h"
+#include "host_amd64_isel_AVX512.h"
+#endif
 
 /*---------------------------------------------------------*/
 /*--- x87/SSE control word stuff                        ---*/
@@ -143,6 +147,8 @@ static Bool isZeroU8 ( const IRExpr* e )
    ... not completely.  Compare with ISelEnv for X86.)
 */
 
+/* AVX-512 version holds 4 HReg* and is implemented in host_amd64_isel_AVX512.h */
+#ifndef AVX_512
 typedef
    struct {
       /* Constant -- are set at the start and do not change. */
@@ -162,6 +168,7 @@ typedef
       Int          vreg_ctr;
    }
    ISelEnv;
+#endif
 
 
 static HReg lookupIRTemp ( ISelEnv* env, IRTemp tmp )
@@ -2020,8 +2027,16 @@ static HReg iselIntExpr_R_wrk ( ISelEnv* env, const IRExpr* e )
 
    /* We get here if no pattern matched. */
   irreducible:
+#ifdef AVX_512
+   {
+       HReg dst;
+       iselExpr_512(&dst, env, e);
+       return dst;
+   }
+#else
    ppIRExpr(e);
    vpanic("iselIntExpr_R(amd64): cannot reduce tree");
+#endif
 }
 
 
@@ -2917,8 +2932,16 @@ static HReg iselFltExpr_wrk ( ISelEnv* env, const IRExpr* e )
       return dst;
    }
 
+#ifdef AVX_512
+   {
+       HReg dst;
+       iselExpr_512(&dst, env, e);
+       return dst;
+   }
+#else
    ppIRExpr(e);
    vpanic("iselFltExpr_wrk");
+#endif
 }
 
 
@@ -3328,8 +3351,16 @@ static HReg iselDblExpr_wrk ( ISelEnv* env, const IRExpr* e )
       return dst;
    }
 
+#ifdef AVX_512
+   {
+       HReg dst;
+       iselExpr_512(&dst, env, e);
+       return dst;
+   }
+#else
    ppIRExpr(e);
    vpanic("iselDblExpr_wrk");
+#endif
 }
 
 
@@ -4097,10 +4128,18 @@ static HReg iselVecExpr_wrk ( ISelEnv* env, const IRExpr* e )
    }
 
    //vec_fail:
+#ifdef AVX_512
+   {
+       HReg dst;
+       iselExpr_512(&dst, env, e);
+       return dst;
+   }
+#else
    vex_printf("iselVecExpr (amd64, subarch = %s): can't reduce\n",
               LibVEX_ppVexHwCaps(VexArchAMD64, env->hwcaps));
    ppIRExpr(e);
    vpanic("iselVecExpr_wrk");
+#endif
 }
 
 
@@ -4740,10 +4779,19 @@ static void iselDVecExpr_wrk ( /*OUT*/HReg* rHi, /*OUT*/HReg* rLo,
    }
 
    //avx_fail:
+#ifdef AVX_512
+   {
+       HReg dst[2];
+       iselExpr_512(dst, env, e);
+       *rHi = dst[1];
+       *rLo = dst[0];
+   }
+#else
    vex_printf("iselDVecExpr (amd64, subarch = %s): can't reduce\n",
               LibVEX_ppVexHwCaps(VexArchAMD64, env->hwcaps));
    ppIRExpr(e);
    vpanic("iselDVecExpr_wrk");
+#endif
 }
 
 
@@ -4769,6 +4817,10 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
 
       UChar szB = 0; /* invalid */
       switch (lg->cvt) {
+#ifdef AVX_512
+         case ILGop_Ident8:    szB = 1;  break;
+         case ILGop_Ident16:   szB = 2;  break;
+#endif
          case ILGop_Ident32:   szB = 4;  break;
          case ILGop_Ident64:   szB = 8;  break;
          case ILGop_IdentV128: szB = 16; break;
@@ -4809,6 +4861,10 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
 
       UChar szB = 0; /* invalid */
       switch (typeOfIRExpr(env->type_env, sg->data)) {
+#ifdef AVX_512
+         case Ity_I8:   szB = 1; break;
+         case Ity_I16:  szB = 2; break;
+#endif
          case Ity_I32:  szB = 4; break;
          case Ity_I64:  szB = 8; break;
          case Ity_V128: szB = 16; break;
@@ -5288,8 +5344,12 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
    default: break;
    }
   stmt_fail:
+#ifdef AVX_512
+   iselStmt_512(env, stmt);
+#else
    ppIRStmt(stmt);
    vpanic("iselStmt(amd64)");
+#endif
 }
 
 
@@ -5393,6 +5453,15 @@ static void iselNext ( ISelEnv* env,
 
 /* Translate an entire SB to amd64 code. */
 
+/* Kept outside the assertion below: MSVC rejects preprocessor directives
+   inside macro arguments. */
+#ifdef AVX_512
+#define VEX_HWCAPS_AMD64_AVX512_MASK \
+   (VEX_HWCAPS_AMD64_AVX512_KNL | VEX_HWCAPS_AMD64_AVX512_SKX)
+#else
+#define VEX_HWCAPS_AMD64_AVX512_MASK 0
+#endif
+
 HInstrArray* iselSB_AMD64 ( const IRSB* bb,
                             VexArch      arch_host,
                             const VexArchInfo* archinfo_host,
@@ -5424,7 +5493,8 @@ HInstrArray* iselSB_AMD64 ( const IRSB* bb,
                      | VEX_HWCAPS_AMD64_RDRAND
                      | VEX_HWCAPS_AMD64_RDSEED
                      | VEX_HWCAPS_AMD64_FMA3
-                     | VEX_HWCAPS_AMD64_FMA4)));
+                     | VEX_HWCAPS_AMD64_FMA4
+                     | VEX_HWCAPS_AMD64_AVX512_MASK)));
 
    /* Check that the host's endianness is as expected. */
    vassert(archinfo_host->endness == VexEndnessLE);
@@ -5444,6 +5514,10 @@ HInstrArray* iselSB_AMD64 ( const IRSB* bb,
    env->n_vregmap = bb->tyenv->types_used;
    env->vregmap   = LibVEX_Alloc_inline(env->n_vregmap * sizeof(HReg));
    env->vregmapHI = LibVEX_Alloc_inline(env->n_vregmap * sizeof(HReg));
+#ifdef AVX_512
+   env->vregmaps[2] = LibVEX_Alloc_inline(env->n_vregmap * sizeof(HReg));
+   env->vregmaps[3] = LibVEX_Alloc_inline(env->n_vregmap * sizeof(HReg));
+#endif
 
    /* and finally ... */
    env->chainingAllowed = chainingAllowed;
@@ -5473,6 +5547,14 @@ HInstrArray* iselSB_AMD64 ( const IRSB* bb,
             hreg   = mkHReg(True, HRcVec128, 0, j++);
             hregHI = mkHReg(True, HRcVec128, 0, j++);
             break;
+#ifdef AVX_512
+         case Ity_V512:
+            hreg   = mkHReg(True, HRcVec128, 0, j++);
+            hregHI = mkHReg(True, HRcVec128, 0, j++);
+            env->vregmaps[2][i] = mkHReg(True, HRcVec128, 0, j++);
+            env->vregmaps[3][i] = mkHReg(True, HRcVec128, 0, j++);
+            break;
+#endif
          default:
             ppIRType(bb->tyenv->types[i]);
             vpanic("iselBB(amd64): IRTemp type");
@@ -5506,6 +5588,13 @@ HInstrArray* iselSB_AMD64 ( const IRSB* bb,
    env->code->n_vregs = env->vreg_ctr;
    return env->code;
 }
+
+
+#ifdef AVX_512
+/* Adding AVX-512 finctionality as C file so it would have access to static
+ * functions defined here */
+#include "host_amd64_isel_AVX512.c"
+#endif
 
 
 /*---------------------------------------------------------------*/
