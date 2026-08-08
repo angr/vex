@@ -296,7 +296,7 @@ static DisResult disInstr_TILEGX_WRK ( Bool(*resteerOkFn) (void *, Addr),
                                        Bool sigill_diag )
 {
   struct tilegx_decoded_instruction
-    decoded[TILEGX_MAX_INSTRUCTIONS_PER_BUNDLE];
+    decoded[TILEGX_MAX_INSTRUCTIONS_PER_BUNDLE + 1];
   ULong  cins, opcode = -1, rd, ra, rb, imm = 0;
   ULong  opd[4];
   ULong  opd_src_map, opd_dst_map, opd_imm_map;
@@ -414,7 +414,7 @@ static DisResult disInstr_TILEGX_WRK ( Bool(*resteerOkFn) (void *, Addr),
 
   /* To decode the given instruction bundle. */
   nr_insn = parse_insn_tilegx((tilegx_bundle_bits)cins,
-                              (ULong)(Addr)code,
+                              (ULong)(Addr)(guest_PC_bbstart + delta),
                               decoded);
 
   if (vex_traceflags & VEX_TRACE_FE)
