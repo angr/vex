@@ -58,6 +58,10 @@ static const HChar *s390_irgen_BIC(UChar r1, IRTemp op2addr);
 /* The IRSB* into which we're generating code. */
 static IRSB *irsb;
 
+/* Pointer to the guest code area (points to start of BB, not to the
+   insn being processed). */
+static const UChar *guest_code;
+
 /* The guest address for the instruction currently being
    translated. */
 static Addr64 guest_IA_curr_instr;
@@ -13060,13 +13064,32 @@ static const HChar *
 s390_irgen_EXRL(UChar r1, UInt offset)
 {
    IRTemp addr = newTemp(Ity_I64);
-   Addr64 bytes_addr = guest_IA_curr_instr + offset * 2UL;
-   UChar *bytes = exrl_bytes + offset * 2UL;
+   Long   displacement = (Long)(Int)offset * 2;
+   Addr64 bytes_addr = guest_IA_curr_instr + (ULong)displacement;
+
    /* we might save one round trip because we know the target */
-   if (!last_execute_target)
-      last_execute_target = ((ULong)bytes[0] << 56) | ((ULong)bytes[1] << 48) |
-                            ((ULong)bytes[2] << 40) | ((ULong)bytes[3] << 32) |
-                            ((ULong)bytes[4] << 24) | ((ULong)bytes[5] << 16);
+   if (!last_execute_target) {
+      /* The target comes out of the code buffer rather than out of guest
+         memory, so it is only available while it lies inside that buffer.
+         Nothing constrains the displacement, so it often does not. Leaving
+         last_execute_target at zero makes s390_irgen_EX emit the generic
+         code that looks the target up when the block runs. */
+      Long target_off = (exrl_bytes - guest_code) + displacement;
+      Long buffer_size = vex_control.guest_bytes_size > 0
+                            ? (Long)vex_control.guest_bytes_size
+                            : (Long)vex_control.guest_max_bytes;
+
+      if (target_off >= 0 && target_off + 6 <= buffer_size) {
+         const UChar *bytes = guest_code + target_off;
+
+         last_execute_target = ((ULong)bytes[0] << 56) |
+                               ((ULong)bytes[1] << 48) |
+                               ((ULong)bytes[2] << 40) |
+                               ((ULong)bytes[3] << 32) |
+                               ((ULong)bytes[4] << 24) |
+                               ((ULong)bytes[5] << 16);
+      }
+   }
    assign(addr, mkU64(bytes_addr));
    s390_irgen_EX(r1, addr);
    return "exrl";
@@ -22018,7 +22041,7 @@ disInstr_S390(IRSB        *irsb_IN,
               Bool       (*resteerOkFn)(void *, Addr),
               Bool         resteerCisOk,
               void        *callback_opaque,
-              const UChar *guest_code,
+              const UChar *guest_code_IN,
               Long         delta,
               Addr         guest_IP,
               VexArch      guest_arch,
@@ -22030,6 +22053,7 @@ disInstr_S390(IRSB        *irsb_IN,
    vassert(guest_arch == VexArchS390X);
 
    /* Set globals (see top of this file) */
+   guest_code = guest_code_IN;
    guest_IA_curr_instr = guest_IP;
    irsb = irsb_IN;
    resteer_fn = resteerOkFn;

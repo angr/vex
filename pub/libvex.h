@@ -498,6 +498,12 @@ typedef
       Int guest_max_insns;
       /* What's the maximum basic block size in bytes? Default=5000 */
       Int guest_max_bytes;
+      /* How many bytes may be read from VexTranslateArgs::guest_bytes? A
+         front end that looks outside the block it is translating -- the
+         s390x EXRL target is read out of the buffer -- must stay inside
+         that. Zero means the client did not say, in which case no more than
+         guest_max_bytes may be read. Default=0 */
+      Int guest_bytes_size;
       /* How aggressive should front ends be in following
          unconditional branches to known destinations?  Default=10,
          meaning that if a block contains less than 10 guest insns so

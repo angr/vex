@@ -207,6 +207,7 @@ void LibVEX_default_VexControl ( /*OUT*/ VexControl* vcon )
    vcon->iropt_unroll_thresh             = 120;
    vcon->guest_max_insns                 = 60;
    vcon->guest_max_bytes                 = 5000;
+   vcon->guest_bytes_size                = 0;
    vcon->guest_chase_thresh              = 10;
    vcon->guest_chase_cond                = False;
    vcon->regalloc_version               = 3;
@@ -319,6 +320,7 @@ void LibVEX_Update_Control(const VexControl *vcon)
    vassert(vcon->iropt_unroll_thresh <= 400);
    vassert(vcon->guest_max_insns >= 1);
    vassert(vcon->guest_max_insns <= 100);
+   vassert(vcon->guest_bytes_size >= 0);
    vassert(vcon->guest_chase_thresh >= 0);
    vassert(vcon->guest_chase_thresh < vcon->guest_max_insns);
    vassert(vcon->guest_chase_cond == True
