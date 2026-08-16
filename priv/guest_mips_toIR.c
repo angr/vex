@@ -832,6 +832,75 @@ static Bool is_Ret(const UChar * addr)
     return False;
 }
 
+/* Encodings that exist only on a 64-bit MIPS, and that this file decodes by
+   building 64-bit IR without first consulting mode64.
+
+   On a 32-bit guest such an instruction is a Reserved Instruction, so the
+   decoder has to report a decode failure for it.  Decoding it anyway assigns
+   an I64 value to an I32 guest register, which fails either the vassert in
+   putIReg or the IR sanity check at the end of the superblock.  Both unwind
+   out of the whole translation, so the instructions already decoded ahead of
+   the offending one are lost as well -- the caller sees an empty IRSB whose
+   Ijk_NoDecode points at the start of the block rather than at the
+   instruction that could not be decoded.
+
+   Only encodings that fail today are listed.  LWU and SD are decoded in
+   32-bit mode by the cases below, correctly or not, and are deliberately left
+   alone so that this predicate cannot take away a translation that currently
+   succeeds.  */
+static Bool is_MIPS64_only_insn(UInt cins)
+{
+   UInt opcode = get_opcode(cins);
+   UInt rs = get_rs(cins);
+   UInt function = get_function(cins);
+
+   switch (opcode) {
+      case 0x00:  /* SPECIAL */
+         switch (function) {
+            /* DSLLV, DSRLV, DSRAV */
+            case 0x14: case 0x16: case 0x17:
+            /* DMULT, DMULTU, DDIV, DDIVU */
+            case 0x1C: case 0x1D: case 0x1E: case 0x1F:
+            /* DADD, DADDU, DSUB, DSUBU */
+            case 0x2C: case 0x2D: case 0x2E: case 0x2F:
+            /* DSLL, DSRL/DROTR, DSRA */
+            case 0x38: case 0x3A: case 0x3B:
+            /* DSLL32, DSRL32/DROTR32, DSRA32 */
+            case 0x3C: case 0x3E: case 0x3F:
+               return True;
+            default:
+               return False;
+         }
+      case 0x11:  /* COP1 */
+         /* DMFC1, DMTC1 */
+         return rs == 0x01 || rs == 0x05;
+      case 0x1C:  /* SPECIAL2 */
+         /* DCLZ, DCLO */
+         return function == 0x24 || function == 0x25;
+      case 0x1F:  /* SPECIAL3 */
+         switch (function) {
+            /* DEXTM, DEXTU, DEXT */
+            case 0x01: case 0x02: case 0x03:
+            /* DINSM, DINSU, DINS */
+            case 0x05: case 0x06: case 0x07:
+            /* DBSHFL: DSBH, DSHD */
+            case 0x24:
+               return True;
+            default:
+               return False;
+         }
+      case 0x18: case 0x19:  /* DADDI, DADDIU */
+      case 0x1A: case 0x1B:  /* LDL, LDR */
+      case 0x2C: case 0x2D:  /* SDL, SDR */
+      case 0x34:             /* LLD */
+      case 0x37:             /* LD */
+      case 0x3C:             /* SCD */
+         return True;
+      default:
+         return False;
+   }
+}
+
 static Bool branch_or_link_likely(const UChar * addr)
 {
    UInt cins = getUInt(addr);
@@ -12208,6 +12277,11 @@ static DisResult disInstr_MIPS_WRK ( Bool(*resteerOkFn) (/*opaque */void *,
    IRType tyF = fp_mode64 ? Ity_F64 : Ity_F32;
 
    ac = get_acNo(cins);
+
+   /* Reserved on this guest: report a decode failure rather than build 64-bit
+      IR for 32-bit registers and lose the whole superblock to an assertion. */
+   if (!mode64 && is_MIPS64_only_insn(cins))
+      goto decode_failure;
 
    switch (opcode) {
 
