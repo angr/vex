@@ -2487,11 +2487,13 @@ static Bool dis_RV64F(/*MB_OUT*/ DisResult* dres,
             switch (rm) {
             case 0b010:
                assign(irsb, res,
-                      binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_EQ)));
+                      unop(Iop_1Uto32,
+                           binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_EQ))));
                break;
             case 0b001:
                assign(irsb, res,
-                      binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_LT)));
+                      unop(Iop_1Uto32,
+                           binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_LT))));
                break;
             case 0b000:
                assign(irsb, res,
@@ -2984,11 +2986,13 @@ static Bool dis_RV64D(/*MB_OUT*/ DisResult* dres,
             switch (rm) {
             case 0b010:
                assign(irsb, res,
-                      binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_EQ)));
+                      unop(Iop_1Uto32,
+                           binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_EQ))));
                break;
             case 0b001:
                assign(irsb, res,
-                      binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_LT)));
+                      unop(Iop_1Uto32,
+                           binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_LT))));
                break;
             case 0b000:
                assign(irsb, res,
