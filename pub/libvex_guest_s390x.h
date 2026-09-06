@@ -177,6 +177,9 @@ typedef struct {
    /*  816 */  /* This is the size of the guest state */
 } VexGuestS390XState;
 
+VEX_STATIC_ASSERT(sizeof(VexGuestS390XState) % 16 == 0,
+                  "sizeof VexGuestS390XState is not a multiple of 16");
+
 
 /*------------------------------------------------------------*/
 /*--- Function prototypes                                  ---*/

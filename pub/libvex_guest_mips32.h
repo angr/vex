@@ -193,6 +193,9 @@ typedef
       /*  1024 */ ULong guest_LLdata64;
       /*  1032 */ ULong _padding3;
 } VexGuestMIPS32State;
+
+VEX_STATIC_ASSERT(sizeof(VexGuestMIPS32State) % 16 == 0,
+                  "sizeof VexGuestMIPS32State is not a multiple of 16");
 /*---------------------------------------------------------------*/
 /*--- Utility functions for MIPS32 guest stuff.               ---*/
 /*---------------------------------------------------------------*/

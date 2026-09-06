@@ -174,6 +174,9 @@ typedef
    }
    VexGuestARM64State;
 
+VEX_STATIC_ASSERT(sizeof(VexGuestARM64State) % 16 == 0,
+                  "sizeof VexGuestARM64State is not a multiple of 16");
+
 /*---------------------------------------------------------------*/
 /*--- Utility functions for ARM64 guest stuff.                ---*/
 /*---------------------------------------------------------------*/

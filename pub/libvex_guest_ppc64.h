@@ -344,6 +344,9 @@ typedef
    }
    VexGuestPPC64State;
 
+VEX_STATIC_ASSERT(sizeof(VexGuestPPC64State) % 16 == 0,
+                  "sizeof VexGuestPPC64State is not a multiple of 16");
+
 
 /*---------------------------------------------------------------*/
 /*--- Utility functions for PPC64 guest stuff.                ---*/

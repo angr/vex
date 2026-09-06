@@ -198,6 +198,9 @@ typedef
    }
    VexGuestARMState;
 
+VEX_STATIC_ASSERT(sizeof(VexGuestARMState) % 16 == 0,
+                  "sizeof VexGuestARMState is not a multiple of 16");
+
 
 /*---------------------------------------------------------------*/
 /*--- Utility functions for ARM guest stuff.                  ---*/

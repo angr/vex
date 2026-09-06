@@ -189,6 +189,9 @@ typedef
 
 } VexGuestMIPS64State;
 
+VEX_STATIC_ASSERT(sizeof(VexGuestMIPS64State) % 16 == 0,
+                  "sizeof VexGuestMIPS64State is not a multiple of 16");
+
 /*---------------------------------------------------------------*/
 /*--- Utility functions for MIPS64 guest stuff.               ---*/
 /*---------------------------------------------------------------*/

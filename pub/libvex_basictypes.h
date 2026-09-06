@@ -84,6 +84,18 @@ static inline int __builtin_ctzll(unsigned long long x) {
 #endif
 #endif
 
+/* Compile-time assertion usable at file scope in the public headers.
+   Upstream writes C11 _Static_assert directly, which cl.exe rejects in
+   its default C mode; the fallback is a C89 negative-size array. */
+#if defined(_MSC_VER) || !defined(__STDC_VERSION__) || __STDC_VERSION__ < 201112L
+#  define VEX_STATIC_ASSERT_CAT2(a, b) a##b
+#  define VEX_STATIC_ASSERT_CAT(a, b)  VEX_STATIC_ASSERT_CAT2(a, b)
+#  define VEX_STATIC_ASSERT(cond, msg) \
+      typedef char VEX_STATIC_ASSERT_CAT(vex_static_assert_, __COUNTER__)[(cond) ? 1 : -1]
+#else
+#  define VEX_STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
+#endif
+
 /* It is important that the sizes of the following data types (on the
    host) are as stated.  LibVEX_Init therefore checks these at
    startup. */

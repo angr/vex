@@ -228,8 +228,8 @@ typedef
    }
    VexGuestX86State;
 
-_Static_assert(sizeof(VexGuestX86State) % 16 == 0,
-               "sizeof VexGuestX86State is not a multiple of 16");
+VEX_STATIC_ASSERT(sizeof(VexGuestX86State) % 16 == 0,
+                  "sizeof VexGuestX86State is not a multiple of 16");
 
 #define VEX_GUEST_X86_LDT_NENT /*64*/ 8192 /* use complete LDT */
 #define VEX_GUEST_X86_GDT_NENT /*16*/ 8192 /* use complete GDT */

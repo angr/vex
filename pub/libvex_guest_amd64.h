@@ -203,6 +203,9 @@ typedef
    }
    VexGuestAMD64State;
 
+VEX_STATIC_ASSERT(sizeof(VexGuestAMD64State) % 16 == 0,
+                  "sizeof VexGuestAMD64State is not a multiple of 16");
+
 
 
 /*---------------------------------------------------------------*/
