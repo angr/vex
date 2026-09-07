@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -455,7 +453,7 @@ ULong x86amd64g_calculate_FXTRACT ( ULong arg, HWord getExp )
 
    /* Mimic Core i5 behaviour for special cases. */
    if (arg == posInf)
-      return getExp ? posInf : posInf;
+      return posInf; /* Both significand and exponent are posInf. */
    if (arg == negInf)
       return getExp ? posInf : negInf;
    if ((arg & nanMask) == nanMask)
@@ -797,7 +795,7 @@ Bool compute_PCMPxSTRx ( /*OUT*/V128* resV,
    switch (imm8) {
       case 0x00: case 0x02:
       case 0x08: case 0x0A: case 0x0C: case 0x0E:
-                 case 0x12: case 0x14:
+      case 0x10: case 0x12: case 0x14:
       case 0x18: case 0x1A:
       case 0x30:            case 0x34:
       case 0x38: case 0x3A:
@@ -1052,10 +1050,14 @@ Bool compute_PCMPxSTRx_wide ( /*OUT*/V128* resV,
       even if they would probably work.  Life is too short to have
       unvalidated cases in the code base. */
    switch (imm8) {
-      case 0x01: case 0x03: case 0x09: case 0x0B: case 0x0D:
-                 case 0x13: case 0x19: case 0x1B:
-                            case 0x39: case 0x3B:
-                 case 0x45:            case 0x4B:
+      //    1,9        3,B        5,D        7,F
+      case 0x01: case 0x03:
+      case 0x09: case 0x0B: case 0x0D:
+                 case 0x13:
+      case 0x19: case 0x1B:
+      case 0x39: case 0x3B:
+      case 0x41:            case 0x45:
+                 case 0x4B:
          break;
       default:
          return False;

@@ -8,11 +8,11 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright IBM Corp. 2010-2017
+   Copyright IBM Corp. 2010-2026
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -44,127 +44,9 @@
 void
 LibVEX_GuestS390X_initialise(VexGuestS390XState *state)
 {
-/*------------------------------------------------------------*/
-/*--- Initialise ar registers                              ---*/
-/*------------------------------------------------------------*/
+   __builtin_memset(state, 0x0, sizeof *state);
 
-   state->guest_a0 = 0;
-   state->guest_a1 = 0;
-   state->guest_a2 = 0;
-   state->guest_a3 = 0;
-   state->guest_a4 = 0;
-   state->guest_a5 = 0;
-   state->guest_a6 = 0;
-   state->guest_a7 = 0;
-   state->guest_a8 = 0;
-   state->guest_a9 = 0;
-   state->guest_a10 = 0;
-   state->guest_a11 = 0;
-   state->guest_a12 = 0;
-   state->guest_a13 = 0;
-   state->guest_a14 = 0;
-   state->guest_a15 = 0;
-
-/*------------------------------------------------------------*/
-/*--- Initialise vr registers                             ---*/
-/*------------------------------------------------------------*/
-
-#define VRZERO(vr) \
-   do { \
-      vr.w64[0] = vr.w64[1] = 0ULL; \
-   } while(0);
-
-   VRZERO(state->guest_v0)
-   VRZERO(state->guest_v1)
-   VRZERO(state->guest_v2)
-   VRZERO(state->guest_v3)
-   VRZERO(state->guest_v4)
-   VRZERO(state->guest_v5)
-   VRZERO(state->guest_v6)
-   VRZERO(state->guest_v7)
-   VRZERO(state->guest_v8)
-   VRZERO(state->guest_v9)
-   VRZERO(state->guest_v10)
-   VRZERO(state->guest_v11)
-   VRZERO(state->guest_v12)
-   VRZERO(state->guest_v13)
-   VRZERO(state->guest_v14)
-   VRZERO(state->guest_v15)
-   VRZERO(state->guest_v16)
-   VRZERO(state->guest_v17)
-   VRZERO(state->guest_v18)
-   VRZERO(state->guest_v19)
-   VRZERO(state->guest_v20)
-   VRZERO(state->guest_v21)
-   VRZERO(state->guest_v22)
-   VRZERO(state->guest_v23)
-   VRZERO(state->guest_v24)
-   VRZERO(state->guest_v25)
-   VRZERO(state->guest_v26)
-   VRZERO(state->guest_v27)
-   VRZERO(state->guest_v28)
-   VRZERO(state->guest_v29)
-   VRZERO(state->guest_v30)
-   VRZERO(state->guest_v31)
-
-#undef VRZERO
-/*------------------------------------------------------------*/
-/*--- Initialise gpr registers                             ---*/
-/*------------------------------------------------------------*/
-
-   state->guest_r0 = 0;
-   state->guest_r1 = 0;
-   state->guest_r2 = 0;
-   state->guest_r3 = 0;
-   state->guest_r4 = 0;
-   state->guest_r5 = 0;
-   state->guest_r6 = 0;
-   state->guest_r7 = 0;
-   state->guest_r8 = 0;
-   state->guest_r9 = 0;
-   state->guest_r10 = 0;
-   state->guest_r11 = 0;
-   state->guest_r12 = 0;
-   state->guest_r13 = 0;
-   state->guest_r14 = 0;
-   state->guest_r15 = 0;
-
-/*------------------------------------------------------------*/
-/*--- Initialise S390 miscellaneous registers              ---*/
-/*------------------------------------------------------------*/
-
-   state->guest_counter = 0;
-   state->guest_fpc = 0;
-   state->guest_IA = 0;
-
-/*------------------------------------------------------------*/
-/*--- Initialise S390 pseudo registers                     ---*/
-/*------------------------------------------------------------*/
-
-   state->guest_SYSNO = 0;
-
-/*------------------------------------------------------------*/
-/*--- Initialise generic pseudo registers                  ---*/
-/*------------------------------------------------------------*/
-
-   state->guest_NRADDR = 0;
-   state->guest_CMSTART = 0;
-   state->guest_CMLEN = 0;
-   state->guest_IP_AT_SYSCALL = 0;
    state->guest_EMNOTE = EmNote_NONE;
-   state->host_EvC_COUNTER = 0;
-   state->host_EvC_FAILADDR = 0;
-
-/*------------------------------------------------------------*/
-/*--- Initialise thunk                                     ---*/
-/*------------------------------------------------------------*/
-
-   state->guest_CC_OP = 0;
-   state->guest_CC_DEP1 = 0;
-   state->guest_CC_DEP2 = 0;
-   state->guest_CC_NDEP = 0;
-
-   __builtin_memset(state->padding, 0x0, sizeof(state->padding));
 }
 
 
@@ -260,9 +142,10 @@ VexGuestLayout s390xGuest_layout = {
 /*--- Dirty helper for EXecute                             ---*/
 /*------------------------------------------------------------*/
 void
-s390x_dirtyhelper_EX(ULong torun)
+s390x_dirtyhelper_EX(ULong torun, Addr64 addr)
 {
    last_execute_target = torun;
+   guest_IA_rel_base = addr;
 }
 
 
@@ -310,85 +193,6 @@ ULong s390x_dirtyhelper_STCKF(ULong *addr) {return 3;}
 ULong s390x_dirtyhelper_STCKE(ULong *addr) {return 3;}
 #endif /* VGA_s390x */
 
-/*------------------------------------------------------------*/
-/*--- Dirty helper for Store Facility instruction          ---*/
-/*------------------------------------------------------------*/
-#if defined(VGA_s390x)
-static void
-s390_set_facility_bit(ULong *addr, UInt bitno, UInt value)
-{
-   addr  += bitno / 64;
-   bitno  = bitno % 64;
-
-   ULong mask = 1;
-   mask <<= (63 - bitno);
-
-   if (value == 1) {
-      *addr |= mask;   // set
-   } else {
-      *addr &= ~mask;  // clear
-   }
-}
-
-ULong
-s390x_dirtyhelper_STFLE(VexGuestS390XState *guest_state, ULong *addr)
-{
-   ULong hoststfle[S390_NUM_FACILITY_DW], cc, num_dw, i;
-   register ULong reg0 asm("0") = guest_state->guest_r0 & 0xF;  /* r0[56:63] */
-
-   /* We cannot store more than S390_NUM_FACILITY_DW
-      (and it makes not much sense to do so anyhow) */
-   if (reg0 > S390_NUM_FACILITY_DW - 1)
-      reg0 = S390_NUM_FACILITY_DW - 1;
-
-   num_dw = reg0 + 1;  /* number of double words written */
-
-   asm volatile(" .insn s,0xb2b00000,%0\n"   /* stfle */
-                "ipm    %2\n"
-                "srl    %2,28\n"
-                : "=m" (hoststfle), "+d"(reg0), "=d"(cc) : : "cc", "memory");
-
-   /* Update guest register 0  with what STFLE set r0 to */
-   guest_state->guest_r0 = reg0;
-
-   /* Set default: VM facilities = host facilities */
-   for (i = 0; i < num_dw; ++i)
-      addr[i] = hoststfle[i];
-
-   /* Now adjust the VM facilities according to what the VM supports */
-   s390_set_facility_bit(addr, S390_FAC_LDISP,  1);
-   s390_set_facility_bit(addr, S390_FAC_EIMM,   1);
-   s390_set_facility_bit(addr, S390_FAC_ETF2,   1);
-   s390_set_facility_bit(addr, S390_FAC_ETF3,   1);
-   s390_set_facility_bit(addr, S390_FAC_GIE,    1);
-   s390_set_facility_bit(addr, S390_FAC_EXEXT,  1);
-   s390_set_facility_bit(addr, S390_FAC_HIGHW,  1);
-   s390_set_facility_bit(addr, S390_FAC_LSC2,   1);
-
-   s390_set_facility_bit(addr, S390_FAC_HFPMAS, 0);
-   s390_set_facility_bit(addr, S390_FAC_HFPUNX, 0);
-   s390_set_facility_bit(addr, S390_FAC_XCPUT,  0);
-   s390_set_facility_bit(addr, S390_FAC_MSA,    0);
-   s390_set_facility_bit(addr, S390_FAC_PENH,   0);
-   s390_set_facility_bit(addr, S390_FAC_DFP,    0);
-   s390_set_facility_bit(addr, S390_FAC_PFPO,   0);
-   s390_set_facility_bit(addr, S390_FAC_DFPZC,  0);
-   s390_set_facility_bit(addr, S390_FAC_MISC,   0);
-   s390_set_facility_bit(addr, S390_FAC_CTREXE, 0);
-   s390_set_facility_bit(addr, S390_FAC_TREXE,  0);
-   s390_set_facility_bit(addr, S390_FAC_MSA4,   0);
-
-   return cc;
-}
-
-#else
-
-ULong
-s390x_dirtyhelper_STFLE(VexGuestS390XState *guest_state, ULong *addr)
-{
-   return 3;
-}
-#endif /* VGA_s390x */
 
 /*------------------------------------------------------------*/
 /*--- Dirty helper for the "convert unicode" insn family.  ---*/
@@ -528,7 +332,7 @@ s390_do_cu24(UInt srcval, UInt low_surrogate)
 
    srcval &= 0xffff;
 
-   if ((srcval >= 0x0000 && srcval <= 0xd7ff) ||
+   if ((srcval <= 0xd7ff) ||
        (srcval >= 0xdc00 && srcval <= 0xffff)) {
       retval = srcval;
    } else {
@@ -824,7 +628,7 @@ s390_do_cu12_cu14_helper2(UInt byte1, UInt byte2, UInt byte3, UInt byte4,
       UInt ij     = (byte3 >> 4) & 0x3;
       UInt klmn   = byte3 & 0xf;
       UInt opqrst = byte4 & 0x3f;
-      
+
       if (is_cu12) {
          UInt abcd = (uvwxy - 1) & 0xf;
          UInt high_surrogate = (0xd8 << 8) | (abcd << 6) | (efgh << 2) | ij;
@@ -877,7 +681,7 @@ s390_do_cvb(ULong decimal)
    __asm__ volatile (
         "cvb %[result],%[input]\n\t"
           : [result] "=d"(binary)
-          : [input] "m"(decimal)
+          : [input] "R"(decimal)
    );
 
    return binary;
@@ -964,8 +768,12 @@ UInt s390_do_pfpo(UInt gpr0) { return 0; }
 /*--- Helper for condition code.                           ---*/
 /*------------------------------------------------------------*/
 
-/* Convert an IRRoundingMode value to s390_bfp_round_t */
 #if defined(VGA_s390x)
+typedef long double Float128;
+union s390x_F64 { ULong i; Double f; };
+union s390x_F128 { struct { ULong hi, lo; } i; Float128 f; };
+
+/* Convert an IRRoundingMode value to s390_bfp_round_t */
 static s390_bfp_round_t
 decode_bfp_rounding_mode(UInt irrm)
 {
@@ -974,11 +782,16 @@ decode_bfp_rounding_mode(UInt irrm)
    case Irrm_NegINF:  return S390_BFP_ROUND_NEGINF;
    case Irrm_PosINF:  return S390_BFP_ROUND_POSINF;
    case Irrm_ZERO:    return S390_BFP_ROUND_ZERO;
+   case Irrm_NEAREST_TIE_AWAY_0: return S390_BFP_ROUND_NEAREST_AWAY;
+   case Irrm_PREPARE_SHORTER:    return S390_BFP_ROUND_PREPARE_SHORT;
+   case Irrm_AWAY_FROM_ZERO:
+   case Irrm_NEAREST_TIE_TOWARD_0:
+      /* These cannot occur as they are DFP specific */
+      break;
    }
    vpanic("decode_bfp_rounding_mode");
+   return S390_BFP_ROUND_NEAREST_EVEN;   /* Make MSVC happy */
 }
-#endif
-
 
 #define S390_CC_FOR_BINARY(opcode,cc_dep1,cc_dep2) \
 ({ \
@@ -1005,13 +818,14 @@ decode_bfp_rounding_mode(UInt irrm)
    /* Recover the original DEP2 value. See comment near s390_cc_thunk_put3 \
       for rationale. */ \
    cc_dep2 = cc_dep2 ^ cc_ndep; \
+   ULong tmp = 1; \
    __asm__ volatile ( \
-	"lghi 0,1\n\t" \
-	"sr 0,%[op3]\n\t" /* borrow to cc */ \
+        "sr %[tmp],%[op3]\n\t" /* borrow to cc */ \
         opcode " %[op1],%[op2]\n\t" /* then redo the op */\
-        "ipm %[psw]\n\t"           : [psw] "=d"(psw), [op1] "+&d"(cc_dep1) \
+        "ipm %[psw]\n\t"           : [psw] "=d"(psw), [op1] "+&d"(cc_dep1), \
+                                     [tmp] "+&d"(tmp) \
                                    : [op2] "d"(cc_dep2), [op3] "d"(cc_ndep) \
-                                   : "0", "cc");\
+                                   : "cc");\
    psw >> 28;   /* cc */ \
 })
 
@@ -1020,46 +834,52 @@ decode_bfp_rounding_mode(UInt irrm)
    /* Recover the original DEP2 value. See comment near s390_cc_thunk_put3 \
       for rationale. */ \
    cc_dep2 = cc_dep2 ^ cc_ndep; \
+   ULong tmp; \
    __asm__ volatile ( \
-	"lgfr 0,%[op3]\n\t" /* first load cc_ndep */ \
-	"aghi 0,0\n\t" /* and convert it into a cc */ \
+        "lgfr %[tmp],%[op3]\n\t" /* first load cc_ndep */ \
+        "aghi %[tmp],0\n\t" /* and convert it into a cc */ \
         opcode " %[op1],%[op2]\n\t" /* then redo the op */\
-        "ipm %[psw]\n\t"           : [psw] "=d"(psw), [op1] "+&d"(cc_dep1) \
+        "ipm %[psw]\n\t"           : [psw] "=d"(psw), [op1] "+&d"(cc_dep1), \
+                                     [tmp] "=&d"(tmp) \
                                    : [op2] "d"(cc_dep2), [op3] "d"(cc_ndep) \
-                                   : "0", "cc");\
+                                   : "cc");\
    psw >> 28;   /* cc */ \
 })
 
 
 #define S390_CC_FOR_BFP_RESULT(opcode,cc_dep1) \
 ({ \
+   union s390x_F64 op = { .i = cc_dep1 }; \
+   Double tmp; \
    __asm__ volatile ( \
-        opcode " 0,%[op]\n\t" \
-        "ipm %[psw]\n\t"           : [psw] "=d"(psw) \
-                                   : [op]  "f"(cc_dep1) \
-                                   : "cc", "f0");\
+        opcode " %[tmp],%[op]\n\t" \
+        "ipm %[psw]\n\t"           : [psw] "=d"(psw), [tmp] "=f"(tmp) \
+                                   : [op]  "f"(op.f) \
+                                   : "cc");\
    psw >> 28;   /* cc */ \
 })
 
 #define S390_CC_FOR_BFP128_RESULT(hi,lo) \
 ({ \
+   union s390x_F128 op = { .i = { hi, lo } }; \
+   Float128 tmp; \
    __asm__ volatile ( \
-        "ldr   4,%[high]\n\t" \
-        "ldr   6,%[low]\n\t" \
-        "ltxbr 0,4\n\t" \
-        "ipm %[psw]\n\t"           : [psw] "=d"(psw) \
-                                   : [high] "f"(hi), [low] "f"(lo) \
-                                   : "cc", "f0", "f2", "f4", "f6");\
+        "ltxbr %[tmp],%[op]\n\t" \
+        "ipm %[psw]\n\t"           : [psw] "=d"(psw), [tmp] "=f"(tmp) \
+                                   : [op]  "f"(op.f) \
+                                   : "cc");\
    psw >> 28;   /* cc */ \
 })
 
 #define S390_CC_FOR_BFP_CONVERT_AUX(opcode,cc_dep1,rounding_mode) \
 ({ \
+   union s390x_F64 op = { .i = cc_dep1 }; \
+   ULong tmp; \
    __asm__ volatile ( \
-        opcode " 0," #rounding_mode ",%[op]\n\t" \
-        "ipm %[psw]\n\t"           : [psw] "=d"(psw) \
-                                   : [op]  "f"(cc_dep1) \
-                                   : "cc", "r0");\
+        opcode " %[tmp]," #rounding_mode ",%[op]\n\t" \
+        "ipm %[psw]\n\t"           : [psw] "=d"(psw), [tmp] "=d"(tmp) \
+                                   : [op]  "f"(op.f) \
+                                   : "cc");\
    psw >> 28;   /* cc */ \
 })
 
@@ -1067,6 +887,12 @@ decode_bfp_rounding_mode(UInt irrm)
 ({                                                        \
    UInt cc;                                               \
    switch (decode_bfp_rounding_mode(cc_dep2)) {           \
+   case S390_BFP_ROUND_NEAREST_AWAY:                      \
+      cc = S390_CC_FOR_BFP_CONVERT_AUX(opcode,cc_dep1,1); \
+      break;                                              \
+   case S390_BFP_ROUND_PREPARE_SHORT:                     \
+      cc = S390_CC_FOR_BFP_CONVERT_AUX(opcode,cc_dep1,3); \
+      break;                                              \
    case S390_BFP_ROUND_NEAREST_EVEN:                      \
       cc = S390_CC_FOR_BFP_CONVERT_AUX(opcode,cc_dep1,4); \
       break;                                              \
@@ -1087,11 +913,13 @@ decode_bfp_rounding_mode(UInt irrm)
 
 #define S390_CC_FOR_BFP_UCONVERT_AUX(opcode,cc_dep1,rounding_mode) \
 ({ \
+   union s390x_F64 op = { .i = cc_dep1 }; \
+   ULong tmp; \
    __asm__ volatile ( \
-        opcode ",0,%[op]," #rounding_mode ",0\n\t" \
-        "ipm %[psw]\n\t"           : [psw] "=d"(psw) \
-                                   : [op]  "f"(cc_dep1) \
-                                   : "cc", "r0");\
+        opcode ",%[tmp],%[op]," #rounding_mode ",0\n\t" \
+        "ipm %[psw]\n\t"           : [psw] "=d"(psw), [tmp] "=d"(tmp) \
+                                   : [op]  "f"(op.f) \
+                                   : "cc");\
    psw >> 28;   /* cc */ \
 })
 
@@ -1099,6 +927,12 @@ decode_bfp_rounding_mode(UInt irrm)
 ({                                                         \
    UInt cc;                                                \
    switch (decode_bfp_rounding_mode(cc_dep2)) {            \
+   case S390_BFP_ROUND_NEAREST_AWAY:                       \
+      cc = S390_CC_FOR_BFP_UCONVERT_AUX(opcode,cc_dep1,1); \
+      break;                                               \
+   case S390_BFP_ROUND_PREPARE_SHORT:                      \
+      cc = S390_CC_FOR_BFP_UCONVERT_AUX(opcode,cc_dep1,3); \
+      break;                                               \
    case S390_BFP_ROUND_NEAREST_EVEN:                       \
       cc = S390_CC_FOR_BFP_UCONVERT_AUX(opcode,cc_dep1,4); \
       break;                                               \
@@ -1119,13 +953,13 @@ decode_bfp_rounding_mode(UInt irrm)
 
 #define S390_CC_FOR_BFP128_CONVERT_AUX(opcode,hi,lo,rounding_mode) \
 ({ \
+   union s390x_F128 op = { .i = { hi, lo } }; \
+   ULong tmp; \
    __asm__ volatile ( \
-        "ldr   4,%[high]\n\t" \
-        "ldr   6,%[low]\n\t" \
-        opcode " 0," #rounding_mode ",4\n\t" \
-        "ipm %[psw]\n\t"           : [psw] "=d"(psw) \
-                                   : [high] "f"(hi), [low] "f"(lo) \
-                                   : "cc", "r0", "f4", "f6");\
+        opcode " %[tmp]," #rounding_mode ",%[op]\n\t" \
+        "ipm %[psw]\n\t"           : [psw] "=d"(psw), [tmp] "=d"(tmp) \
+                                   : [op] "f"(op.f) \
+                                   : "cc");\
    psw >> 28;   /* cc */ \
 })
 
@@ -1136,6 +970,12 @@ decode_bfp_rounding_mode(UInt irrm)
       s390_cc_thunk_put3 for rationale. */                           \
    cc_dep2 = cc_dep2 ^ cc_ndep;                                      \
    switch (decode_bfp_rounding_mode(cc_ndep)) {                      \
+   case S390_BFP_ROUND_NEAREST_AWAY:                                 \
+      cc = S390_CC_FOR_BFP128_CONVERT_AUX(opcode,cc_dep1,cc_dep2,1); \
+      break;                                                         \
+   case S390_BFP_ROUND_PREPARE_SHORT:                                \
+      cc = S390_CC_FOR_BFP128_CONVERT_AUX(opcode,cc_dep1,cc_dep2,3); \
+      break;                                                         \
    case S390_BFP_ROUND_NEAREST_EVEN:                                 \
       cc = S390_CC_FOR_BFP128_CONVERT_AUX(opcode,cc_dep1,cc_dep2,4); \
       break;                                                         \
@@ -1156,13 +996,13 @@ decode_bfp_rounding_mode(UInt irrm)
 
 #define S390_CC_FOR_BFP128_UCONVERT_AUX(opcode,hi,lo,rounding_mode) \
 ({ \
+   union s390x_F128 op = { .i = { hi, lo } }; \
+   ULong tmp; \
    __asm__ volatile ( \
-        "ldr   4,%[high]\n\t" \
-        "ldr   6,%[low]\n\t" \
-        opcode ",0,4," #rounding_mode ",0\n\t" \
-        "ipm %[psw]\n\t"           : [psw] "=d"(psw) \
-                                   : [high] "f"(hi), [low] "f"(lo) \
-                                   : "cc", "r0", "f4", "f6");\
+        opcode ",%[tmp],%[op]," #rounding_mode ",0\n\t" \
+        "ipm %[psw]\n\t"           : [psw] "=d"(psw), [tmp] "=d"(tmp) \
+                                   : [op] "f"(op.f) \
+                                   : "cc");\
    psw >> 28;   /* cc */ \
 })
 
@@ -1173,6 +1013,12 @@ decode_bfp_rounding_mode(UInt irrm)
       s390_cc_thunk_put3 for rationale. */                            \
    cc_dep2 = cc_dep2 ^ cc_ndep;                                       \
    switch (decode_bfp_rounding_mode(cc_ndep)) {                       \
+   case S390_BFP_ROUND_NEAREST_AWAY:                                  \
+      cc = S390_CC_FOR_BFP128_UCONVERT_AUX(opcode,cc_dep1,cc_dep2,1); \
+      break;                                                          \
+   case S390_BFP_ROUND_PREPARE_SHORT:                                 \
+      cc = S390_CC_FOR_BFP128_UCONVERT_AUX(opcode,cc_dep1,cc_dep2,3); \
+      break;                                                          \
    case S390_BFP_ROUND_NEAREST_EVEN:                                  \
       cc = S390_CC_FOR_BFP128_UCONVERT_AUX(opcode,cc_dep1,cc_dep2,4); \
       break;                                                          \
@@ -1193,10 +1039,11 @@ decode_bfp_rounding_mode(UInt irrm)
 
 #define S390_CC_FOR_BFP_TDC(opcode,cc_dep1,cc_dep2) \
 ({ \
+   union s390x_F64 val = { .i = cc_dep1 }; \
    __asm__ volatile ( \
         opcode " %[value],0(%[class])\n\t" \
         "ipm %[psw]\n\t"           : [psw] "=d"(psw) \
-                                   : [value] "f"(cc_dep1), \
+                                   : [value] "f"(val.f), \
                                      [class] "a"(cc_dep2)  \
                                    : "cc");\
    psw >> 28;   /* cc */ \
@@ -1207,19 +1054,16 @@ decode_bfp_rounding_mode(UInt irrm)
    /* Recover the original DEP2 value. See comment near \
       s390_cc_thunk_put1f128Z for rationale. */ \
    cc_dep2 = cc_dep2 ^ cc_ndep; \
+   union s390x_F128 val = { .i = { cc_dep1, cc_dep2 } }; \
    __asm__ volatile ( \
-        "ldr  4,%[high]\n\t" \
-        "ldr  6,%[low]\n\t" \
-        "tcxb 4,0(%[class])\n\t" \
+        "tcxb %[value],0(%[class])\n\t" \
         "ipm  %[psw]\n\t"          : [psw] "=d"(psw) \
-                                   : [high] "f"(cc_dep1), [low] "f"(cc_dep2), \
-                                     [class] "a"(cc_ndep)  \
-                                   : "cc", "f4", "f6");\
+                                   : [value] "f"(val.f), [class] "a"(cc_ndep) \
+                                   : "cc");\
    psw >> 28;   /* cc */ \
 })
 
 /* Convert an IRRoundingMode value to s390_dfp_round_t */
-#if defined(VGA_s390x)
 static s390_dfp_round_t
 decode_dfp_rounding_mode(UInt irrm)
 {
@@ -1242,37 +1086,40 @@ decode_dfp_rounding_mode(UInt irrm)
       return S390_DFP_ROUND_NEAREST_TIE_TOWARD_0;
    }
    vpanic("decode_dfp_rounding_mode");
+   return S390_DFP_ROUND_NEAREST_EVEN_4;   /* Make MSVC happy */
 }
-#endif
 
 #define S390_CC_FOR_DFP_RESULT(cc_dep1) \
 ({ \
+   union s390x_F64 op = { .i = cc_dep1 }; \
+   Double tmp; \
    __asm__ volatile ( \
-        ".insn rre, 0xb3d60000,0,%[op]\n\t"              /* LTDTR */ \
-        "ipm %[psw]\n\t"           : [psw] "=d"(psw) \
-                                   : [op]  "f"(cc_dep1) \
-                                   : "cc", "f0"); \
+        ".insn rre, 0xb3d60000,%[tmp],%[op]\n\t"            /* LTDTR */ \
+        "ipm %[psw]\n\t"           : [psw] "=d"(psw), [tmp] "=f"(tmp) \
+                                   : [op]  "f"(op.f) \
+                                   : "cc");\
    psw >> 28;   /* cc */ \
 })
 
 #define S390_CC_FOR_DFP128_RESULT(hi,lo) \
 ({ \
+   union s390x_F128 op = { .i = { hi, lo } }; \
+   Float128 tmp; \
    __asm__ volatile ( \
-        "ldr   4,%[high]\n\t"                                           \
-        "ldr   6,%[low]\n\t"                                            \
-        ".insn rre, 0xb3de0000,0,4\n\t"    /* LTXTR */                  \
-        "ipm %[psw]\n\t"           : [psw] "=d"(psw)                    \
-                                   : [high] "f"(hi), [low] "f"(lo)      \
-                                   : "cc", "f0", "f2", "f4", "f6");     \
+        ".insn rre, 0xb3de0000,%[tmp],%[op]\n\t"           /* LTXTR */  \
+        "ipm %[psw]\n\t"           : [psw] "=d"(psw), [tmp] "=f"(tmp)   \
+                                   : [op] "f"(op.f)                     \
+                                   : "cc");                             \
    psw >> 28;   /* cc */                                                \
 })
 
 #define S390_CC_FOR_DFP_TD(opcode,cc_dep1,cc_dep2)                      \
 ({                                                                      \
+   union s390x_F64 val = { .i = cc_dep1 };                              \
    __asm__ volatile (                                                   \
         opcode ",%[value],0(%[class])\n\t"                              \
         "ipm %[psw]\n\t"           : [psw] "=d"(psw)                    \
-                                   : [value] "f"(cc_dep1),              \
+                                   : [value] "f"(val.f),                \
                                      [class] "a"(cc_dep2)               \
                                    : "cc");                             \
    psw >> 28;   /* cc */                                                \
@@ -1283,24 +1130,25 @@ decode_dfp_rounding_mode(UInt irrm)
    /* Recover the original DEP2 value. See comment near                 \
       s390_cc_thunk_put1d128Z for rationale. */                         \
    cc_dep2 = cc_dep2 ^ cc_ndep;                                         \
+   union s390x_F128 val = { .i = { cc_dep1, cc_dep2 } };                \
    __asm__ volatile (                                                   \
-        "ldr  4,%[high]\n\t"                                            \
-        "ldr  6,%[low]\n\t"                                             \
-        opcode ",4,0(%[class])\n\t"                                     \
+        opcode ",%[value],0(%[class])\n\t"                              \
         "ipm  %[psw]\n\t"          : [psw] "=d"(psw)                    \
-                                   : [high] "f"(cc_dep1), [low] "f"(cc_dep2), \
+                                   : [value] "f"(val.f),                \
                                      [class] "a"(cc_ndep)               \
-                                   : "cc", "f4", "f6");                 \
+                                   : "cc");                             \
    psw >> 28;   /* cc */                                                \
 })
 
 #define S390_CC_FOR_DFP_CONVERT_AUX(opcode,cc_dep1,rounding_mode)       \
    ({                                                                   \
+      union s390x_F64 op = { .i = cc_dep1 };                            \
+      Double tmp;                                                       \
       __asm__ volatile (                                                \
-                        opcode ",0,%[op]," #rounding_mode ",0\n\t"      \
-                        "ipm %[psw]\n\t"           : [psw] "=d"(psw)    \
-                        : [op] "f"(cc_dep1)                             \
-                        : "cc", "r0");                                  \
+         opcode ",%[tmp],%[op]," #rounding_mode ",0\n\t"                \
+         "ipm %[psw]\n\t"          : [psw] "=d"(psw), [tmp] "=f"(tmp)   \
+                                   : [op] "f"(op.f)                     \
+         : "cc");                                                       \
       psw >> 28;   /* cc */                                             \
    })
 
@@ -1346,11 +1194,13 @@ decode_dfp_rounding_mode(UInt irrm)
 
 #define S390_CC_FOR_DFP_UCONVERT_AUX(opcode,cc_dep1,rounding_mode)      \
    ({                                                                   \
+      union s390x_F64 op = { .i = cc_dep1 };                            \
+      Double tmp;                                                       \
       __asm__ volatile (                                                \
-                        opcode ",0,%[op]," #rounding_mode ",0\n\t"      \
-                        "ipm %[psw]\n\t"           : [psw] "=d"(psw)    \
-                        : [op] "f"(cc_dep1)                             \
-                        : "cc", "r0");                                  \
+         opcode ",%[tmp],%[op]," #rounding_mode ",0\n\t"                \
+         "ipm %[psw]\n\t"          : [psw] "=d"(psw), [tmp] "=f"(tmp)   \
+                                   : [op] "f"(op.f)                     \
+                                   : "cc");                             \
       psw >> 28;   /* cc */                                             \
    })
 
@@ -1396,13 +1246,13 @@ decode_dfp_rounding_mode(UInt irrm)
 
 #define S390_CC_FOR_DFP128_CONVERT_AUX(opcode,hi,lo,rounding_mode)      \
    ({                                                                   \
+      union s390x_F128 op = { .i = { hi, lo } };                        \
+      Double tmp;                                                       \
       __asm__ volatile (                                                \
-                        "ldr   4,%[high]\n\t"                           \
-                        "ldr   6,%[low]\n\t"                            \
-                        opcode ",0,4," #rounding_mode ",0\n\t"          \
-                        "ipm %[psw]\n\t"           : [psw] "=d"(psw)    \
-                        : [high] "f"(hi), [low] "f"(lo)                 \
-                        : "cc", "r0", "f4", "f6");                      \
+         opcode ",%[tmp],%[op]," #rounding_mode ",0\n\t"                \
+         "ipm %[psw]\n\t"          : [psw] "=d"(psw), [tmp] "=f"(tmp)   \
+                                   : [op] "f"(op.f)                     \
+                                   : "cc");                             \
       psw >> 28;   /* cc */                                             \
    })
 
@@ -1449,16 +1299,16 @@ decode_dfp_rounding_mode(UInt irrm)
       cc;                                                                \
    })
 
-#define S390_CC_FOR_DFP128_UCONVERT_AUX(opcode,hi,lo,rounding_mode)      \
-   ({                                                                    \
-      __asm__ volatile (                                                 \
-                        "ldr   4,%[high]\n\t"                            \
-                        "ldr   6,%[low]\n\t"                             \
-                        opcode ",0,4," #rounding_mode ",0\n\t"           \
-                        "ipm %[psw]\n\t"           : [psw] "=d"(psw)     \
-                        : [high] "f"(hi), [low] "f"(lo)                  \
-                        : "cc", "r0", "f4", "f6");                       \
-      psw >> 28;   /* cc */                                              \
+#define S390_CC_FOR_DFP128_UCONVERT_AUX(opcode,hi,lo,rounding_mode)     \
+   ({                                                                   \
+      union s390x_F128 op = { .i = { hi, lo } };                        \
+      Double tmp;                                                       \
+      __asm__ volatile (                                                \
+         opcode ",%[tmp],%[op]," #rounding_mode ",0\n\t"                \
+         "ipm %[psw]\n\t"          : [psw] "=d"(psw), [tmp] "=f"(tmp)   \
+                                   : [op] "f"(op.f)                     \
+                                   : "cc");                             \
+      psw >> 28;   /* cc */                                             \
    })
 
 #define S390_CC_FOR_DFP128_UCONVERT(opcode,cc_dep1,cc_dep2,cc_ndep)       \
@@ -1503,6 +1353,7 @@ decode_dfp_rounding_mode(UInt irrm)
       }                                                                   \
       cc;                                                                 \
    })
+#endif /* VGA_s390x */
 
 
 /* Return the value of the condition code from the supplied thunk parameters.
@@ -1517,7 +1368,10 @@ s390_calculate_cc(ULong cc_op, ULong cc_dep1, ULong cc_dep2, ULong cc_ndep)
    switch (cc_op) {
 
    case S390_CC_OP_BITWISE:
-      return S390_CC_FOR_BINARY("ogr", cc_dep1, (ULong)0);
+      return cc_dep1 == 0 ? 0 : 1;
+
+   case S390_CC_OP_BITWISE2:
+      return cc_dep1 == 0 ? 0 : 3;
 
    case S390_CC_OP_SIGNED_COMPARE:
       return S390_CC_FOR_BINARY("cgr", cc_dep1, cc_dep2);
@@ -1584,14 +1438,15 @@ s390_calculate_cc(ULong cc_op, ULong cc_dep1, ULong cc_dep2, ULong cc_ndep)
    case S390_CC_OP_TEST_UNDER_MASK_8: {
       UChar value  = cc_dep1;
       UChar mask   = cc_dep2;
+      ULong pc;
 
       __asm__ volatile (
-           "bras %%r2,1f\n\t"             /* %r2 = address of next insn */
+           "bras %[pc],1f\n\t"            /* pc = address of next insn */
            "tm %[value],0\n\t"            /* this is skipped, then EXecuted */
-           "1: ex %[mask],0(%%r2)\n\t"    /* EXecute TM after modifying mask */
-           "ipm %[psw]\n\t"             : [psw] "=d"(psw)
-                                        : [value] "m"(value), [mask] "a"(mask)
-                                        : "r2", "cc");
+           "1: ex %[mask],0(%[pc])\n\t"   /* EXecute TM after modifying mask */
+           "ipm %[psw]\n\t"             : [psw] "=d"(psw), [pc] "=&a"(pc)
+                                        : [value] "Q"(value), [mask] "a"(mask)
+                                        : "cc");
       return psw >> 28;   /* cc */
    }
 
@@ -1605,7 +1460,7 @@ s390_calculate_cc(ULong cc_op, ULong cc_dep1, ULong cc_dep2, ULong cc_ndep)
            "lhi  2,0x10\n\t"
            "ex   2,%[insn]\n\t"
            "ipm  %[psw]\n\t"       : [psw] "=d"(psw)
-                                   : [value] "d"(value), [insn] "m"(insn)
+                                   : [value] "d"(value), [insn] "R"(insn)
                                    : "r1", "r2", "cc");
       return psw >> 28;   /* cc */
    }
@@ -1776,11 +1631,11 @@ s390_calculate_cc(ULong cc_op, ULong cc_dep1, ULong cc_dep2, ULong cc_ndep)
 
    case S390_CC_OP_PFPO_32: {
       __asm__ volatile(
-           "ler 4, %[cc_dep1]\n\t"      /* 32 bit FR move */
-           "lr  0, %[cc_dep2]\n\t"      /* 32 bit GR move */
-           ".short 0x010a\n\t"          /* PFPO */
-           "ipm %[psw]\n\t"             : [psw] "=d"(psw)
-                                        : [cc_dep1] "f"(cc_dep1),
+           "ldgr 4, %[cc_dep1]\n\t"     /* Load FR from GR */
+           "lr   0, %[cc_dep2]\n\t"     /* 32 bit GR move */
+           ".insn e,0x010a\n\t"         /* PFPO */
+           "ipm  %[psw]\n\t"            : [psw] "=d"(psw)
+                                        : [cc_dep1] "d"(cc_dep1),
                                           [cc_dep2] "d"(cc_dep2)
                                         : "r0", "r1", "f4");
       return psw >> 28;  /* cc */
@@ -1788,11 +1643,11 @@ s390_calculate_cc(ULong cc_op, ULong cc_dep1, ULong cc_dep2, ULong cc_ndep)
 
    case S390_CC_OP_PFPO_64: {
       __asm__ volatile(
-           "ldr 4, %[cc_dep1]\n\t"
-           "lr  0, %[cc_dep2]\n\t"      /* 32 bit register move */
-           ".short 0x010a\n\t"          /* PFPO */
-           "ipm %[psw]\n\t"             : [psw] "=d"(psw)
-                                        : [cc_dep1] "f"(cc_dep1),
+           "ldgr 4, %[cc_dep1]\n\t"
+           "lr   0, %[cc_dep2]\n\t"     /* 32 bit register move */
+           ".insn e,0x010a\n\t"         /* PFPO */
+           "ipm  %[psw]\n\t"            : [psw] "=d"(psw)
+                                        : [cc_dep1] "d"(cc_dep1),
                                           [cc_dep2] "d"(cc_dep2)
                                         : "r0", "r1", "f4");
       return psw >> 28;  /* cc */
@@ -1800,13 +1655,13 @@ s390_calculate_cc(ULong cc_op, ULong cc_dep1, ULong cc_dep2, ULong cc_ndep)
 
    case S390_CC_OP_PFPO_128: {
       __asm__ volatile(
-           "ldr 4,%[cc_dep1]\n\t"
-           "ldr 6,%[cc_dep2]\n\t"
-           "lr  0,%[cc_ndep]\n\t"       /* 32 bit register move */
-           ".short 0x010a\n\t"          /* PFPO */
-           "ipm %[psw]\n\t"             : [psw] "=d"(psw)
-                                        : [cc_dep1] "f"(cc_dep1),
-                                          [cc_dep2] "f"(cc_dep2),
+           "ldgr 4,%[cc_dep1]\n\t"
+           "ldgr 6,%[cc_dep2]\n\t"
+           "lr   0,%[cc_ndep]\n\t"      /* 32 bit register move */
+           ".insn e,0x010a\n\t"         /* PFPO */
+           "ipm  %[psw]\n\t"             : [psw] "=d"(psw)
+                                        : [cc_dep1] "d"(cc_dep1),
+                                          [cc_dep2] "d"(cc_dep2),
                                           [cc_ndep] "d"(cc_ndep)
                                         : "r0", "r1", "f0", "f2", "f4", "f6");
       return psw >> 28;  /* cc */
@@ -1823,7 +1678,7 @@ s390_calculate_cc(ULong cc_op, ULong cc_dep1, ULong cc_dep2, ULong cc_ndep)
    }
 #endif
    vpanic("s390_calculate_cc");
-   return 0;  /* Make MSVC happy */
+   return 0;   /* Make MSVC happy */
 }
 
 
@@ -1878,9 +1733,9 @@ guest_s390x_spechelper(const HChar *function_name, IRExpr **args,
 
 #  if 0
    vex_printf("spec request:\n");
-   vex_printf("   %s  ", function_name);
+   vex_printf("   %s", function_name);
    for (i = 0; i < arity; i++) {
-      vex_printf("  ");
+      vex_printf("   [%u]: ", i);
       ppIRExpr(args[i]);
    }
    vex_printf("\n");
@@ -1986,6 +1841,29 @@ guest_s390x_spechelper(const HChar *function_name, IRExpr **args,
             Because cc == 3 cannot occur the rightmost bit of cond is
             a don't care.
          */
+         if (isC64(cc_dep2)) {
+            /* Avoid memcheck false positives for comparisons like `<= 0x1f',
+               `> 0x1f', `< 0x20', or `>= 0x20', where the lower bits don't
+               matter.  Some compiler optimizations yield such comparisons when
+               testing if any (or none) of the upper bits are set. */
+
+            ULong mask = cc_dep2->Iex.Const.con->Ico.U64;
+            ULong c    = cond & (8 + 4 + 2);
+
+            if ((mask & (mask - 1)) == 0) {
+               /* Transform `<  0x20' to `<= 0x1f' and
+                            `>= 0x20' to `>  0x1f' */
+               mask -= 1;
+               c ^= 8;
+            }
+            if (mask != 0 && (mask + 1) != 0 && (mask & (mask + 1)) == 0 &&
+                (c == 8 + 4 || c == 2)) {
+               IROp cmp = c == 8 + 4 ? Iop_CmpEQ64 : Iop_CmpNE64;
+               return unop(Iop_1Uto32,
+                           binop(cmp, binop(Iop_And64, cc_dep1, mkU64(~mask)),
+                                 mkU64(0)));
+            }
+         }
          if (cond == 8 || cond == 8 + 1) {
             return unop(Iop_1Uto32, binop(Iop_CmpEQ64, cc_dep1, cc_dep2));
          }
@@ -2085,6 +1963,21 @@ guest_s390x_spechelper(const HChar *function_name, IRExpr **args,
          return mkU32(0);
       }
 
+      /* S390_CC_OP_BITWISE2
+         Like S390_CC_OP_BITWISE, but yielding cc = 3 for nonzero result */
+      if (cc_op == S390_CC_OP_BITWISE2) {
+         if ((cond & (8 + 1)) == 8 + 1) {
+            return mkU32(1);
+         }
+         if (cond & 8) {
+            return unop(Iop_1Uto32, binop(Iop_CmpEQ64, cc_dep1, mkU64(0)));
+         }
+         if (cond & 1) {
+            return unop(Iop_1Uto32, binop(Iop_CmpNE64, cc_dep1, mkU64(0)));
+         }
+         return mkU32(0);
+      }
+
       /* S390_CC_OP_INSERT_CHAR_MASK_32
          Since the mask comes from an immediate field in the opcode, we
          expect the mask to be a constant here. That simplifies matters. */
@@ -2162,154 +2055,169 @@ guest_s390x_spechelper(const HChar *function_name, IRExpr **args,
       }
 
       /* S390_CC_OP_TEST_UNDER_MASK_8
-         Since the mask comes from an immediate field in the opcode, we
-         expect the mask to be a constant here. That simplifies matters. */
+         cc_dep1 = the value to be tested, ANDed with the mask
+         cc_dep2 = an 8-bit mask; expected to be a constant here */
       if (cc_op == S390_CC_OP_TEST_UNDER_MASK_8) {
-         ULong mask16;
+         ULong mask8;
 
          if (! isC64(cc_dep2)) goto missed;
 
-         mask16 = cc_dep2->Iex.Const.con->Ico.U64;
+         mask8 = cc_dep2->Iex.Const.con->Ico.U64;
 
-         /* Get rid of the mask16 == 0 case first. Some of the simplifications
-            below (e.g. for OVFL) only hold if mask16 == 0.  */
-         if (mask16 == 0) {   /* cc == 0 */
+         if (mask8 == 0) {   /* cc == 0 */
             if (cond & 0x8) return mkU32(1);
             return mkU32(0);
          }
 
          /* cc == 2 is a don't care */
-         if (cond == 8 || cond == 8 + 2) {
-            return unop(Iop_1Uto32, binop(Iop_CmpEQ64,
-                                          binop(Iop_And64, cc_dep1, cc_dep2),
-                                          mkU64(0)));
+         if (cond == 8 || cond == 8 + 2) { /* all bits zero */
+            return unop(Iop_1Uto32, binop(Iop_CmpEQ64, cc_dep1, mkU64(0)));
          }
-         if (cond == 7 || cond == 7 - 2) {
-            return unop(Iop_1Uto32, binop(Iop_CmpNE64,
-                                          binop(Iop_And64, cc_dep1, cc_dep2),
-                                          mkU64(0)));
+         if (cond == 7 || cond == 7 - 2) { /* not all bits zero */
+            return unop(Iop_1Uto32, binop(Iop_CmpNE64, cc_dep1, mkU64(0)));
          }
-         if (cond == 1 || cond == 1 + 2) {
-            return unop(Iop_1Uto32, binop(Iop_CmpEQ64,
-                                          binop(Iop_And64, cc_dep1, cc_dep2),
-                                          cc_dep2));
+         if (cond == 1 || cond == 1 + 2) { /* all bits set */
+            return unop(Iop_1Uto32, binop(Iop_CmpEQ64, cc_dep1, cc_dep2));
          }
-         if (cond == 14 || cond == 14 - 2) {  /* ! OVFL */
-            return unop(Iop_1Uto32, binop(Iop_CmpNE64,
-                                          binop(Iop_And64, cc_dep1, cc_dep2),
-                                          cc_dep2));
+         if (cond == 14 || cond == 14 - 2) { /* not all bits set */
+            return unop(Iop_1Uto32, binop(Iop_CmpNE64, cc_dep1, cc_dep2));
+         }
+         if (cond == 4 || cond == 4 + 2) { /* not all zero and not all one */
+            return unop(Iop_1Uto32, binop(Iop_And1,
+                        binop(Iop_CmpNE64, cc_dep1, cc_dep2),
+                        binop(Iop_CmpNE64, cc_dep1, mkU64(0))));
+         }
+         if (cond == 9 || cond == 9 + 2) { /* selected bits all 1 or all 0 */
+            return unop(Iop_1Uto32, binop(Iop_Or1,
+                                          binop(Iop_CmpEQ64, cc_dep1, cc_dep2),
+                                          binop(Iop_CmpEQ64, cc_dep1, mkU64(0))));
+         }
+         if (cond == 0 || cond == 0 + 2) {
+            return mkU32(0);
+         }
+         if (cond == 15 || cond == 15 - 2) {
+            return mkU32(1);
          }
          goto missed;
       }
 
       /* S390_CC_OP_TEST_UNDER_MASK_16
-         Since the mask comes from an immediate field in the opcode, we
-         expect the mask to be a constant here. That simplifies matters. */
+         cc_dep1 = the value to be tested, ANDed with the mask
+         cc_dep2 = a 16-bit mask; expected to be a constant here */
       if (cc_op == S390_CC_OP_TEST_UNDER_MASK_16) {
-         ULong mask16;
-         UInt msb;
+         IRExpr* val = cc_dep1;
+         ULong mask;
+         ULong msb;
 
          if (! isC64(cc_dep2)) goto missed;
 
-         mask16 = cc_dep2->Iex.Const.con->Ico.U64;
+         mask = cc_dep2->Iex.Const.con->Ico.U64;
 
-         /* Get rid of the mask16 == 0 case first. Some of the simplifications
-            below (e.g. for OVFL) only hold if mask16 == 0.  */
-         if (mask16 == 0) {   /* cc == 0 */
+         if (mask == 0) {   /* cc == 0 */
             if (cond & 0x8) return mkU32(1);
             return mkU32(0);
          }
 
-         if (cond == 15) return mkU32(1);
-
-         if (cond == 8) {
-            return unop(Iop_1Uto32, binop(Iop_CmpEQ64,
-                                          binop(Iop_And64, cc_dep1, cc_dep2),
-                                          mkU64(0)));
-         }
-         if (cond == 7) {
-            return unop(Iop_1Uto32, binop(Iop_CmpNE64,
-                                          binop(Iop_And64, cc_dep1, cc_dep2),
-                                          mkU64(0)));
-         }
-         if (cond == 1) {
-            return unop(Iop_1Uto32, binop(Iop_CmpEQ64,
-                                          binop(Iop_And64, cc_dep1, cc_dep2),
-                                          mkU64(mask16)));
-         }
-         if (cond == 14) {  /* ! OVFL */
-            return unop(Iop_1Uto32, binop(Iop_CmpNE64,
-                                          binop(Iop_And64, cc_dep1, cc_dep2),
-                                          mkU64(mask16)));
-         }
-
          /* Find MSB in mask */
          msb = 0x8000;
-         while (msb > mask16)
+         while (msb > mask)
             msb >>= 1;
 
-         if (cond == 2) {  /* cc == 2 */
-            IRExpr *c1, *c2;
+         /* If cc_dep1 results from a shift, avoid the shift operation */
+         if (val->tag == Iex_Binop && val->Iex.Binop.op == Iop_Shr64 &&
+             val->Iex.Binop.arg2->tag == Iex_Const &&
+             val->Iex.Binop.arg2->Iex.Const.con->tag == Ico_U8) {
+            UInt n_bits = val->Iex.Binop.arg2->Iex.Const.con->Ico.U8;
+            mask <<= n_bits;
+            msb <<= n_bits;
+            val = val->Iex.Binop.arg1;
+         }
 
-            /* (cc_dep & msb) != 0 && (cc_dep & mask16) != mask16 */
-            c1 = binop(Iop_CmpNE64,
-                       binop(Iop_And64, cc_dep1, mkU64(msb)), mkU64(0));
-            c2 = binop(Iop_CmpNE64,
-                       binop(Iop_And64, cc_dep1, cc_dep2),
-                       mkU64(mask16));
-            return binop(Iop_And32, unop(Iop_1Uto32, c1),
-                         unop(Iop_1Uto32, c2));
+         if (cond == 15) return mkU32(1);
+
+         if (cond == 8) { /* all bits zero */
+            return unop(Iop_1Uto32, binop(Iop_CmpEQ64, val, mkU64(0)));
+         }
+         if (cond == 7) { /* not all bits zero */
+            return unop(Iop_1Uto32, binop(Iop_CmpNE64, val, mkU64(0)));
+         }
+         if (cond == 1) { /* all bits set */
+            return unop(Iop_1Uto32, binop(Iop_CmpEQ64, val, mkU64(mask)));
+         }
+         if (cond == 14) { /* not all bits set */
+            return unop(Iop_1Uto32, binop(Iop_CmpNE64, val, mkU64(mask)));
+         }
+         if (cond == 9) { /* selected bits all 1 or all 0 */
+            return unop(Iop_1Uto32, binop(Iop_Or1,
+                                          binop(Iop_CmpEQ64, cc_dep1, cc_dep2),
+                                          binop(Iop_CmpEQ64, cc_dep1, mkU64(0))));
+         }
+         if (cond == 6) { /* not all zero and not all one */
+            return unop(Iop_1Uto32, binop(Iop_And1,
+                        binop(Iop_CmpNE64, cc_dep1, cc_dep2),
+                        binop(Iop_CmpNE64, cc_dep1, mkU64(0))));
+         }
+         if (cond == 0) return mkU32(0);
+
+         IRExpr *masked_msb = binop(Iop_And64, val, mkU64(msb));
+
+         if (cond == 2) {  /* cc == 2 */
+            /* mixed, and leftmost bit set */
+            return unop(Iop_1Uto32,
+                        binop(Iop_And1,
+                              binop(Iop_CmpNE64, masked_msb, mkU64(0)),
+                              binop(Iop_CmpNE64, val, mkU64(mask))));
          }
 
          if (cond == 4) {  /* cc == 1 */
-            IRExpr *c1, *c2;
-
-            /* (cc_dep & msb) == 0 && (cc_dep & mask16) != 0 */
-            c1 = binop(Iop_CmpEQ64,
-                       binop(Iop_And64, cc_dep1, mkU64(msb)), mkU64(0));
-            c2 = binop(Iop_CmpNE64,
-                       binop(Iop_And64, cc_dep1, cc_dep2),
-                       mkU64(0));
-            return binop(Iop_And32, unop(Iop_1Uto32, c1),
-                         unop(Iop_1Uto32, c2));
+            /* mixed, and leftmost bit zero */
+            return unop(Iop_1Uto32,
+                        binop(Iop_And1,
+                              binop(Iop_CmpEQ64, masked_msb, mkU64(0)),
+                              binop(Iop_CmpNE64, val, mkU64(0))));
          }
 
          if (cond == 11) {  /* cc == 0,2,3 */
-            IRExpr *c1, *c2;
-
-            c1 = binop(Iop_CmpNE64,
-                       binop(Iop_And64, cc_dep1, mkU64(msb)), mkU64(0));
-            c2 = binop(Iop_CmpEQ64,
-                       binop(Iop_And64, cc_dep1, cc_dep2),
-                       mkU64(0));
-            return binop(Iop_Or32, unop(Iop_1Uto32, c1),
-                         unop(Iop_1Uto32, c2));
+            /* leftmost bit set, or all bits zero */
+            return unop(Iop_1Uto32,
+                        binop(Iop_Or1,
+                              binop(Iop_CmpNE64, masked_msb, mkU64(0)),
+                              binop(Iop_CmpEQ64, val, mkU64(0))));
          }
 
          if (cond == 3) {  /* cc == 2 || cc == 3 */
+            /* leftmost bit set, rest don't care */
             return unop(Iop_1Uto32,
-                        binop(Iop_CmpNE64,
-                              binop(Iop_And64, cc_dep1, mkU64(msb)),
-                              mkU64(0)));
+                        binop(Iop_CmpNE64, masked_msb, mkU64(0)));
          }
          if (cond == 12) { /* cc == 0 || cc == 1 */
+            /* leftmost bit zero, rest don't care */
             return unop(Iop_1Uto32,
-                        binop(Iop_CmpEQ64,
-                              binop(Iop_And64, cc_dep1, mkU64(msb)),
-                              mkU64(0)));
+                        binop(Iop_CmpEQ64, masked_msb, mkU64(0)));
          }
          if (cond == 13) { /* cc == 0 || cc == 1 || cc == 3 */
-            IRExpr *c01, *c3;
-
-            c01 = binop(Iop_CmpEQ64, binop(Iop_And64, cc_dep1, mkU64(msb)),
-                        mkU64(0));
-            c3 = binop(Iop_CmpEQ64, binop(Iop_And64, cc_dep1, cc_dep2),
-                       mkU64(mask16));
-            return binop(Iop_Or32, unop(Iop_1Uto32, c01),
-                         unop(Iop_1Uto32, c3));
+            /* leftmost bit zero, or all bits set */
+            return unop(Iop_1Uto32,
+                        binop(Iop_Or1,
+                              binop(Iop_CmpEQ64, masked_msb, mkU64(0)),
+                              binop(Iop_CmpEQ64, val, mkU64(mask))));
          }
-         // fixs390: handle cond = 5,6,9,10 (the missing cases)
-         // vex_printf("TUM mask = 0x%llx\n", mask16);
+         if (cond == 5) { /* cc == 1 || cc == 3 */
+            /* mixed and leftmost bit zero or all bits set */
+            IRExpr *cc1 = binop(Iop_And1,
+                                binop(Iop_CmpEQ64, masked_msb, mkU64(0)),
+                                binop(Iop_CmpNE64, val, mkU64(0)));
+            IRExpr *cc3 = binop(Iop_CmpEQ64, val, mkU64(mask));
+            return unop(Iop_1Uto32, binop(Iop_Or1, cc1, cc3));
+         }
+         if (cond == 10) { /* cc == 0 || cc == 2 */
+            /* all bits zero or mixed and leftmost bit one */
+            IRExpr *cc0 = binop(Iop_CmpEQ64, val, mkU64(0));
+            IRExpr *cc2 = binop(Iop_And1,
+                                binop(Iop_CmpNE64, masked_msb, mkU64(0)),
+                                binop(Iop_CmpNE64, val, mkU64(mask)));
+            return unop(Iop_1Uto32, binop(Iop_Or1, cc0, cc2));
+         }
          goto missed;
       }
 
@@ -2498,25 +2406,20 @@ s390x_dirtyhelper_vec_op(VexGuestS390XState *guest_state,
    vassert(d->op > S390_VEC_OP_INVALID && d->op < S390_VEC_OP_LAST);
    static const UChar opcodes[][2] = {
       {0x00, 0x00}, /* invalid */
-      {0xe7, 0x97}, /* VPKS */
-      {0xe7, 0x95}, /* VPKLS */
-      {0xe7, 0x82}, /* VFAE */
-      {0xe7, 0x80}, /* VFEE */
-      {0xe7, 0x81}, /* VFENE */
-      {0xe7, 0x5c}, /* VISTR */
-      {0xe7, 0x8a}, /* VSTRC */
-      {0xe7, 0xf8}, /* VCEQ */
-      {0xe7, 0xd8}, /* VTM */
-      {0xe7, 0xb4}, /* VGFM */
-      {0xe7, 0xbc}, /* VGFMA */
-      {0xe7, 0xab}, /* VMAH */
-      {0xe7, 0xa9}, /* VMALH */
-      {0xe7, 0xfb}, /* VCH */
-      {0xe7, 0xf9}, /* VCHL */
-      {0xe7, 0xe8}, /* VFCE */
-      {0xe7, 0xeb}, /* VFCH */
-      {0xe7, 0xea}, /* VFCHE */
-      {0xe7, 0x4a}  /* VFTCI */
+      [S390_VEC_OP_VPKS]  = {0xe7, 0x97},
+      [S390_VEC_OP_VPKLS] = {0xe7, 0x95},
+      [S390_VEC_OP_VGFM]  = {0xe7, 0xb4},
+      [S390_VEC_OP_VGFMA] = {0xe7, 0xbc},
+      [S390_VEC_OP_VFTCI] = {0xe7, 0x4a},
+      [S390_VEC_OP_VFMIN] = {0xe7, 0xee},
+      [S390_VEC_OP_VFMAX] = {0xe7, 0xef},
+      [S390_VEC_OP_VBPERM]= {0xe7, 0x85},
+      [S390_VEC_OP_VMSL]  = {0xe7, 0xb8},
+      [S390_VEC_OP_VCNF]  = {0xe6, 0x55},
+      [S390_VEC_OP_VCLFNH]= {0xe6, 0x56},
+      [S390_VEC_OP_VCFN]  = {0xe6, 0x5d},
+      [S390_VEC_OP_VCLFNL]= {0xe6, 0x5e},
+      [S390_VEC_OP_VCRNF] = {0xe6, 0x75},
    };
 
    union {
@@ -2560,6 +2463,16 @@ s390x_dirtyhelper_vec_op(VexGuestS390XState *guest_state,
          UInt op1 : 8;
          UInt v1  : 4;
          UInt v2  : 4;
+         UInt     : 12;
+         UInt m4  : 4;
+         UInt m3  : 4;
+         UInt rxb : 4;
+         UInt op2 : 8;
+      } VRRa;
+      struct {
+         UInt op1 : 8;
+         UInt v1  : 4;
+         UInt v2  : 4;
          UInt i3  : 12;
          UInt m5  : 4;
          UInt m4  : 4;
@@ -2575,29 +2488,9 @@ s390x_dirtyhelper_vec_op(VexGuestS390XState *guest_state,
    the_insn.VRR.op2 = opcodes[d->op][1];
 
    switch(d->op) {
-   case S390_VEC_OP_VISTR:
-      the_insn.VRR.v1 = 1;
-      the_insn.VRR.v2 = 2;
-      the_insn.VRR.rxb = 0b1100;
-      the_insn.VRR.m4 = d->m4;
-      the_insn.VRR.m5 = d->m5;
-      break;
-
-   case S390_VEC_OP_VTM:
-      the_insn.VRR.v1 = 2;
-      the_insn.VRR.v2 = 3;
-      the_insn.VRR.rxb = 0b1100;
-      break;
-
    case S390_VEC_OP_VPKS:
    case S390_VEC_OP_VPKLS:
-   case S390_VEC_OP_VFAE:
-   case S390_VEC_OP_VFEE:
-   case S390_VEC_OP_VFENE:
-   case S390_VEC_OP_VCEQ:
    case S390_VEC_OP_VGFM:
-   case S390_VEC_OP_VCH:
-   case S390_VEC_OP_VCHL:
       the_insn.VRR.v1 = 1;
       the_insn.VRR.v2 = 2;
       the_insn.VRR.v3 = 3;
@@ -2606,10 +2499,8 @@ s390x_dirtyhelper_vec_op(VexGuestS390XState *guest_state,
       the_insn.VRR.m5 = d->m5;
       break;
 
-   case S390_VEC_OP_VSTRC:
    case S390_VEC_OP_VGFMA:
-   case S390_VEC_OP_VMAH:
-   case S390_VEC_OP_VMALH:
+   case S390_VEC_OP_VMSL:
       the_insn.VRRd.v1 = 1;
       the_insn.VRRd.v2 = 2;
       the_insn.VRRd.v3 = 3;
@@ -2619,9 +2510,10 @@ s390x_dirtyhelper_vec_op(VexGuestS390XState *guest_state,
       the_insn.VRRd.m6 = d->m5;
       break;
 
-   case S390_VEC_OP_VFCE:
-   case S390_VEC_OP_VFCH:
-   case S390_VEC_OP_VFCHE:
+   case S390_VEC_OP_VFMIN:
+   case S390_VEC_OP_VFMAX:
+   case S390_VEC_OP_VBPERM:
+   case S390_VEC_OP_VCRNF:
       the_insn.VRRc.v1 = 1;
       the_insn.VRRc.v2 = 2;
       the_insn.VRRc.v3 = 3;
@@ -2629,6 +2521,17 @@ s390x_dirtyhelper_vec_op(VexGuestS390XState *guest_state,
       the_insn.VRRc.m4 = d->m4;
       the_insn.VRRc.m5 = d->m5;
       the_insn.VRRc.m6 = d->m6;
+      break;
+
+   case S390_VEC_OP_VCNF:
+   case S390_VEC_OP_VCLFNH:
+   case S390_VEC_OP_VCFN:
+   case S390_VEC_OP_VCLFNL:
+      the_insn.VRRa.v1 = 1;
+      the_insn.VRRa.v2 = 2;
+      the_insn.VRRa.rxb = 0b1100;
+      the_insn.VRRa.m3 = d->m3;
+      the_insn.VRRa.m4 = d->m4;
       break;
 
    case S390_VEC_OP_VFTCI:
@@ -2669,7 +2572,7 @@ s390x_dirtyhelper_vec_op(VexGuestS390XState *guest_state,
            [arg3] "r" (&guest_v[d->v4]),
 
            [zero] "r" (0ULL),
-           [insn] "m" (the_insn),
+           [insn] "R" (the_insn),
            [read_only] "r" (d->read_only)
 
          : "cc", "r10", "v16", "v17", "v18", "v19"
@@ -2687,75 +2590,6 @@ s390x_dirtyhelper_vec_op(VexGuestS390XState *guest_state,
 
 #endif
 
-/*-----------------------------------------------------------------*/
-/*--- Dirty helper for Perform Pseudorandom number instruction  ---*/
-/*-----------------------------------------------------------------*/
-
-/* Dummy helper that is needed to indicate load of parameter block.
-   We have to use it because dirty helper cannot have two memory side
-   effects.
- */
-void s390x_dirtyhelper_PPNO_sha512_load_param_block( void )
-{
-}
-
-#if defined(VGA_s390x)
-
-/* IMPORTANT!
-   We return here bit mask where only supported functions are set to one.
-   If you implement new functions don't forget the supported array.
- */
-void
-s390x_dirtyhelper_PPNO_query(VexGuestS390XState *guest_state, ULong r1, ULong r2)
-{
-   ULong supported[2] = {0x9000000000000000ULL, 0x0000000000000000ULL};
-   ULong *result = (ULong*) guest_state->guest_r1;
-
-   result[0] = supported[0];
-   result[1] = supported[1];
-}
-
-ULong
-s390x_dirtyhelper_PPNO_sha512(VexGuestS390XState *guest_state, ULong r1, ULong r2)
-{
-   ULong* op1 = (ULong*) (((ULong)(&guest_state->guest_r0)) + r1 * sizeof(ULong));
-   ULong* op2 = (ULong*) (((ULong)(&guest_state->guest_r0)) + r2 * sizeof(ULong));
-
-   register ULong reg0 asm("0") = guest_state->guest_r0;
-   register ULong reg1 asm("1") = guest_state->guest_r1;
-   register ULong reg2 asm("2") = op1[0];
-   register ULong reg3 asm("3") = op1[1];
-   register ULong reg4 asm("4") = op2[0];
-   register ULong reg5 asm("5") = op2[1];
-
-   ULong cc = 0;
-   asm volatile(".insn rre, 0xb93c0000, %%r2, %%r4\n"
-                "ipm %[cc]\n"
-                "srl %[cc], 28\n"
-                : "+d"(reg0), "+d"(reg1),
-                  "+d"(reg2), "+d"(reg3),
-                  "+d"(reg4), "+d"(reg5),
-                  [cc] "=d"(cc)
-                :
-                : "cc", "memory");
-
-   return cc;
-}
-
-#else
-
-void
-s390x_dirtyhelper_PPNO_query(VexGuestS390XState *guest_state, ULong r1, ULong r2)
-{
-}
-
-ULong
-s390x_dirtyhelper_PPNO_sha512(VexGuestS390XState *guest_state, ULong r1, ULong r2)
-{
-   return 0;
-}
-
-#endif /* VGA_s390x */
 /*---------------------------------------------------------------*/
 /*--- end                                guest_s390_helpers.c ---*/
 /*---------------------------------------------------------------*/

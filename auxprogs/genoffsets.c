@@ -50,7 +50,6 @@
 #include "../pub/libvex_guest_s390x.h"
 #include "../pub/libvex_guest_mips32.h"
 #include "../pub/libvex_guest_mips64.h"
-#include "../pub/libvex_guest_tilegx.h"
 #include "../pub/libvex_guest_riscv64.h"
 
 #undef guest_LR
@@ -189,22 +188,6 @@ int main(int argc, char **argv)
    GENOFFSET(AMD64,amd64,YMM14);
    GENOFFSET(AMD64,amd64,YMM15);
    GENOFFSET(AMD64,amd64,YMM16);
-   GENOFFSET(AMD64,amd64,CR0);
-   GENOFFSET(AMD64,amd64,CR1);
-   GENOFFSET(AMD64,amd64,CR2);
-   GENOFFSET(AMD64,amd64,CR3);
-   GENOFFSET(AMD64,amd64,CR4);
-   GENOFFSET(AMD64,amd64,CR5);
-   GENOFFSET(AMD64,amd64,CR6);
-   GENOFFSET(AMD64,amd64,CR7);
-   GENOFFSET(AMD64,amd64,CR8);
-   GENOFFSET(AMD64,amd64,CR9);
-   GENOFFSET(AMD64,amd64,CR10);
-   GENOFFSET(AMD64,amd64,CR11);
-   GENOFFSET(AMD64,amd64,CR12);
-   GENOFFSET(AMD64,amd64,CR13);
-   GENOFFSET(AMD64,amd64,CR14);
-   GENOFFSET(AMD64,amd64,CR15);
    GENOFFSET(AMD64,amd64,FTOP);
    GENOFFSET(AMD64,amd64,FPREG);
    GENOFFSET(AMD64,amd64,FPTAG);
@@ -223,6 +206,22 @@ int main(int argc, char **argv)
    GENOFFSET(AMD64,amd64,FS);
    GENOFFSET(AMD64,amd64,GS);
    GENOFFSET(AMD64,amd64,SS);
+   GENOFFSET(AMD64,amd64,CR0);
+   GENOFFSET(AMD64,amd64,CR1);
+   GENOFFSET(AMD64,amd64,CR2);
+   GENOFFSET(AMD64,amd64,CR3);
+   GENOFFSET(AMD64,amd64,CR4);
+   GENOFFSET(AMD64,amd64,CR5);
+   GENOFFSET(AMD64,amd64,CR6);
+   GENOFFSET(AMD64,amd64,CR7);
+   GENOFFSET(AMD64,amd64,CR8);
+   GENOFFSET(AMD64,amd64,CR9);
+   GENOFFSET(AMD64,amd64,CR10);
+   GENOFFSET(AMD64,amd64,CR11);
+   GENOFFSET(AMD64,amd64,CR12);
+   GENOFFSET(AMD64,amd64,CR13);
+   GENOFFSET(AMD64,amd64,CR14);
+   GENOFFSET(AMD64,amd64,CR15);
 
    // ppc32
    GENOFFSET(PPC32,ppc32,GPR0);
@@ -901,81 +900,6 @@ int main(int argc, char **argv)
    GENOFFSET(MIPS64,mips64,IP_AT_SYSCALL);
 
    // Tilegx
-   GENOFFSET(TILEGX,tilegx,r0);
-   GENOFFSET(TILEGX,tilegx,r1);
-   GENOFFSET(TILEGX,tilegx,r2);
-   GENOFFSET(TILEGX,tilegx,r3);
-   GENOFFSET(TILEGX,tilegx,r4);
-   GENOFFSET(TILEGX,tilegx,r5);
-   GENOFFSET(TILEGX,tilegx,r6);
-   GENOFFSET(TILEGX,tilegx,r7);
-   GENOFFSET(TILEGX,tilegx,r8);
-   GENOFFSET(TILEGX,tilegx,r9);
-   GENOFFSET(TILEGX,tilegx,r10);
-   GENOFFSET(TILEGX,tilegx,r11);
-   GENOFFSET(TILEGX,tilegx,r12);
-   GENOFFSET(TILEGX,tilegx,r13);
-   GENOFFSET(TILEGX,tilegx,r14);
-   GENOFFSET(TILEGX,tilegx,r15);
-   GENOFFSET(TILEGX,tilegx,r16);
-   GENOFFSET(TILEGX,tilegx,r17);
-   GENOFFSET(TILEGX,tilegx,r18);
-   GENOFFSET(TILEGX,tilegx,r19);
-   GENOFFSET(TILEGX,tilegx,r20);
-   GENOFFSET(TILEGX,tilegx,r21);
-   GENOFFSET(TILEGX,tilegx,r22);
-   GENOFFSET(TILEGX,tilegx,r23);
-   GENOFFSET(TILEGX,tilegx,r24);
-   GENOFFSET(TILEGX,tilegx,r25);
-   GENOFFSET(TILEGX,tilegx,r26);
-   GENOFFSET(TILEGX,tilegx,r27);
-   GENOFFSET(TILEGX,tilegx,r28);
-   GENOFFSET(TILEGX,tilegx,r29);
-   GENOFFSET(TILEGX,tilegx,r30);
-   GENOFFSET(TILEGX,tilegx,r31);
-   GENOFFSET(TILEGX,tilegx,r32);
-   GENOFFSET(TILEGX,tilegx,r33);
-   GENOFFSET(TILEGX,tilegx,r34);
-   GENOFFSET(TILEGX,tilegx,r35);
-   GENOFFSET(TILEGX,tilegx,r36);
-   GENOFFSET(TILEGX,tilegx,r37);
-   GENOFFSET(TILEGX,tilegx,r38);
-   GENOFFSET(TILEGX,tilegx,r39);
-   GENOFFSET(TILEGX,tilegx,r40);
-   GENOFFSET(TILEGX,tilegx,r41);
-   GENOFFSET(TILEGX,tilegx,r42);
-   GENOFFSET(TILEGX,tilegx,r43);
-   GENOFFSET(TILEGX,tilegx,r44);
-   GENOFFSET(TILEGX,tilegx,r45);
-   GENOFFSET(TILEGX,tilegx,r46);
-   GENOFFSET(TILEGX,tilegx,r47);
-   GENOFFSET(TILEGX,tilegx,r48);
-   GENOFFSET(TILEGX,tilegx,r49);
-   GENOFFSET(TILEGX,tilegx,r50);
-   GENOFFSET(TILEGX,tilegx,r51);
-   GENOFFSET(TILEGX,tilegx,r52);
-   GENOFFSET(TILEGX,tilegx,r53);
-   GENOFFSET(TILEGX,tilegx,r54);
-   GENOFFSET(TILEGX,tilegx,r55);
-   GENOFFSET(TILEGX,tilegx,r56);
-   GENOFFSET(TILEGX,tilegx,r57);
-   GENOFFSET(TILEGX,tilegx,r58);
-   GENOFFSET(TILEGX,tilegx,r59);
-   GENOFFSET(TILEGX,tilegx,r60);
-   GENOFFSET(TILEGX,tilegx,r61);
-   GENOFFSET(TILEGX,tilegx,r62);
-   GENOFFSET(TILEGX,tilegx,r63);
-   GENOFFSET(TILEGX,tilegx,pc);
-   GENOFFSET(TILEGX,tilegx,spare);
-   GENOFFSET(TILEGX,tilegx,EMNOTE);
-   GENOFFSET(TILEGX,tilegx,CMSTART);
-   GENOFFSET(TILEGX,tilegx,CMLEN);
-   GENOFFSET(TILEGX,tilegx,NRADDR);
-   GENOFFSET(TILEGX,tilegx,cmpexch);
-   GENOFFSET(TILEGX,tilegx,zero);
-   GENOFFSET(TILEGX,tilegx,ex_context_0);
-   GENOFFSET(TILEGX,tilegx,ex_context_1);
-   GENOFFSET(TILEGX,tilegx,COND);
 
    // riscv64
    GENOFFSET(RISCV64,riscv64,x0);

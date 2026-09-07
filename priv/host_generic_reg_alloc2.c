@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -139,6 +137,7 @@ typedef
 #define INVALID_RREG_NO ((Short)(-1))
 
 #define IS_VALID_VREGNO(_zz) ((_zz) >= 0 && (_zz) < n_vregs)
+#define IS_VALID_UNSIGNED_VREGNO(_zz) ((_zz) < n_vregs)
 #define IS_VALID_RREGNO(_zz) ((_zz) >= 0 && (_zz) < n_rregs)
 
 
@@ -160,23 +159,25 @@ typedef
    spill, or -1 if none was found.  */
 static
 Int findMostDistantlyMentionedVReg ( 
-   HRegUsage*   reg_usages_in,
-   Int          search_from_instr,
-   Int          num_instrs,
-   RRegState*   state,
-   Int          n_state
+   HRegUsage*             reg_usages_in,
+   Int                    search_from_instr,
+   Int                    num_instrs,
+   RRegState*             rreg_state,
+   HRegClass              hreg_class,
+   const RegAllocControl* con
 )
 {
-   Int k, m;
+   Int m;
    Int furthest_k = -1;
    Int furthest   = -1;
    vassert(search_from_instr >= 0);
-   for (k = 0; k < n_state; k++) {
-      if (!state[k].is_spill_cand)
+   for (UInt k = con->univ->allocable_start[hreg_class];
+        k <= con->univ->allocable_end[hreg_class]; k++) {
+      if (!rreg_state[k].is_spill_cand)
          continue;
-      vassert(state[k].disp == Bound);
+      vassert(rreg_state[k].disp == Bound);
       for (m = search_from_instr; m < num_instrs; m++) {
-         if (HRegUsage__contains(&reg_usages_in[m], state[k].vreg))
+         if (HRegUsage__contains(&reg_usages_in[m], rreg_state[k].vreg))
             break;
       }
       if (m > furthest) {
@@ -208,7 +209,7 @@ static void ensureRRLRspace_SLOW ( RRegLR** info, Int* size, Int used )
    Int     k;
    RRegLR* arr2;
    if (0)
-      vex_printf("ensureRRISpace: %d -> %d\n", *size, 2 * *size);
+      vex_printf("ensureRRLRspace: %d -> %d\n", *size, 2 * *size);
    vassert(used == *size);
    arr2 = LibVEX_Alloc_inline(2 * *size * sizeof(RRegLR));
    for (k = 0; k < *size; k++)
@@ -284,58 +285,11 @@ static void sortRRLRarray ( RRegLR* arr,
    respectively.  Results are undefined if the argument is zero.
    Don't pass it zero :) */
 static inline UInt ULong__maxIndex ( ULong w64 ) {
-#ifdef _MSC_VER
-   /* This implementation should be correct with 32 or 64-bit msvc compiler.
-      Ref: https://chessprogramming.wikispaces.com/BitScan */
-   const int index64[64] = {
-        0, 47,  1, 56, 48, 27,  2, 60,
-       57, 49, 41, 37, 28, 16,  3, 61,
-       54, 58, 35, 52, 50, 42, 21, 44,
-       38, 32, 29, 23, 17, 11,  4, 62,
-       46, 55, 26, 59, 40, 36, 15, 53,
-       34, 51, 20, 43, 31, 22, 10, 45,
-       25, 39, 14, 33, 19, 30,  9, 24,
-       13, 18,  8, 12,  7,  6,  5, 63
-   };
-
-   const ULong debruijn64 = 0x03f79d71b4cb0a89;
-   ULong bb = w64;
-   bb |= bb >> 1;
-   bb |= bb >> 2;
-   bb |= bb >> 4;
-   bb |= bb >> 8;
-   bb |= bb >> 16;
-   bb |= bb >> 32;
-   return index64[(bb * debruijn64) >> 58];
-#else
    return 63 - __builtin_clzll(w64);
-#endif
 }
 
 static inline UInt ULong__minIndex ( ULong w64 ) {
-#ifdef _MSC_VER
-   /* This implementation should be correct with 32 or 64-bit msvc compiler.
-      Ref: https://chessprogramming.wikispaces.com/BitScan */
-   const int lsb_64_table[64] =
-   {
-      63, 30,  3, 32, 59, 14, 11, 33,
-      60, 24, 50,  9, 55, 19, 21, 34,
-      61, 29,  2, 53, 51, 23, 41, 18,
-      56, 28,  1, 43, 46, 27,  0, 35,
-      62, 31, 58,  4,  5, 49, 54,  6,
-      15, 52, 12, 40,  7, 42, 45, 16,
-      25, 57, 48, 13, 10, 39,  8, 44,
-      20, 47, 38, 22, 17, 37, 36, 26
-   };
-
-   unsigned int folded;
-   ULong bb = w64;
-   bb ^= bb - 1;
-   folded = (int) bb ^ (bb >> 32);
-   return lsb_64_table[folded * 0x78291ACF >> 26];
-#else
    return __builtin_ctzll(w64);
-#endif
 }
 
 
@@ -404,7 +358,7 @@ HInstrArray* doRegisterAllocation_v2 (
 
    /* .. and the redundant backward map */
    /* Each value is 0 .. n_rregs-1 or is INVALID_RREG_NO.
-      This inplies n_rregs must be <= 32768. */
+      This implies n_rregs must be <= 32768. */
    Short*     vreg_state;  /* [0 .. n_vregs-1] */
 
    /* The vreg -> rreg map constructed and then applied to each
@@ -525,8 +479,7 @@ HInstrArray* doRegisterAllocation_v2 (
 
    /* An array to hold the reg-usage info for the incoming
       instructions. */
-   reg_usage_arr
-      = LibVEX_Alloc_inline(sizeof(HRegUsage) * instrs_in->arr_used-1);
+   reg_usage_arr = LibVEX_Alloc_inline(sizeof(HRegUsage) * instrs_in->arr_used);
 
    /* ------ end of SET UP TO COMPUTE VREG LIVE RANGES ------ */
 
@@ -541,7 +494,7 @@ HInstrArray* doRegisterAllocation_v2 (
    rreg_lrs_la = LibVEX_Alloc_inline(rreg_lrs_size * sizeof(RRegLR));
    rreg_lrs_db = NULL; /* we'll create this later */
 
-   /* We'll need to track live range start/end points seperately for
+   /* We'll need to track live range start/end points separately for
       each rreg.  Sigh. */
    vassert(n_rregs > 0);
    rreg_live_after  = LibVEX_Alloc_inline(n_rregs * sizeof(Int));
@@ -1103,8 +1056,8 @@ HInstrArray* doRegisterAllocation_v2 (
          /* Finally, we can do the coalescing.  It's trivial -- merely
             claim vregS's register for vregD. */
          rreg_state[n].vreg = vregD;
-         vassert(IS_VALID_VREGNO(hregIndex(vregD)));
-         vassert(IS_VALID_VREGNO(hregIndex(vregS)));
+         vassert(IS_VALID_UNSIGNED_VREGNO(hregIndex(vregD)));
+         vassert(IS_VALID_UNSIGNED_VREGNO(hregIndex(vregS)));
          vreg_state[hregIndex(vregD)] = toShort(n);
          vreg_state[hregIndex(vregS)] = INVALID_RREG_NO;
 
@@ -1128,7 +1081,7 @@ HInstrArray* doRegisterAllocation_v2 (
          if (rreg_state[j].disp != Bound)
             continue;
          UInt vregno = hregIndex(rreg_state[j].vreg);
-         vassert(IS_VALID_VREGNO(vregno));
+         vassert(IS_VALID_UNSIGNED_VREGNO(vregno));
          if (vreg_lrs[vregno].dead_before <= ii) {
             rreg_state[j].disp = Free;
             rreg_state[j].eq_spill_slot = False;
@@ -1339,9 +1292,9 @@ HInstrArray* doRegisterAllocation_v2 (
             as possible. */
          Int k_suboptimal = -1;
          Int k;
-         for (k = 0; k < n_rregs; k++) {
-            if (rreg_state[k].disp != Free
-                || hregClass(con->univ->regs[k]) != hregClass(vreg))
+         for (k = con->univ->allocable_start[hregClass(vreg)];
+              k <= con->univ->allocable_end[hregClass(vreg)]; k++) {
+            if (rreg_state[k].disp != Free)
                continue;
             if (rreg_state[k].has_hlrs) {
                /* Well, at least we can use k_suboptimal if we really
@@ -1356,7 +1309,7 @@ HInstrArray* doRegisterAllocation_v2 (
          if (k_suboptimal >= 0)
             k = k_suboptimal;
 
-         if (k < n_rregs) {
+         if (k <= con->univ->allocable_end[hregClass(vreg)]) {
             rreg_state[k].disp = Bound;
             rreg_state[k].vreg = vreg;
             Int p = hregIndex(vreg);
@@ -1404,11 +1357,10 @@ HInstrArray* doRegisterAllocation_v2 (
          /* First, mark in the rreg_state, those rregs which are not spill
             candidates, due to holding a vreg mentioned by this
             instruction.  Or being of the wrong class. */
-         for (k = 0; k < n_rregs; k++) {
+         for (k = con->univ->allocable_start[hregClass(vreg)];
+              k <= con->univ->allocable_end[hregClass(vreg)]; k++) {
             rreg_state[k].is_spill_cand = False;
             if (rreg_state[k].disp != Bound)
-               continue;
-            if (hregClass(con->univ->regs[k]) != hregClass(vreg))
                continue;
             rreg_state[k].is_spill_cand = True;
             /* Note, the following loop visits only the virtual regs
@@ -1428,7 +1380,8 @@ HInstrArray* doRegisterAllocation_v2 (
             of consequent reloads required. */
          Int spillee
             = findMostDistantlyMentionedVReg ( 
-                 reg_usage_arr, ii+1, instrs_in->arr_used, rreg_state, n_rregs );
+                 reg_usage_arr, ii+1, instrs_in->arr_used, rreg_state,
+                 hregClass(vreg), con);
 
          if (spillee == -1) {
             /* Hmmmmm.  There don't appear to be any spill candidates.

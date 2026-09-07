@@ -7,17 +7,17 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    NEON support is
-   Copyright (C) 2010-2015 Samsung Electronics
+   Copyright (C) 2010-2017 Samsung Electronics
    contributed by Dmitry Zhurikhin <zhur@ispras.ru>
               and Kirill Batuzov <batuzovk@ispras.ru>
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -26,9 +26,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -41,7 +39,7 @@
 #include "host_generic_regs.h"
 #include "host_arm_defs.h"
 
-UInt arm_hwcaps = 0;
+static UInt arm_hwcaps;
 
 
 /* --------- Registers. --------- */
@@ -222,7 +220,7 @@ ARMAMode1* ARMAMode1_RRS ( HReg base, HReg index, UInt shift ) {
    am->ARMam1.RRS.base  = base;
    am->ARMam1.RRS.index = index;
    am->ARMam1.RRS.shift = shift;
-   vassert(0 <= shift && shift <= 3);
+   vassert(shift <= 3);
    return am;
 }
 
@@ -419,7 +417,7 @@ void ppARMAModeN ( ARMAModeN* am ) {
 /* --------- Reg or imm-8x4 operands --------- */
 
 static UInt ROR32 ( UInt x, UInt sh ) {
-   vassert(sh >= 0 && sh < 32);
+   vassert(sh < 32);
    if (sh == 0)
       return x;
    else
@@ -431,8 +429,8 @@ ARMRI84* ARMRI84_I84 ( UShort imm8, UShort imm4 ) {
    ri84->tag              = ARMri84_I84;
    ri84->ARMri84.I84.imm8 = imm8;
    ri84->ARMri84.I84.imm4 = imm4;
-   vassert(imm8 >= 0 && imm8 <= 255);
-   vassert(imm4 >= 0 && imm4 <= 15);
+   vassert(imm8 <= 255);
+   vassert(imm4 <= 15);
    return ri84;
 }
 ARMRI84* ARMRI84_R ( HReg reg ) {
@@ -3071,7 +3069,7 @@ static UInt* do_load_or_store32 ( UInt* p,
 
 Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
                     UChar* buf, Int nbuf, const ARMInstr* i, 
-                    Bool mode64, VexEndness endness_host,
+                    Bool mode64, const VexArchInfo* archinfo_host,
                     const void* disp_cp_chain_me_to_slowEP,
                     const void* disp_cp_chain_me_to_fastEP,
                     const void* disp_cp_xindir,
@@ -3081,6 +3079,8 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
    vassert(nbuf >= 32);
    vassert(mode64 == False);
    vassert(0 == (((HWord)buf) & 3));
+
+   arm_hwcaps = archinfo_host->hwcaps;
 
    switch (i->tag) {
       case ARMin_Alu: {

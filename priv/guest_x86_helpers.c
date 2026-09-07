@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -44,6 +42,7 @@
 #include "guest_generic_bb_to_IR.h"
 #include "guest_x86_defs.h"
 #include "guest_generic_x87.h"
+#include "guest_generic_helpers.h"
 
 
 /* This file contains helper functions for x86 guest code.
@@ -569,7 +568,6 @@ UInt x86g_calculate_eflags_all_WRK ( UInt cc_op,
    }
 }
 
-
 /* CALLED FROM GENERATED CODE: CLEAN HELPER */
 /* Calculate all the 6 flags from the supplied thunk parameters. */
 UInt x86g_calculate_eflags_all ( UInt cc_op, 
@@ -792,7 +790,6 @@ LibVEX_GuestX86_put_eflag_c ( UInt new_carry_flag,
    vex_state->guest_CC_NDEP = 0;
 }
 
-
 /*---------------------------------------------------------------*/
 /*--- %eflags translation-time function specialisers.         ---*/
 /*--- These help iropt specialise calls the above run-time    ---*/
@@ -856,6 +853,7 @@ IRExpr* guest_x86_spechelper ( const HChar* function_name,
 
       /*---------------- SUBL ----------------*/
 
+      /* 4, 5 */
       if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondZ)) {
          /* long sub/cmp, then Z --> test dst==src */
          return unop(Iop_1Uto32,
@@ -867,6 +865,7 @@ IRExpr* guest_x86_spechelper ( const HChar* function_name,
                      binop(Iop_CmpNE32, cc_dep1, cc_dep2));
       }
 
+      /* 12, 13 */
       if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondL)) {
          /* long sub/cmp, then L (signed less than) 
             --> test dst <s src */
@@ -882,6 +881,7 @@ IRExpr* guest_x86_spechelper ( const HChar* function_name,
                       mkU32(1));
       }
 
+      /* 14, 15 */
       if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondLE)) {
          /* long sub/cmp, then LE (signed less than or equal)
             --> test dst <=s src */
@@ -898,6 +898,7 @@ IRExpr* guest_x86_spechelper ( const HChar* function_name,
                       mkU32(1));
       }
 
+      /* 6, 7 */
       if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondBE)) {
          /* long sub/cmp, then BE (unsigned less than or equal)
             --> test dst <=u src */
@@ -913,6 +914,7 @@ IRExpr* guest_x86_spechelper ( const HChar* function_name,
                       mkU32(1));
       }
 
+      /* 2, 3 */
       if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondB)) {
          /* long sub/cmp, then B (unsigned less than)
             --> test dst <u src */
@@ -926,6 +928,28 @@ IRExpr* guest_x86_spechelper ( const HChar* function_name,
                       unop(Iop_1Uto32,
                            binop(Iop_CmpLT32U, cc_dep1, cc_dep2)),
                       mkU32(1));
+      }
+
+      /* 8, 9 */
+      if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondS)
+                                        && isU32(cc_dep2, 0)) {
+         /* long sub/cmp of zero, then S --> test (dst-0 <s 0)
+                                         --> test dst <s 0
+                                         --> (UInt)dst[31] */
+         return binop(Iop_And32,
+                      binop(Iop_Shr32,cc_dep1,mkU8(31)),
+                      mkU32(1));
+      }
+      if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondNS)
+                                        && isU32(cc_dep2, 0)) {
+         /* long sub/cmp of zero, then NS --> test !(dst-0 <s 0)
+                                          --> test !(dst <s 0)
+                                          --> (UInt) !dst[31] */
+         return binop(Iop_Xor32,
+                      binop(Iop_And32,
+                            binop(Iop_Shr32,cc_dep1,mkU8(31)),
+                            mkU32(1)),
+                mkU32(1));
       }
 
       if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondS)) {
@@ -1155,9 +1179,24 @@ IRExpr* guest_x86_spechelper ( const HChar* function_name,
       /*---------------- SHRL ----------------*/
 
       if (isU32(cc_op, X86G_CC_OP_SHRL) && isU32(cond, X86CondZ)) {
-         /* SHRL, then Z --> test dep1 == 0 */
+         /* SHRL, then Z --> test dep1(result) == 0 */
          return unop(Iop_1Uto32,binop(Iop_CmpEQ32, cc_dep1, mkU32(0)));
       }
+      if (isU32(cc_op, X86G_CC_OP_SHRL) && isU32(cond, X86CondNZ)) {
+         /* SHRL, then NZ --> test dep1(result) != 0 */
+         return unop(Iop_1Uto32,binop(Iop_CmpNE32, cc_dep1, mkU32(0)));
+      }
+
+      /*---------------- SHLL ----------------*/
+
+      if (isU32(cc_op, X86G_CC_OP_SHLL) && isU32(cond, X86CondZ)) {
+         /* SHLL, then Z --> test dep1(result) == 0 */
+         return unop(Iop_1Uto32,binop(Iop_CmpEQ32, cc_dep1, mkU32(0)));
+      }
+      //if (isU32(cc_op, X86G_CC_OP_SHLL) && isU32(cond, X86CondNZ)) {
+      //   /* SHLL, then NZ --> test dep1(result) != 0 */
+      //   vassert(0); // No test case yet observed
+      //}
 
       /*---------------- COPY ----------------*/
       /* This can happen, as a result of x87 FP compares: "fcom ... ;
@@ -1599,18 +1638,17 @@ void x86g_dirtyhelper_FINIT ( VexGuestX86State* gst )
    themselves are not transferred into the guest state. */
 static
 VexEmNote do_put_x87 ( Bool moveRegs,
-                       /*IN*/UChar* x87_state,
+                       /*IN*/Fpu_State* x87_state,
                        /*OUT*/VexGuestX86State* vex_state )
 {
    Int        stno, preg;
    UInt       tag;
    ULong*     vexRegs = (ULong*)(&vex_state->guest_FPREG[0]);
    UChar*     vexTags = (UChar*)(&vex_state->guest_FPTAG[0]);
-   Fpu_State* x87     = (Fpu_State*)x87_state;
-   UInt       ftop    = (x87->env[FP_ENV_STAT] >> 11) & 7;
-   UInt       tagw    = x87->env[FP_ENV_TAG];
-   UInt       fpucw   = x87->env[FP_ENV_CTRL];
-   UInt       c3210   = x87->env[FP_ENV_STAT] & 0x4700;
+   UInt       ftop    = (x87_state->env[FP_ENV_STAT] >> 11) & 7;
+   UInt       tagw    = x87_state->env[FP_ENV_TAG];
+   UInt       fpucw   = x87_state->env[FP_ENV_CTRL];
+   UInt       c3210   = x87_state->env[FP_ENV_STAT] & 0x4700;
    VexEmNote  ew;
    UInt       fpround;
    ULong      pair;
@@ -1631,7 +1669,7 @@ VexEmNote do_put_x87 ( Bool moveRegs,
       } else {
          /* register is non-empty */
          if (moveRegs)
-            convert_f80le_to_f64le( &x87->reg[10*stno], 
+            convert_f80le_to_f64le( &x87_state->reg[10*stno], 
                                     (UChar*)&vexRegs[preg] );
          vexTags[preg] = 1;
       }
@@ -1660,23 +1698,23 @@ VexEmNote do_put_x87 ( Bool moveRegs,
    we can approximate it. */
 static
 void do_get_x87 ( /*IN*/VexGuestX86State* vex_state,
-                  /*OUT*/UChar* x87_state )
+                  /*OUT*/Fpu_State* x87_state )
 {
    Int        i, stno, preg;
    UInt       tagw;
    ULong*     vexRegs = (ULong*)(&vex_state->guest_FPREG[0]);
    UChar*     vexTags = (UChar*)(&vex_state->guest_FPTAG[0]);
-   Fpu_State* x87     = (Fpu_State*)x87_state;
    UInt       ftop    = vex_state->guest_FTOP;
    UInt       c3210   = vex_state->guest_FC3210;
 
    for (i = 0; i < 14; i++)
-      x87->env[i] = 0;
+      x87_state->env[i] = 0;
 
-   x87->env[1] = x87->env[3] = x87->env[5] = x87->env[13] = 0xFFFF;
-   x87->env[FP_ENV_STAT] 
+   x87_state->env[1] = x87_state->env[3] = x87_state->env[5]
+      = x87_state->env[13] = 0xFFFF;
+   x87_state->env[FP_ENV_STAT] 
       = toUShort(((ftop & 7) << 11) | (c3210 & 0x4700));
-   x87->env[FP_ENV_CTRL] 
+   x87_state->env[FP_ENV_CTRL] 
       = toUShort(x86g_create_fpucw( vex_state->guest_FPROUND ));
 
    /* Dump the register stack in ST order. */
@@ -1687,15 +1725,15 @@ void do_get_x87 ( /*IN*/VexGuestX86State* vex_state,
          /* register is empty */
          tagw |= (3 << (2*preg));
          convert_f64le_to_f80le( (UChar*)&vexRegs[preg], 
-                                 &x87->reg[10*stno] );
+                                 &x87_state->reg[10*stno] );
       } else {
          /* register is full. */
          tagw |= (0 << (2*preg));
          convert_f64le_to_f80le( (UChar*)&vexRegs[preg], 
-                                 &x87->reg[10*stno] );
+                                 &x87_state->reg[10*stno] );
       }
    }
-   x87->env[FP_ENV_TAG] = toUShort(tagw);
+   x87_state->env[FP_ENV_TAG] = toUShort(tagw);
 }
 
 
@@ -1714,7 +1752,7 @@ void x86g_dirtyhelper_FXSAVE ( VexGuestX86State* gst, HWord addr )
    Int       r, stno;
    UShort    *srcS, *dstS;
 
-   do_get_x87( gst, (UChar*)&tmp );
+   do_get_x87( gst, &tmp );
    mxcsr = x86g_create_mxcsr( gst->guest_SSEROUND );
 
    /* Now build the proper fxsave image from the x87 image we just
@@ -1867,7 +1905,7 @@ VexEmNote x86g_dirtyhelper_FXRSTOR ( VexGuestX86State* gst, HWord addr )
    tmp.env[FP_ENV_TAG] = fp_tags;
 
    /* Now write 'tmp' into the guest state. */
-   warnX87 = do_put_x87( True/*moveRegs*/, (UChar*)&tmp, gst );
+   warnX87 = do_put_x87( True/*moveRegs*/, &tmp, gst );
 
    { UInt w32 = (((UInt)addrS[12]) & 0xFFFF)
                 | ((((UInt)addrS[13]) & 0xFFFF) << 16);
@@ -1890,14 +1928,14 @@ VexEmNote x86g_dirtyhelper_FXRSTOR ( VexGuestX86State* gst, HWord addr )
 /* DIRTY HELPER (reads guest state, writes guest mem) */
 void x86g_dirtyhelper_FSAVE ( VexGuestX86State* gst, HWord addr )
 {
-   do_get_x87( gst, (UChar*)addr );
+   do_get_x87( gst, (Fpu_State*)addr );
 }
 
 /* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (writes guest state, reads guest mem) */
 VexEmNote x86g_dirtyhelper_FRSTOR ( VexGuestX86State* gst, HWord addr )
 {
-   return do_put_x87( True/*regs too*/, (UChar*)addr, gst );
+   return do_put_x87( True/*regs too*/, (Fpu_State*)addr, gst );
 }
 
 /* CALLED FROM GENERATED CODE */
@@ -1908,7 +1946,7 @@ void x86g_dirtyhelper_FSTENV ( VexGuestX86State* gst, HWord addr )
    Int       i;
    UShort*   addrP = (UShort*)addr;
    Fpu_State tmp;
-   do_get_x87( gst, (UChar*)&tmp );
+   do_get_x87( gst, &tmp );
    for (i = 0; i < 14; i++)
       addrP[i] = tmp.env[i];
 }
@@ -1917,7 +1955,7 @@ void x86g_dirtyhelper_FSTENV ( VexGuestX86State* gst, HWord addr )
 /* DIRTY HELPER (writes guest state, reads guest mem) */
 VexEmNote x86g_dirtyhelper_FLDENV ( VexGuestX86State* gst, HWord addr )
 {
-   return do_put_x87( False/*don't move regs*/, (UChar*)addr, gst);
+   return do_put_x87( False/*don't move regs*/, (Fpu_State*)addr, gst);
 }
 
 /* VISIBLE TO LIBVEX CLIENT */
@@ -1927,7 +1965,7 @@ VexEmNote x86g_dirtyhelper_FLDENV ( VexGuestX86State* gst, HWord addr )
 void LibVEX_GuestX86_get_x87 ( /*IN*/VexGuestX86State* vex_state,
                                /*OUT*/UChar* x87_state )
 {
-   do_get_x87 ( vex_state, x87_state );
+   do_get_x87 ( vex_state, (Fpu_State*)x87_state );
 }
 
 /* VISIBLE TO LIBVEX CLIENT */
@@ -1936,7 +1974,7 @@ void LibVEX_GuestX86_get_x87 ( /*IN*/VexGuestX86State* vex_state,
 VexEmNote LibVEX_GuestX86_put_x87 ( /*IN*/UChar* x87_state,
                                     /*MOD*/VexGuestX86State* vex_state )
 {
-   return do_put_x87 ( True/*moveRegs*/, x87_state, vex_state );
+   return do_put_x87 ( True/*moveRegs*/, (Fpu_State*)x87_state, vex_state );
 }
 
 /* VISIBLE TO LIBVEX CLIENT */
@@ -2612,8 +2650,8 @@ void x86g_dirtyhelper_SxDT ( void *address, UInt op ) {
 #  endif
 }
 
-/* op = 1: call the native LGDT instruction.
-   op = 2: call the native LIDT instruction.
+/* op = 2: call the native LGDT instruction.
+   op = 3: call the native LIDT instruction.
 */
 void x86g_dirtyhelper_LGDT_LIDT ( void *address, UInt op ) {
    vpanic("x86g_dirtyhelper_LGDT_LIDT");
@@ -2626,10 +2664,6 @@ void x86g_dirtyhelper_write_cr0 ( UInt value ) {
 /*---------------------------------------------------------------*/
 /*--- Helpers for MMX/SSE/SSE2.                               ---*/
 /*---------------------------------------------------------------*/
-
-static inline UChar abdU8 ( UChar xx, UChar yy ) {
-   return toUChar(xx>yy ? xx-yy : yy-xx);
-}
 
 static inline ULong mk32x2 ( UInt w1, UInt w0 ) {
    return (((ULong)w1) << 32) | ((ULong)w0);
@@ -2650,39 +2684,6 @@ static inline UShort sel16x4_1 ( ULong w64 ) {
 static inline UShort sel16x4_0 ( ULong w64 ) {
    UInt lo32 = toUInt(w64);
    return toUShort(lo32);
-}
-
-static inline UChar sel8x8_7 ( ULong w64 ) {
-   UInt hi32 = toUInt(w64 >> 32);
-   return toUChar(hi32 >> 24);
-}
-static inline UChar sel8x8_6 ( ULong w64 ) {
-   UInt hi32 = toUInt(w64 >> 32);
-   return toUChar(hi32 >> 16);
-}
-static inline UChar sel8x8_5 ( ULong w64 ) {
-   UInt hi32 = toUInt(w64 >> 32);
-   return toUChar(hi32 >> 8);
-}
-static inline UChar sel8x8_4 ( ULong w64 ) {
-   UInt hi32 = toUInt(w64 >> 32);
-   return toUChar(hi32 >> 0);
-}
-static inline UChar sel8x8_3 ( ULong w64 ) {
-   UInt lo32 = toUInt(w64);
-   return toUChar(lo32 >> 24);
-}
-static inline UChar sel8x8_2 ( ULong w64 ) {
-   UInt lo32 = toUInt(w64);
-   return toUChar(lo32 >> 16);
-}
-static inline UChar sel8x8_1 ( ULong w64 ) {
-   UInt lo32 = toUInt(w64);
-   return toUChar(lo32 >> 8);
-}
-static inline UChar sel8x8_0 ( ULong w64 ) {
-   UInt lo32 = toUInt(w64);
-   return toUChar(lo32 >> 0);
 }
 
 /* CALLED FROM GENERATED CODE: CLEAN HELPER */
@@ -2750,10 +2751,13 @@ ULong x86g_use_seg_selector ( HWord ldt, HWord gdt,
    /* If this isn't true, we're in Big Trouble. */
    vassert(8 == sizeof(VexGuestX86SegDescr));
 
-   if (verboze) 
+   if (verboze) {
+      // Coverity is right but this is unimportant
+      // coverity[DEADCODE:FALSE]
       vex_printf("x86h_use_seg_selector: "
                  "seg_selector = 0x%x, vaddr = 0x%x\n", 
                  seg_selector, virtual_addr);
+   }
 
    /* Check for wildly invalid selector. */
    if (seg_selector & ~0xFFFF)
@@ -2771,17 +2775,13 @@ ULong x86g_use_seg_selector ( HWord ldt, HWord gdt,
 
    /* Convert the segment selector onto a table index */
    seg_selector >>= 3;
-   vassert(seg_selector >= 0 && seg_selector < 8192);
+   vassert(seg_selector < VEX_GUEST_X86_GDT_NENT);
 
    if (tiBit == 0) {
 
       /* GDT access. */
       /* Do we actually have a GDT to look at? */
       if (gdt == 0)
-         goto bad;
-
-      /* Check for access to non-existent entry. */
-      if (seg_selector >= VEX_GUEST_X86_GDT_NENT)
          goto bad;
 
       the_descrs = (VexGuestX86SegDescr*)gdt;
@@ -2892,6 +2892,7 @@ void LibVEX_GuestX86_initialise ( /*OUT*/VexGuestX86State* vex_state )
    vex_state->guest_IP_AT_SYSCALL = 0;
 
    vex_state->padding1 = 0;
+   vex_state->padding2 = 0;
 }
 
 

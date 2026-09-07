@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -36,17 +34,10 @@
 #ifndef __LIBVEX_BASICTYPES_H
 #define __LIBVEX_BASICTYPES_H
 
-/* This is where we bootstrap msvc compatibility */
-#ifndef _MSC_VER /* gcc/clang/etc stuff */
-#define LIKELY(x)       __builtin_expect(!!(x), 1)
-#define UNLIKELY(x)     __builtin_expect(!!(x), 0)
-#define CAST_AS(x)      (__typeof__(x))
-
-#else /* msvc stuff */
-#define LIKELY(x)       (x)
-#define UNLIKELY(x)     (x)
-#define CAST_AS(x)
-
+/* This is where we bootstrap msvc compatibility.  LIKELY/UNLIKELY/
+   CAST_TO_TYPEOF were adopted upstream (priv/main_util.h) and are no
+   longer defined here. */
+#ifdef _MSC_VER
 #define __builtin_memset memset
 #define __builtin_memcpy memcpy
 #define __PRETTY_FUNCTION__ __FUNCDNAME__
@@ -55,6 +46,54 @@
 #define __attribute(x)
 #define __inline__
 #define inline
+
+/* Replacements for the GCC bit-scan builtins (used by the register
+   allocators and the riscv64 backend).  The 64-bit bit-scan intrinsics
+   only exist in 64-bit cl.exe, so 32-bit builds use portable loops.
+   Results are undefined for x == 0, as with the GCC builtins. */
+#ifdef _M_AMD64
+static inline int __builtin_clzll(unsigned long long x) {
+    return (int)__lzcnt64(x);
+}
+
+static inline int __builtin_ctzll(unsigned long long x) {
+    unsigned long ret;
+    _BitScanForward64(&ret, x);
+    return (int)ret;
+}
+#else
+static inline int __builtin_clzll(unsigned long long x) {
+   int out = 0;
+   if (x == 0) return 64;
+   while ((long long)x > 0) {
+      x <<= 1;
+      out++;
+   }
+   return out;
+}
+
+static inline int __builtin_ctzll(unsigned long long x) {
+   int out = 0;
+   if (x == 0) return 64;
+   while ((x & 1) == 0) {
+      x >>= 1;
+      out++;
+   }
+   return out;
+}
+#endif
+#endif
+
+/* Compile-time assertion usable at file scope in the public headers.
+   Upstream writes C11 _Static_assert directly, which cl.exe rejects in
+   its default C mode; the fallback is a C89 negative-size array. */
+#if defined(_MSC_VER) || !defined(__STDC_VERSION__) || __STDC_VERSION__ < 201112L
+#  define VEX_STATIC_ASSERT_CAT2(a, b) a##b
+#  define VEX_STATIC_ASSERT_CAT(a, b)  VEX_STATIC_ASSERT_CAT2(a, b)
+#  define VEX_STATIC_ASSERT(cond, msg) \
+      typedef char VEX_STATIC_ASSERT_CAT(vex_static_assert_, __COUNTER__)[(cond) ? 1 : -1]
+#else
+#  define VEX_STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
 #endif
 
 /* It is important that the sizes of the following data types (on the
@@ -168,11 +207,19 @@ typedef  unsigned long long HWord;
 typedef  unsigned long HWord;
 #endif
 
+/* Size of GPRs */
+#if defined(__mips__) && (__mips == 64) && (_MIPS_SIM == _ABIN32)
+    typedef ULong RegWord;
+#   define FMT_REGWORD "ll"
+#else
+    typedef HWord RegWord;
+#   define FMT_REGWORD "l"
+#endif
+
 /* Set up VEX_HOST_WORDSIZE and VEX_REGPARM. */
 #undef VEX_HOST_WORDSIZE
 #undef VEX_REGPARM
 
-/* The following 4 work OK for Linux. */
 #if defined(__x86_64__) || defined(_WIN64)
 #   define VEX_HOST_WORDSIZE 8
 #   define VEX_REGPARM(_n) /* */
@@ -210,20 +257,22 @@ typedef  unsigned long HWord;
 #   define VEX_REGPARM(_n) /* */
 
 #elif defined(__mips__) && (__mips == 64)
+#if _MIPS_SIM == _ABIN32
+#   define VEX_HOST_WORDSIZE 4
+#else
 #   define VEX_HOST_WORDSIZE 8
+#endif
 #   define VEX_REGPARM(_n) /* */
 
 #elif defined(__mips__) && (__mips != 64)
 #   define VEX_HOST_WORDSIZE 4
 #   define VEX_REGPARM(_n) /* */
 
-#elif defined(__riscv) && defined(__riscv_xlen)
-#   if (__riscv_xlen == 64)
-#       define VEX_HOST_WORDSIZE 8
-#       define VEX_REGPARM(_n) /* */
-#   endif
+#elif defined(__nanomips__) && (__nanomips != 64)
+#   define VEX_HOST_WORDSIZE 4
+#   define VEX_REGPARM(_n) /* */
 
-#elif defined(__tilegx__)
+#elif defined(__riscv) && (__riscv_xlen == 64)
 #   define VEX_HOST_WORDSIZE 8
 #   define VEX_REGPARM(_n) /* */
 

@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -294,6 +292,13 @@ static IRExpr* mkU ( IRType ty, ULong i )
    }
 }
 
+static IRExpr* mkV128 ( UShort mask )
+{
+   return IRExpr_Const(IRConst_V128(mask));
+}
+
+#include "guest_generic_sse.h"
+
 static void storeLE ( IRExpr* addr, IRExpr* data )
 {
    stmt( IRStmt_Store(Iend_LE, addr, data) );
@@ -504,6 +509,7 @@ static void unimplemented ( const HChar* str )
 #define R_CR3 3
 #define R_CR4 4
 #define R_CR8 8
+
 
 /* Various simple conversions */
 
@@ -789,6 +795,13 @@ static Bool haveF2noF3 ( Prefix pfx )
      toBool((pfx & (PFX_F2|PFX_F3)) == PFX_F2);
 }
 
+/* Return True iff pfx has F2 and F3 clear */
+static Bool haveNoF2noF3 ( Prefix pfx )
+{
+  return
+     toBool((pfx & (PFX_F2|PFX_F3)) == 0);
+}
+
 /* Return True iff pfx has 66, F2 and F3 clear */
 static Bool haveNo66noF2noF3 ( Prefix pfx )
 {
@@ -848,8 +861,8 @@ typedef
       ESC_0F,              // 0F
       ESC_0F38,            // 0F 38
       ESC_0F3A,            // 0F 3A
-      ESC_0F20,
-      ESC_0F22
+      ESC_0F20,            // 0F 20 (mov from control reg)
+      ESC_0F22             // 0F 22 (mov to control reg)
    }
    Escape;
 
@@ -950,7 +963,8 @@ static Int segmentGuestRegOffset ( UInt sreg )
 /* Produce the name of an integer register, for printing purposes.
    reg is a number in the range 0 .. 15 that has been generated from a
    3-bit reg-field number and a REX extension bit.  irregular denotes
-   the case where sz==1 and no REX byte is present. */
+   the case where sz==1 and no REX byte is present and where the denoted
+   sub-register is bits 15:8 of the containing 64-bit register. */
 
 static 
 const HChar* nameIReg ( Int sz, UInt reg, Bool irregular )
@@ -967,13 +981,13 @@ const HChar* nameIReg ( Int sz, UInt reg, Bool irregular )
    static const HChar* ireg8_names[16]
      = { "%al",  "%cl",  "%dl",  "%bl",  "%spl", "%bpl", "%sil", "%dil",
          "%r8b", "%r9b", "%r10b","%r11b","%r12b","%r13b","%r14b","%r15b" };
-   static const HChar* ireg8_irregular[8] 
-     = { "%al", "%cl", "%dl", "%bl", "%ah", "%ch", "%dh", "%bh" };
+   static const HChar* ireg8_irregular[4]
+     = { "%ah", "%ch", "%dh", "%bh" };
 
    vassert(reg < 16);
    if (sz == 1) {
       if (irregular)
-         vassert(reg < 8);
+         vassert(reg >= 4 && reg < 8);
    } else {
       vassert(irregular == False);
    }
@@ -983,7 +997,8 @@ const HChar* nameIReg ( Int sz, UInt reg, Bool irregular )
       case 4: return ireg32_names[reg];
       case 2: return ireg16_names[reg];
       case 1: if (irregular) {
-                 return ireg8_irregular[reg];
+                 vassert(reg >= 4 && reg < 8);
+                 return ireg8_irregular[reg - 4];
               } else {
                  return ireg8_names[reg];
               }
@@ -1000,7 +1015,7 @@ Int offsetIReg ( Int sz, UInt reg, Bool irregular )
    vassert(reg < 16);
    if (sz == 1) {
       if (irregular)
-         vassert(reg < 8);
+         vassert(reg >= 4 && reg < 8);
    } else {
       vassert(irregular == False);
    }
@@ -1026,7 +1041,7 @@ Int offsetIReg ( Int sz, UInt reg, Bool irregular )
 static IRExpr* getIRegCL ( void )
 {
    vassert(host_endness == VexEndnessLE);
-   return IRExpr_Get( OFFB_RCX, Ity_I8 );
+   return unop(Iop_64to8, IRExpr_Get( OFFB_RCX, Ity_I64 ));
 }
 
 
@@ -1058,8 +1073,8 @@ static IRExpr* getIRegRAX ( Int sz )
 {
    vassert(host_endness == VexEndnessLE);
    switch (sz) {
-      case 1: return IRExpr_Get( OFFB_RAX, Ity_I8 );
-      case 2: return IRExpr_Get( OFFB_RAX, Ity_I16 );
+      case 1: return unop(Iop_64to8,  IRExpr_Get( OFFB_RAX, Ity_I64 ));
+      case 2: return unop(Iop_64to16, IRExpr_Get( OFFB_RAX, Ity_I64 ));
       case 4: return unop(Iop_64to32, IRExpr_Get( OFFB_RAX, Ity_I64 ));
       case 8: return IRExpr_Get( OFFB_RAX, Ity_I64 );
       default: vpanic("getIRegRAX(amd64)");
@@ -1106,8 +1121,8 @@ static IRExpr* getIRegRDX ( Int sz )
 {
    vassert(host_endness == VexEndnessLE);
    switch (sz) {
-      case 1: return IRExpr_Get( OFFB_RDX, Ity_I8 );
-      case 2: return IRExpr_Get( OFFB_RDX, Ity_I16 );
+      case 1: return unop(Iop_64to8,  IRExpr_Get( OFFB_RDX, Ity_I64 ));
+      case 2: return unop(Iop_64to16, IRExpr_Get( OFFB_RDX, Ity_I64 ));
       case 4: return unop(Iop_64to32, IRExpr_Get( OFFB_RDX, Ity_I64 ));
       case 8: return IRExpr_Get( OFFB_RDX, Ity_I64 );
       default: vpanic("getIRegRDX(amd64)");
@@ -1183,15 +1198,9 @@ static const HChar* nameIReg32 ( UInt regno )
 static IRExpr* getIReg16 ( UInt regno )
 {
    vassert(host_endness == VexEndnessLE);
-   return IRExpr_Get( integerGuestReg64Offset(regno),
-                      Ity_I16 );
-}
-
-static void putIReg16 ( UInt regno, IRExpr* e )
-{
-   vassert(typeOfIRExpr(irsb->tyenv,e) == Ity_I16);
-   stmt( IRStmt_Put( integerGuestReg64Offset(regno), 
-                     unop(Iop_16Uto64,e) ) );
+   return unop(Iop_64to16,
+               IRExpr_Get( integerGuestReg64Offset(regno),
+                           Ity_I64 ));
 }
 
 static const HChar* nameIReg16 ( UInt regno )
@@ -1223,30 +1232,55 @@ static const HChar* nameIRegRexB ( Int sz, Prefix pfx, UInt lo3bits )
    vassert(lo3bits < 8);
    vassert(IS_VALID_PFX(pfx));
    vassert(sz == 8 || sz == 4 || sz == 2 || sz == 1);
-   return nameIReg( sz, lo3bits | (getRexB(pfx) << 3), 
-                        toBool(sz==1 && !haveREX(pfx)) );
+   UInt regNo = lo3bits | (getRexB(pfx) << 3);
+   return nameIReg( sz, regNo,
+                        toBool(sz==1 && !haveREX(pfx) && regNo >= 4 && regNo < 8));
 }
 
 static IRExpr* getIRegRexB ( Int sz, Prefix pfx, UInt lo3bits )
 {
    vassert(lo3bits < 8);
    vassert(IS_VALID_PFX(pfx));
-   vassert(sz == 8 || sz == 4 || sz == 2 || sz == 1);
-   if (sz == 4) {
-      sz = 8;
-      return unop(Iop_64to32,
-                  IRExpr_Get(
-                     offsetIReg( sz, lo3bits | (getRexB(pfx) << 3), 
-                                     False/*!irregular*/ ),
-                     szToITy(sz)
-                 )
-             );
-   } else {
-      return IRExpr_Get(
-                offsetIReg( sz, lo3bits | (getRexB(pfx) << 3), 
-                                toBool(sz==1 && !haveREX(pfx)) ),
-                szToITy(sz)
-             );
+   UInt regNo = (getRexB(pfx) << 3) | lo3bits;
+   switch (sz) {
+      case 8: {
+         return IRExpr_Get(
+                   offsetIReg( 8, regNo, False/*!irregular*/ ),
+                   Ity_I64
+                );
+      }
+      case 4: {
+         return unop(Iop_64to32,
+                     IRExpr_Get(
+                        offsetIReg( 8, regNo, False/*!irregular*/ ),
+                        Ity_I64
+                ));
+      }
+      case 2: {
+         return unop(Iop_64to16,
+                     IRExpr_Get(
+                        offsetIReg( 8, regNo, False/*!irregular*/ ),
+                        Ity_I64
+                ));
+      }
+      case 1: {
+         Bool irregular = !haveREX(pfx) && regNo >= 4 && regNo < 8;
+         if (irregular) {
+            return IRExpr_Get(
+                      offsetIReg( 1, regNo, True/*irregular*/ ),
+                      Ity_I8
+                   );
+         } else {
+            return unop(Iop_64to8,
+                        IRExpr_Get(
+                           offsetIReg( 8, regNo, False/*!irregular*/ ),
+                           Ity_I64
+                   ));
+         }
+      }
+      default: {
+         vpanic("getIRegRexB");
+      }
    }
 }
 
@@ -1256,9 +1290,9 @@ static void putIRegRexB ( Int sz, Prefix pfx, UInt lo3bits, IRExpr* e )
    vassert(IS_VALID_PFX(pfx));
    vassert(sz == 8 || sz == 4 || sz == 2 || sz == 1);
    vassert(typeOfIRExpr(irsb->tyenv, e) == szToITy(sz));
+   Bool irregular = sz == 1 && !haveREX(pfx) && lo3bits >= 4 && lo3bits < 8;
    stmt( IRStmt_Put( 
-            offsetIReg( sz, lo3bits | (getRexB(pfx) << 3), 
-                            toBool(sz==1 && !haveREX(pfx)) ),
+            offsetIReg( sz, lo3bits | (getRexB(pfx) << 3), irregular ),
             sz==4 ? unop(Iop_32Uto64,e) : e
    ));
 }
@@ -1307,20 +1341,39 @@ static UInt offsetIRegG ( Int sz, Prefix pfx, UChar mod_reg_rm )
    vassert(IS_VALID_PFX(pfx));
    vassert(sz == 8 || sz == 4 || sz == 2 || sz == 1);
    reg = gregOfRexRM( pfx, mod_reg_rm );
-   return offsetIReg( sz, reg, toBool(sz == 1 && !haveREX(pfx)) );
+   Bool irregular = sz == 1 && !haveREX(pfx) && reg >= 4 && reg < 8;
+   return offsetIReg( sz, reg, irregular );
 }
 
 static 
 IRExpr* getIRegG ( Int sz, Prefix pfx, UChar mod_reg_rm )
 {
-   if (sz == 4) {
-      sz = 8;
-      return unop(Iop_64to32,
-                  IRExpr_Get( offsetIRegG( sz, pfx, mod_reg_rm ),
-                              szToITy(sz) ));
-   } else {
-      return IRExpr_Get( offsetIRegG( sz, pfx, mod_reg_rm ),
-                         szToITy(sz) );
+   switch (sz) {
+      case 8: {
+         return IRExpr_Get( offsetIRegG( 8, pfx, mod_reg_rm ), Ity_I64 );
+      }
+      case 4: {
+         return unop(Iop_64to32,
+                     IRExpr_Get( offsetIRegG( 8, pfx, mod_reg_rm ), Ity_I64 ));
+      }
+      case 2: {
+         return unop(Iop_64to16,
+                     IRExpr_Get( offsetIRegG( 8, pfx, mod_reg_rm ), Ity_I64 ));
+      }
+      case 1: {
+         UInt regNo = gregOfRexRM( pfx, mod_reg_rm );
+         Bool irregular = !haveREX(pfx) && regNo >= 4 && regNo < 8;
+         if (irregular) {
+            return IRExpr_Get( offsetIRegG( 1, pfx, mod_reg_rm ), Ity_I8 );
+         } else {
+            return unop(Iop_64to8,
+                        IRExpr_Get( offsetIRegG( 8, pfx, mod_reg_rm ),
+                        Ity_I64 ));
+         }
+      }
+      default: {
+         vpanic("getIRegG");
+      }
    }
 }
 
@@ -1337,19 +1390,24 @@ void putIRegG ( Int sz, Prefix pfx, UChar mod_reg_rm, IRExpr* e )
 static
 const HChar* nameIRegG ( Int sz, Prefix pfx, UChar mod_reg_rm )
 {
-   return nameIReg( sz, gregOfRexRM(pfx,mod_reg_rm),
-                        toBool(sz==1 && !haveREX(pfx)) );
+   UInt regNo = gregOfRexRM( pfx, mod_reg_rm );
+   Bool irregular = sz == 1 && !haveREX(pfx) && regNo >= 4 && regNo < 8;
+   return nameIReg( sz, gregOfRexRM(pfx,mod_reg_rm), irregular );
 }
 
 
 static
 IRExpr* getIRegV ( Int sz, Prefix pfx )
 {
+   vassert(sz == 8 || sz == 4);
    if (sz == 4) {
-      sz = 8;
       return unop(Iop_64to32,
-                  IRExpr_Get( offsetIReg( sz, getVexNvvvv(pfx), False ),
-                              szToITy(sz) ));
+                  IRExpr_Get( offsetIReg( 8, getVexNvvvv(pfx), False ),
+                              Ity_I64 ));
+   } else if (sz == 2) {
+      return unop(Iop_64to16,
+                  IRExpr_Get( offsetIReg( 8, getVexNvvvv(pfx), False ),
+                              Ity_I64 ));
    } else {
       return IRExpr_Get( offsetIReg( sz, getVexNvvvv(pfx), False ),
                          szToITy(sz) );
@@ -1359,6 +1417,7 @@ IRExpr* getIRegV ( Int sz, Prefix pfx )
 static
 void putIRegV ( Int sz, Prefix pfx, IRExpr* e )
 {
+   vassert(sz == 8 || sz == 4);
    vassert(typeOfIRExpr(irsb->tyenv,e) == szToITy(sz));
    if (sz == 4) {
       e = unop(Iop_32Uto64,e);
@@ -1369,6 +1428,7 @@ void putIRegV ( Int sz, Prefix pfx, IRExpr* e )
 static
 const HChar* nameIRegV ( Int sz, Prefix pfx )
 {
+   vassert(sz == 8 || sz == 4);
    return nameIReg( sz, getVexNvvvv(pfx), False );
 }
 
@@ -1386,20 +1446,39 @@ static UInt offsetIRegE ( Int sz, Prefix pfx, UChar mod_reg_rm )
    vassert(IS_VALID_PFX(pfx));
    vassert(sz == 8 || sz == 4 || sz == 2 || sz == 1);
    reg = eregOfRexRM( pfx, mod_reg_rm );
-   return offsetIReg( sz, reg, toBool(sz == 1 && !haveREX(pfx)) );
+   Bool irregular = sz == 1 && !haveREX(pfx) && (reg >= 4 && reg < 8);
+   return offsetIReg( sz, reg, irregular );
 }
 
-static 
+static
 IRExpr* getIRegE ( Int sz, Prefix pfx, UChar mod_reg_rm )
 {
-   if (sz == 4) {
-      sz = 8;
-      return unop(Iop_64to32,
-                  IRExpr_Get( offsetIRegE( sz, pfx, mod_reg_rm ),
-                              szToITy(sz) ));
-   } else {
-      return IRExpr_Get( offsetIRegE( sz, pfx, mod_reg_rm ),
-                         szToITy(sz) );
+   switch (sz) {
+      case 8: {
+         return IRExpr_Get( offsetIRegE( 8, pfx, mod_reg_rm ), Ity_I64 );
+      }
+      case 4: {
+         return unop(Iop_64to32,
+                     IRExpr_Get( offsetIRegE( 8, pfx, mod_reg_rm ), Ity_I64 ));
+      }
+      case 2: {
+         return unop(Iop_64to16,
+                     IRExpr_Get( offsetIRegE( 8, pfx, mod_reg_rm ), Ity_I64 ));
+      }
+      case 1: {
+         UInt regNo = eregOfRexRM( pfx, mod_reg_rm );
+         Bool irregular = !haveREX(pfx) && regNo >= 4 && regNo < 8;
+         if (irregular) {
+            return IRExpr_Get( offsetIRegE( 1, pfx, mod_reg_rm ), Ity_I8 );
+         } else {
+            return unop(Iop_64to8,
+                        IRExpr_Get( offsetIRegE( 8, pfx, mod_reg_rm ),
+                        Ity_I64 ));
+         }
+      }
+      default: {
+         vpanic("getIRegE");
+      }
    }
 }
 
@@ -1416,8 +1495,9 @@ void putIRegE ( Int sz, Prefix pfx, UChar mod_reg_rm, IRExpr* e )
 static
 const HChar* nameIRegE ( Int sz, Prefix pfx, UChar mod_reg_rm )
 {
-   return nameIReg( sz, eregOfRexRM(pfx,mod_reg_rm),
-                        toBool(sz==1 && !haveREX(pfx)) );
+   UInt regNo = eregOfRexRM( pfx, mod_reg_rm );
+   Bool irregular = sz == 1 && !haveREX(pfx) && regNo >= 4 && regNo < 8;
+   return nameIReg( sz, eregOfRexRM(pfx,mod_reg_rm), irregular );
 }
 
 
@@ -1451,15 +1531,6 @@ static Int controlGuestRegOffset ( UInt reg )
    }
 }
 
-
-static
-Int offsetControlReg ( UInt reg )
-{
-   vassert(reg == 0 || reg == 2 || reg == 3 || reg == 4 || reg == 8);
-   return controlGuestRegOffset(reg);
-}
-
-
 /* Produce the guest state offset for a reference to the 'g' register */
 
 static UInt offsetControlRegG ( Int sz, Prefix pfx, UChar mod_reg_rm )
@@ -1469,9 +1540,8 @@ static UInt offsetControlRegG ( Int sz, Prefix pfx, UChar mod_reg_rm )
    vassert(IS_VALID_PFX(pfx));
    vassert(sz == 8 || sz == 4);
    reg = gregOfRexRM( pfx, mod_reg_rm );
-   return offsetControlReg( reg);
+   return controlGuestRegOffset( reg );
 }
-
 
 static
 void putControlRegG ( Int sz, Prefix pfx, UChar mod_reg_rm, IRExpr* e )
@@ -1483,37 +1553,37 @@ void putControlRegG ( Int sz, Prefix pfx, UChar mod_reg_rm, IRExpr* e )
    stmt( IRStmt_Put( offsetControlRegG( sz, pfx, mod_reg_rm ), e ) );
 }
 
-
 static
 IRExpr* getControlRegG ( Int sz, Prefix pfx, UChar mod_reg_rm )
 {
    if (sz == 4) {
-      sz = 8;
       return unop(Iop_64to32,
-                  IRExpr_Get( offsetControlRegG( sz, pfx, mod_reg_rm ),
-                              szToITy(sz) ));
+                  IRExpr_Get( offsetControlRegG( 8, pfx, mod_reg_rm ),
+                              Ity_I64 ));
    } else {
       return IRExpr_Get( offsetControlRegG( sz, pfx, mod_reg_rm ),
                          szToITy(sz) );
    }
 }
 
-
-static const HChar* nameControlReg ( Int reg )
+static const HChar* nameControlReg ( UInt reg )
 {
-   static const HChar* control_reg_names[16]
-     = { "%cr0",  "%cr2",  "%cr3",
-         "%cr4",  "%cr8", };
-   if (reg != 0 || reg != 2 || reg != 3 || reg != 4 || reg != 8) vpanic("nameControlReg(amd64)");
-   return control_reg_names[reg];
+   switch (reg) {
+      case R_CR0: return "%cr0";
+      case R_CR2: return "%cr2";
+      case R_CR3: return "%cr3";
+      case R_CR4: return "%cr4";
+      case R_CR8: return "%cr8";
+      default: vpanic("nameControlReg(amd64)");
+   }
 }
-
 
 static
 const HChar* nameControlRegG ( Prefix pfx, UChar mod_reg_rm )
 {
    return nameControlReg( gregOfRexRM(pfx,mod_reg_rm) );
 }
+
 
 /*------------------------------------------------------------*/
 /*--- For dealing with XMM registers                       ---*/
@@ -1670,9 +1740,19 @@ static IRExpr* getYMMRegLane128 ( UInt ymmreg, Int laneno )
    return IRExpr_Get( ymmGuestRegLane128offset(ymmreg,laneno), Ity_V128 );
 }
 
+static IRExpr* getYMMRegLane64F ( UInt ymmreg, Int laneno )
+{
+   return IRExpr_Get( ymmGuestRegLane64offset(ymmreg,laneno), Ity_F64 );
+}
+
 static IRExpr* getYMMRegLane64 ( UInt ymmreg, Int laneno )
 {
    return IRExpr_Get( ymmGuestRegLane64offset(ymmreg,laneno), Ity_I64 );
+}
+
+static IRExpr* getYMMRegLane32F ( UInt ymmreg, Int laneno )
+{
+   return IRExpr_Get( ymmGuestRegLane32offset(ymmreg,laneno), Ity_F32 );
 }
 
 static IRExpr* getYMMRegLane32 ( UInt ymmreg, Int laneno )
@@ -1714,11 +1794,6 @@ static void putYMMRegLane32 ( UInt ymmreg, Int laneno, IRExpr* e )
 {
    vassert(typeOfIRExpr(irsb->tyenv,e) == Ity_I32);
    stmt( IRStmt_Put( ymmGuestRegLane32offset(ymmreg,laneno), e ) );
-}
-
-static IRExpr* mkV128 ( UShort mask )
-{
-   return IRExpr_Const(IRConst_V128(mask));
 }
 
 /* Write the low half of a YMM reg and zero out the upper half. */
@@ -1936,6 +2011,7 @@ void setFlags_DEP1_DEP2 ( IROp op8, IRTemp dep1, IRTemp dep2, IRType ty )
    stmt( IRStmt_Put( OFFB_CC_OP,   mkU64(ccOp)) );
    stmt( IRStmt_Put( OFFB_CC_DEP1, widenUto64(mkexpr(dep1))) );
    stmt( IRStmt_Put( OFFB_CC_DEP2, widenUto64(mkexpr(dep2))) );
+   stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
 }
 
 
@@ -1962,6 +2038,7 @@ void setFlags_DEP1 ( IROp op8, IRTemp dep1, IRType ty )
    stmt( IRStmt_Put( OFFB_CC_OP,   mkU64(ccOp)) );
    stmt( IRStmt_Put( OFFB_CC_DEP1, widenUto64(mkexpr(dep1))) );
    stmt( IRStmt_Put( OFFB_CC_DEP2, mkU64(0)) );
+   stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
 }
 
 
@@ -2013,6 +2090,8 @@ static void setFlags_DEP1_DEP2_shift ( IROp    op64,
                      IRExpr_ITE( mkexpr(guardB),
                                  widenUto64(mkexpr(resUS)),
                                  IRExpr_Get(OFFB_CC_DEP2,Ity_I64) ) ));
+   stmt( IRStmt_Put( OFFB_CC_NDEP,
+                     mkU64(0) ));
 }
 
 
@@ -2065,6 +2144,7 @@ void setFlags_MUL ( IRType ty, IRTemp arg1, IRTemp arg2, ULong base_op )
    }
    stmt( IRStmt_Put( OFFB_CC_DEP1, widenUto64(mkexpr(arg1)) ));
    stmt( IRStmt_Put( OFFB_CC_DEP2, widenUto64(mkexpr(arg2)) ));
+   stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
 }
 
 
@@ -2413,7 +2493,6 @@ static void jmp_lit( /*MOD*/DisResult* dres,
 {
    vassert(dres->whatNext    == Dis_Continue);
    vassert(dres->len         == 0);
-   vassert(dres->continueAt  == 0);
    vassert(dres->jk_StopHere == Ijk_INVALID);
    dres->whatNext    = Dis_StopHere;
    dres->jk_StopHere = kind;
@@ -2425,7 +2504,6 @@ static void jmp_treg( /*MOD*/DisResult* dres,
 {
    vassert(dres->whatNext    == Dis_Continue);
    vassert(dres->len         == 0);
-   vassert(dres->continueAt  == 0);
    vassert(dres->jk_StopHere == Ijk_INVALID);
    dres->whatNext    = Dis_StopHere;
    dres->jk_StopHere = kind;
@@ -2440,7 +2518,6 @@ void jcc_01 ( /*MOD*/DisResult* dres,
    AMD64Condcode condPos;
    vassert(dres->whatNext    == Dis_Continue);
    vassert(dres->len         == 0);
-   vassert(dres->continueAt  == 0);
    vassert(dres->jk_StopHere == Ijk_INVALID);
    dres->whatNext    = Dis_StopHere;
    dres->jk_StopHere = Ijk_Boring;
@@ -2515,12 +2592,11 @@ static
 IRExpr* handleAddrOverrides ( const VexAbiInfo* vbi, 
                               Prefix pfx, IRExpr* virtual )
 {
-
    /* --- address size override --- */
    if (haveASO(pfx))
       virtual = unop(Iop_32Uto64, unop(Iop_64to32, virtual));
 
-  /* Note that the below are hacks that relies on the assumption
+   /* Note that the below are hacks that relies on the assumption
       that %fs or %gs are constant.
       Typically, %fs is always 0x63 on linux (in the main thread, it
       stays at value 0), %gs always 0x60 on Darwin, ... */
@@ -3393,7 +3469,7 @@ ULong dis_op2_G_E ( const VexAbiInfo* vbi,
 
    If E is reg, -->    GET %E,  tmpv
                        PUT tmpv, %G
-
+ 
    If E is mem  -->    (getAddr E) -> tmpa
                        LD (tmpa), tmpb
                        PUT tmpb, %G
@@ -4135,15 +4211,27 @@ ULong dis_Grp8_Imm ( const VexAbiInfo* vbi,
    }
 
    /* Copy relevant bit from t2 into the carry flag. */
-   /* Flags: C=selected bit, O,S,Z,A,P undefined, so are set to zero. */
+   /* Flags: C=selected bit, O,S,A,P undefined, Z unchanged */
+   /* so let's also keep O,S,A,P unchanged */
+   const ULong maskC     = AMD64G_CC_MASK_C;
+   const ULong maskOSZAP = AMD64G_CC_MASK_O | AMD64G_CC_MASK_S
+                           | AMD64G_CC_MASK_Z | AMD64G_CC_MASK_A
+                           | AMD64G_CC_MASK_P;
+
+   IRTemp old_rflags = newTemp(Ity_I64);
+   assign(old_rflags, mk_amd64g_calculate_rflags_all());
+
+   IRTemp new_rflags = newTemp(Ity_I64);
+   assign(new_rflags,
+          binop(Iop_Or64,
+                binop(Iop_And64, mkexpr(old_rflags), mkU64(maskOSZAP)),
+                binop(Iop_And64,
+                                binop(Iop_Shr64, mkexpr(t2), mkU8(src_val)),
+	                            mkU64(maskC)) ));
+
    stmt( IRStmt_Put( OFFB_CC_OP,   mkU64(AMD64G_CC_OP_COPY) ));
    stmt( IRStmt_Put( OFFB_CC_DEP2, mkU64(0) ));
-   stmt( IRStmt_Put( 
-            OFFB_CC_DEP1,
-            binop(Iop_And64,
-                  binop(Iop_Shr64, mkexpr(t2), mkU8(src_val)),
-                  mkU64(1))
-       ));
+   stmt( IRStmt_Put( OFFB_CC_DEP1, mkexpr(new_rflags) ));
    /* Set NDEP even though it isn't used.  This makes redundant-PUT
       elimination of previous stores to this field work better. */
    stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
@@ -5108,14 +5196,14 @@ static IRTemp gen_LZCNT ( IRType ty, IRTemp src )
           binop(Iop_Shl64, mkexpr(src64),
                            mkU8(64 - 8 * sizeofIRType(ty))));
 
-   // Clz64 has undefined semantics when its input is zero, so
-   // special-case around that.
+   /* Guard against 0 input value. Use ClzNat64 operator for all other
+      values */
    IRTemp res64 = newTemp(Ity_I64);
    assign(res64,
           IRExpr_ITE(
              binop(Iop_CmpEQ64, mkexpr(src64x), mkU64(0)),
              mkU64(8 * sizeofIRType(ty)),
-             unop(Iop_Clz64, mkexpr(src64x))
+             unop(Iop_ClzNat64, mkexpr(src64x))
    ));
 
    IRTemp res = newTemp(ty);
@@ -5136,14 +5224,14 @@ static IRTemp gen_TZCNT ( IRType ty, IRTemp src )
    IRTemp src64 = newTemp(Ity_I64);
    assign(src64, widenUto64( mkexpr(src) ));
 
-   // Ctz64 has undefined semantics when its input is zero, so
-   // special-case around that.
+   /* Guard against 0 input value. Use CtzNat64 operator for all other
+      values */
    IRTemp res64 = newTemp(Ity_I64);
    assign(res64,
           IRExpr_ITE(
              binop(Iop_CmpEQ64, mkexpr(src64), mkU64(0)),
              mkU64(8 * sizeofIRType(ty)),
-             unop(Iop_Ctz64, mkexpr(src64))
+             unop(Iop_CtzNat64, mkexpr(src64))
    ));
 
    IRTemp res = newTemp(ty);
@@ -5598,6 +5686,7 @@ static void fp_do_ucomi_ST0_STi ( UInt i, Bool pop_after )
                          binop(Iop_CmpF64, get_ST(0), get_ST(i))),
                    mkU64(0x45)
         )));
+   stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
    if (pop_after)
       fp_pop();
 }
@@ -8166,12 +8255,12 @@ ULong dis_SHLRD_Gv_Ev ( const VexAbiInfo* vbi,
                        binop(Iop_16HLto32, mkexpr(esrc), mkexpr(gsrc))
          ));
          /* result formed by shifting [esrc'gsrc'esrc'gsrc] */
-         assign( res64, 
-                 binop(Iop_Shr64, 
+         assign( res64,
+                 binop(Iop_Shr64,
                        binop(Iop_Shl64, mkexpr(tmp64), mkexpr(tmpSH)),
                        mkU8(48)) );
-         assign( rss64, 
-                 binop(Iop_Shr64, 
+         assign( rss64,
+                 binop(Iop_Shr64,
                        binop(Iop_Shl64, mkexpr(tmp64), mkexpr(tmpSS)),
                        mkU8(48)) );
       }
@@ -8377,27 +8466,34 @@ ULong dis_bt_G_E ( const VexAbiInfo* vbi,
       }
    }
   
-   /* Side effect done; now get selected bit into Carry flag */
-   /* Flags: C=selected bit, Z=unaffected, O,S,A,P undefined */
-   IRTemp old_cc = newTemp(Ity_I64);
-   assign(old_cc, IRExpr_Get(OFFB_CC_DEP1, Ity_I64));
+   /* Side effect done; now get selected bit into Carry flag.  The Intel docs
+      (as of 2015, at least) say that C holds the result, Z is unchanged, and
+      O,S,A and P are undefined.  However, on Skylake it appears that O,S,A,P
+      are also unchanged, so let's do that. */
+   const ULong maskC     = AMD64G_CC_MASK_C;
+   const ULong maskOSZAP = AMD64G_CC_MASK_O | AMD64G_CC_MASK_S
+                           | AMD64G_CC_MASK_Z | AMD64G_CC_MASK_A
+                           | AMD64G_CC_MASK_P;
 
-   IRTemp new_cf = newTemp(Ity_I64);
-   assign(new_cf, binop(Iop_And64,
-                        binop(Iop_Shr64, unop(Iop_8Uto64, mkexpr(t_fetched)),
-                              mkexpr(t_bitno2)),
-                        mkU64(1)));
+   IRTemp old_rflags = newTemp(Ity_I64);
+   assign(old_rflags, mk_amd64g_calculate_rflags_all());
 
-   /* Replace CF but reserve the old flags (for ZF) */
-   IRTemp merged = newTemp(Ity_I64);
-   assign(merged,
+   IRTemp new_rflags = newTemp(Ity_I64);
+   assign(new_rflags,
           binop(Iop_Or64,
-                binop(Iop_And64, mkexpr(old_cc), mkU64(~AMD64G_CC_MASK_C)),
-                mkexpr(new_cf)));
+                binop(Iop_And64, mkexpr(old_rflags), mkU64(maskOSZAP)),
+                binop(Iop_And64,
+                      binop(Iop_Shr64, 
+                            unop(Iop_8Uto64, mkexpr(t_fetched)),
+                            mkexpr(t_bitno2)),
+                      mkU64(maskC))));
 
-   stmt(IRStmt_Put(OFFB_CC_OP, mkU64(AMD64G_CC_OP_COPY)));
-   stmt(IRStmt_Put(OFFB_CC_DEP1, mkexpr(merged)));
-   stmt(IRStmt_Put(OFFB_CC_DEP2, mkU64(0)));
+   stmt( IRStmt_Put( OFFB_CC_OP,   mkU64(AMD64G_CC_OP_COPY) ));
+   stmt( IRStmt_Put( OFFB_CC_DEP2, mkU64(0) ));
+   stmt( IRStmt_Put( OFFB_CC_DEP1, mkexpr(new_rflags) ));
+   /* Set NDEP even though it isn't used.  This makes redundant-PUT
+      elimination of previous stores to this field work better. */
+   stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
 
    /* Move reg operand from stack back to reg */
    if (epartIsReg(modrm)) {
@@ -8482,30 +8578,28 @@ ULong dis_bs_E_G ( const VexAbiInfo* vbi,
       elimination of previous stores to this field work better. */
    stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
 
-   /* Result: iff source value is zero, we can't use
-      Iop_Clz64/Iop_Ctz64 as they have no defined result in that case.
-      But anyway, amd64 semantics say the result is undefined in
-      such situations.  Hence handle the zero case specially. */
+   /* amd64 semantics say the result is undefined iff source value is
+      zero. Hence handle the zero case specially. */
 
    /* Bleh.  What we compute:
 
           bsf64:  if src == 0 then {dst is unchanged} 
-                              else Ctz64(src)
+                              else CtzNat64(src)
 
           bsr64:  if src == 0 then {dst is unchanged} 
-                              else 63 - Clz64(src)
+                              else 63 - ClzNat64(src)
 
           bsf32:  if src == 0 then {dst is unchanged} 
-                              else Ctz64(32Uto64(src))
+                              else CtzNat64(32Uto64(src))
 
           bsr32:  if src == 0 then {dst is unchanged}
-                              else 63 - Clz64(32Uto64(src))
+                              else 63 - ClzNat64(32Uto64(src))
 
           bsf16:  if src == 0 then {dst is unchanged} 
-                              else Ctz64(32Uto64(16Uto32(src)))
+                              else CtzNat64(32Uto64(16Uto32(src)))
 
           bsr16:  if src == 0 then {dst is unchanged} 
-                              else 63 - Clz64(32Uto64(16Uto32(src)))
+                              else 63 - ClzNat64(32Uto64(16Uto32(src)))
    */
 
    /* The main computation, guarding against zero. */
@@ -8513,10 +8607,10 @@ ULong dis_bs_E_G ( const VexAbiInfo* vbi,
            IRExpr_ITE( 
               mkexpr(srcB),
               /* src != 0 */
-              fwds ? unop(Iop_Ctz64, mkexpr(src64))
+              fwds ? unop(Iop_CtzNat64, mkexpr(src64))
                    : binop(Iop_Sub64, 
                            mkU64(63), 
-                           unop(Iop_Clz64, mkexpr(src64))),
+                           unop(Iop_ClzNat64, mkexpr(src64))),
               /* src == 0 -- leave dst unchanged */
               widenUto64( getIRegG( sz, pfx, modrm ) )
            )
@@ -8698,7 +8792,7 @@ ULong dis_cmpxchg_G_E ( /*OUT*/Bool* ok,
       DIP("cmpxchg%c %s,%s\n", nameISize(size),
                                nameIRegG(size,pfx,rm),
                                nameIRegE(size,pfx,rm) );
-   } 
+   }
    else if (!epartIsReg(rm) && !haveLOCK(pfx)) {
       /* case 2 */
       addr = disAMode ( &len, vbi, pfx, delta0, dis_buf, 0 );
@@ -8999,6 +9093,7 @@ void dis_retf ( /*MOD*/DisResult* dres, const VexAbiInfo* vbi, ULong d64 )
    jmp_treg(dres, Ijk_Ret, t2);
    vassert(dres->whatNext == Dis_StopHere);
 }
+
 
 /*------------------------------------------------------------*/
 /*--- SSE/SSE2/SSE3 helpers                                ---*/
@@ -9344,21 +9439,46 @@ static ULong dis_SSEint_E_to_G(
 /* Helper for doing SSE FP comparisons.  False return ==> unhandled.
    This is all a bit of a kludge in that it ignores the subtleties of
    ordered-vs-unordered and signalling-vs-nonsignalling in the Intel
-   spec. */
-static Bool findSSECmpOp ( /*OUT*/Bool* preSwapP,
+   spec.  The meaning of the outputs is as follows:
+
+   preZeroP: the active lanes of both incoming arguments should be set to zero
+      before performing the operation.  IOW the actual args are to be ignored
+      and instead zero bits are to be used.  This is a bit strange but is needed
+      to make the constant-false/true variants (FALSE_OQ, TRUE_UQ, FALSE_OS,
+      TRUE_US) work.
+
+   preSwapP: the args should be swapped before performing the operation.  Note
+     that zeroing arg input sections (per preZeroP) and swapping them (per
+     preSwapP) are allowed to happen in either order; the result is the same.
+
+   opP: this returns the actual comparison op to perform.
+
+   postNotP: if true, the result(ing vector) of the comparison operation should
+     be bitwise-not-ed.  Note that only the lanes of the output actually
+     computed by opP should be not-ed.
+*/
+static Bool findSSECmpOp ( /*OUT*/Bool* preZeroP,
+                           /*OUT*/Bool* preSwapP,
                            /*OUT*/IROp* opP,
                            /*OUT*/Bool* postNotP,
                            UInt imm8, Bool all_lanes, Int sz )
 {
+   vassert(*preZeroP == False);
+   vassert(*preSwapP == False);
+   vassert(*opP == Iop_INVALID);
+   vassert(*postNotP == False);
+
    if (imm8 >= 32) return False;
 
-   /* First, compute a (preSwap, op, postNot) triple from
+   /* First, compute a (preZero, preSwap, op, postNot) quad from
       the supplied imm8. */
-   Bool pre = False;
-   IROp op  = Iop_INVALID;
-   Bool not = False;
+   Bool preZero = False;
+   Bool preSwap = False;
+   IROp op      = Iop_INVALID;
+   Bool postNot = False;
 
-#  define XXX(_pre, _op, _not) { pre = _pre; op = _op; not = _not; }
+#  define XXX(_preZero, _preSwap, _op, _postNot) \
+      { preZero = _preZero; preSwap = _preSwap; op = _op; postNot = _postNot; }
    // If you add a case here, add a corresponding test for both VCMPSD_128
    // and VCMPSS_128 in avx-1.c.
    // Cases 0xA and above are
@@ -9367,57 +9487,59 @@ static Bool findSSECmpOp ( /*OUT*/Bool* preSwapP,
       // "O" = ordered, "U" = unordered
       // "Q" = non-signalling (quiet), "S" = signalling
       //
-      //             swap operands?
+      //             replace active arg lanes in operands with zero
       //             |
-      //             |      cmp op          invert after?
-      //             |      |               |
-      //             v      v               v
-      case 0x0:  XXX(False, Iop_CmpEQ32Fx4, False); break; // EQ_OQ
-      case 0x8:  XXX(False, Iop_CmpEQ32Fx4, False); break; // EQ_UQ
-      case 0x10: XXX(False, Iop_CmpEQ32Fx4, False); break; // EQ_OS
-      case 0x18: XXX(False, Iop_CmpEQ32Fx4, False); break; // EQ_US
+      //             |      swap operands before applying the cmp op?
+      //             |      |
+      //             |      |      cmp op          invert active lanes after?
+      //             |      |      |               |
+      //             v      v      v               v
+      case 0x0:  XXX(False, False, Iop_CmpEQ32Fx4, False); break; // EQ_OQ
+      case 0x8:  XXX(False, False, Iop_CmpEQ32Fx4, False); break; // EQ_UQ
+      case 0x10: XXX(False, False, Iop_CmpEQ32Fx4, False); break; // EQ_OS
+      case 0x18: XXX(False, False, Iop_CmpEQ32Fx4, False); break; // EQ_US
       //
-      case 0x1:  XXX(False, Iop_CmpLT32Fx4, False); break; // LT_OS
-      case 0x11: XXX(False, Iop_CmpLT32Fx4, False); break; // LT_OQ
+      case 0x1:  XXX(False, False, Iop_CmpLT32Fx4, False); break; // LT_OS
+      case 0x11: XXX(False, False, Iop_CmpLT32Fx4, False); break; // LT_OQ
       //
-      case 0x2:  XXX(False, Iop_CmpLE32Fx4, False); break; // LE_OS
-      case 0x12: XXX(False, Iop_CmpLE32Fx4, False); break; // LE_OQ
+      case 0x2:  XXX(False, False, Iop_CmpLE32Fx4, False); break; // LE_OS
+      case 0x12: XXX(False, False, Iop_CmpLE32Fx4, False); break; // LE_OQ
       //
-      case 0x3:  XXX(False, Iop_CmpUN32Fx4, False); break; // UNORD_Q
-      case 0x13: XXX(False, Iop_CmpUN32Fx4, False); break; // UNORD_S
+      case 0x3:  XXX(False, False, Iop_CmpUN32Fx4, False); break; // UNORD_Q
+      case 0x13: XXX(False, False, Iop_CmpUN32Fx4, False); break; // UNORD_S
       //
       // 0xC: this isn't really right because it returns all-1s when
       // either operand is a NaN, and it should return all-0s.
-      case 0x4:  XXX(False, Iop_CmpEQ32Fx4, True);  break; // NEQ_UQ
-      case 0xC:  XXX(False, Iop_CmpEQ32Fx4, True);  break; // NEQ_OQ
-      case 0x14: XXX(False, Iop_CmpEQ32Fx4, True);  break; // NEQ_US
-      case 0x1C: XXX(False, Iop_CmpEQ32Fx4, True);  break; // NEQ_OS
+      case 0x4:  XXX(False, False, Iop_CmpEQ32Fx4, True);  break; // NEQ_UQ
+      case 0xC:  XXX(False, False, Iop_CmpEQ32Fx4, True);  break; // NEQ_OQ
+      case 0x14: XXX(False, False, Iop_CmpEQ32Fx4, True);  break; // NEQ_US
+      case 0x1C: XXX(False, False, Iop_CmpEQ32Fx4, True);  break; // NEQ_OS
       //
-      case 0x5:  XXX(False, Iop_CmpLT32Fx4, True);  break; // NLT_US
-      case 0x15: XXX(False, Iop_CmpLT32Fx4, True);  break; // NLT_UQ
+      case 0x5:  XXX(False, False, Iop_CmpLT32Fx4, True);  break; // NLT_US
+      case 0x15: XXX(False, False, Iop_CmpLT32Fx4, True);  break; // NLT_UQ
       //
-      case 0x6:  XXX(False, Iop_CmpLE32Fx4, True);  break; // NLE_US
-      case 0x16: XXX(False, Iop_CmpLE32Fx4, True);  break; // NLE_UQ
+      case 0x6:  XXX(False, False, Iop_CmpLE32Fx4, True);  break; // NLE_US
+      case 0x16: XXX(False, False, Iop_CmpLE32Fx4, True);  break; // NLE_UQ
       //
-      case 0x7:  XXX(False, Iop_CmpUN32Fx4, True);  break; // ORD_Q
-      case 0x17: XXX(False, Iop_CmpUN32Fx4, True);  break; // ORD_S
+      case 0x7:  XXX(False, False, Iop_CmpUN32Fx4, True);  break; // ORD_Q
+      case 0x17: XXX(False, False, Iop_CmpUN32Fx4, True);  break; // ORD_S
       //
-      case 0x9:  XXX(True,  Iop_CmpLE32Fx4, True);  break; // NGE_US
-      case 0x19: XXX(True,  Iop_CmpLE32Fx4, True);  break; // NGE_UQ
+      case 0x9:  XXX(False, True,  Iop_CmpLE32Fx4, True);  break; // NGE_US
+      case 0x19: XXX(False, True,  Iop_CmpLE32Fx4, True);  break; // NGE_UQ
       //
-      case 0xA:  XXX(True,  Iop_CmpLT32Fx4, True);  break; // NGT_US
-      case 0x1A: XXX(True,  Iop_CmpLT32Fx4, True);  break; // NGT_UQ
+      case 0xA:  XXX(False, True,  Iop_CmpLT32Fx4, True);  break; // NGT_US
+      case 0x1A: XXX(False, True,  Iop_CmpLT32Fx4, True);  break; // NGT_UQ
       //
-      case 0xD:  XXX(True,  Iop_CmpLE32Fx4, False); break; // GE_OS
-      case 0x1D: XXX(True,  Iop_CmpLE32Fx4, False); break; // GE_OQ
+      case 0xD:  XXX(False, True,  Iop_CmpLE32Fx4, False); break; // GE_OS
+      case 0x1D: XXX(False, True,  Iop_CmpLE32Fx4, False); break; // GE_OQ
       //
-      case 0xE:  XXX(True,  Iop_CmpLT32Fx4, False); break; // GT_OS
-      case 0x1E: XXX(True,  Iop_CmpLT32Fx4, False); break; // GT_OQ
-      // Unhandled:
-      // 0xB  FALSE_OQ
-      // 0xF  TRUE_UQ
-      // 0x1B  FALSE_OS
-      // 0x1F  TRUE_US
+      case 0xE:  XXX(False, True,  Iop_CmpLT32Fx4, False); break; // GT_OS
+      case 0x1E: XXX(False, True,  Iop_CmpLT32Fx4, False); break; // GT_OQ
+      // Constant-value-result ops
+      case 0xB:  XXX(True,  False, Iop_CmpEQ32Fx4, True);  break; // FALSE_OQ
+      case 0xF:  XXX(True,  False, Iop_CmpEQ32Fx4, False); break; // TRUE_UQ
+      case 0x1B: XXX(True,  False, Iop_CmpEQ32Fx4, True);  break; // FALSE_OS
+      case 0x1F: XXX(True,  False, Iop_CmpEQ32Fx4, False); break; // TRUE_US
       /* Don't forget to add test cases to VCMPSS_128_<imm8> in
          avx-1.c if new cases turn up. */
       default: break;
@@ -9468,7 +9590,11 @@ static Bool findSSECmpOp ( /*OUT*/Bool* preSwapP,
       vpanic("findSSECmpOp(amd64,guest)");
    }
 
-   *preSwapP = pre; *opP = op; *postNotP = not;
+   if (preZero) {
+      // In this case, preSwap is irrelevant, but assert anyway.
+      vassert(preSwap == False);
+   }
+   *preZeroP = preZero; *preSwapP = preSwap; *opP = op; *postNotP = postNot;
    return True;
 }
 
@@ -9485,6 +9611,7 @@ static Long dis_SSE_cmp_E_to_G ( const VexAbiInfo* vbi,
    Int     alen;
    UInt    imm8;
    IRTemp  addr;
+   Bool    preZero = False;
    Bool    preSwap = False;
    IROp    op      = Iop_INVALID;
    Bool    postNot = False;
@@ -9495,8 +9622,10 @@ static Long dis_SSE_cmp_E_to_G ( const VexAbiInfo* vbi,
    if (epartIsReg(rm)) {
       imm8 = getUChar(delta+1);
       if (imm8 >= 8) return delta0; /* FAIL */
-      Bool ok = findSSECmpOp(&preSwap, &op, &postNot, imm8, all_lanes, sz);
+      Bool ok = findSSECmpOp(&preZero, &preSwap, &op, &postNot,
+                             imm8, all_lanes, sz);
       if (!ok) return delta0; /* FAIL */
+      vassert(!preZero); /* never needed for imm8 < 8 */
       vassert(!preSwap); /* never needed for imm8 < 8 */
       assign( plain, binop(op, getXMMReg(gregOfRexRM(pfx,rm)), 
                                getXMMReg(eregOfRexRM(pfx,rm))) );
@@ -9509,8 +9638,10 @@ static Long dis_SSE_cmp_E_to_G ( const VexAbiInfo* vbi,
       addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 1 );
       imm8 = getUChar(delta+alen);
       if (imm8 >= 8) return delta0; /* FAIL */
-      Bool ok = findSSECmpOp(&preSwap, &op, &postNot, imm8, all_lanes, sz);
+      Bool ok = findSSECmpOp(&preZero, &preSwap, &op, &postNot,
+                             imm8, all_lanes, sz);
       if (!ok) return delta0; /* FAIL */
+      vassert(!preZero); /* never needed for imm8 < 8 */
       vassert(!preSwap); /* never needed for imm8 < 8 */
       assign( plain, 
               binop(
@@ -10140,37 +10271,42 @@ static IRTemp math_PALIGNR_XMM ( IRTemp sV, IRTemp dV, UInt imm8 )
    return res;
 }
 
-
 /* Generate a SIGSEGV followed by a restart of the current instruction
    if effective_addr is not 16-aligned.  This is required behaviour
    for some SSE3 instructions and all 128-bit SSSE3 instructions.
-   This assumes that guest_RIP_curr_instr is set correctly! */
+   This assumes that guest_RIP_curr_instr is set correctly!
+   On FreeBSD, this kind of error generates a SIGBUS. */
 static
-void gen_SEGV_if_not_XX_aligned ( IRTemp effective_addr, ULong mask )
+void gen_SIGNAL_if_not_XX_aligned ( const VexAbiInfo* vbi,
+                                    IRTemp effective_addr, ULong mask )
 {
    stmt(
       IRStmt_Exit(
          binop(Iop_CmpNE64,
                binop(Iop_And64,mkexpr(effective_addr),mkU64(mask)),
                mkU64(0)),
-         Ijk_SigSEGV,
+         vbi->guest_amd64_sigbus_on_misalign ? Ijk_SigBUS : Ijk_SigSEGV,
          IRConst_U64(guest_RIP_curr_instr),
          OFFB_RIP
       )
    );
 }
 
-static void gen_SEGV_if_not_16_aligned ( IRTemp effective_addr ) {
-   gen_SEGV_if_not_XX_aligned(effective_addr, 16-1);
+static void gen_SIGNAL_if_not_16_aligned ( const VexAbiInfo* vbi,
+                                           IRTemp effective_addr ) {
+   gen_SIGNAL_if_not_XX_aligned(vbi, effective_addr, 16-1);
 }
 
-static void gen_SEGV_if_not_32_aligned ( IRTemp effective_addr ) {
-   gen_SEGV_if_not_XX_aligned(effective_addr, 32-1);
+static void gen_SIGNAL_if_not_32_aligned ( const VexAbiInfo* vbi,
+                                           IRTemp effective_addr ) {
+   gen_SIGNAL_if_not_XX_aligned(vbi, effective_addr, 32-1);
 }
 
-static void gen_SEGV_if_not_64_aligned ( IRTemp effective_addr ) {
-   gen_SEGV_if_not_XX_aligned(effective_addr, 64-1);
+static void gen_SIGNAL_if_not_64_aligned ( const VexAbiInfo* vbi,
+                                           IRTemp effective_addr ) {
+   gen_SIGNAL_if_not_XX_aligned(vbi, effective_addr, 64-1);
 }
+
 
 /* Helper for deciding whether a given insn (starting at the opcode
    byte) may validly be used with a LOCK prefix.  The following insns
@@ -10347,6 +10483,7 @@ static Long dis_COMISD ( const VexAbiInfo* vbi, Prefix pfx,
                          binop(Iop_CmpF64, mkexpr(argL), mkexpr(argR)) ),
                    mkU64(0x45)
        )));
+   stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
    return delta;
 }
 
@@ -10392,6 +10529,7 @@ static Long dis_COMISS ( const VexAbiInfo* vbi, Prefix pfx,
                                unop(Iop_F32toF64,mkexpr(argR)))),
                    mkU64(0x45)
        )));
+   stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
    return delta;
 }
 
@@ -10808,7 +10946,6 @@ static Long dis_CVTxPS2DQ_128 ( const VexAbiInfo* vbi, Prefix pfx,
    IRTemp argV  = newTemp(Ity_V128);
    IRTemp rmode = newTemp(Ity_I32);
    UInt   rG    = gregOfRexRM(pfx,modrm);
-   IRTemp t0, t1, t2, t3;
 
    if (epartIsReg(modrm)) {
       UInt rE = eregOfRexRM(pfx,modrm);
@@ -10826,21 +10963,7 @@ static Long dis_CVTxPS2DQ_128 ( const VexAbiInfo* vbi, Prefix pfx,
 
    assign( rmode, r2zero ? mkU32((UInt)Irrm_ZERO)
                          : get_sse_roundingmode() );
-   t0 = t1 = t2 = t3 = IRTemp_INVALID;
-   breakupV128to32s( argV, &t3, &t2, &t1, &t0 );
-   /* This is less than ideal.  If it turns out to be a performance
-      bottleneck it can be improved. */
-#  define CVT(_t)                             \
-      binop( Iop_F64toI32S,                   \
-             mkexpr(rmode),                   \
-             unop( Iop_F32toF64,              \
-                   unop( Iop_ReinterpI32asF32, mkexpr(_t))) )
-      
-   putXMMRegLane32( rG, 3, CVT(t3) );
-   putXMMRegLane32( rG, 2, CVT(t2) );
-   putXMMRegLane32( rG, 1, CVT(t1) );
-   putXMMRegLane32( rG, 0, CVT(t0) );
-#  undef CVT
+   putXMMReg( rG, binop(Iop_F32toI32Sx4, mkexpr(rmode), mkexpr(argV)) );
    if (isAvx)
       putYMMRegLane128( rG, 1, mkV128(0) );
 
@@ -10858,7 +10981,6 @@ static Long dis_CVTxPS2DQ_256 ( const VexAbiInfo* vbi, Prefix pfx,
    IRTemp argV  = newTemp(Ity_V256);
    IRTemp rmode = newTemp(Ity_I32);
    UInt   rG    = gregOfRexRM(pfx,modrm);
-   IRTemp t0, t1, t2, t3, t4, t5, t6, t7;
 
    if (epartIsReg(modrm)) {
       UInt rE = eregOfRexRM(pfx,modrm);
@@ -10876,26 +10998,7 @@ static Long dis_CVTxPS2DQ_256 ( const VexAbiInfo* vbi, Prefix pfx,
 
    assign( rmode, r2zero ? mkU32((UInt)Irrm_ZERO)
                          : get_sse_roundingmode() );
-   t0 = t1 = t2 = t3 = t4 = t5 = t6 = t7 = IRTemp_INVALID;
-   breakupV256to32s( argV, &t7, &t6, &t5, &t4, &t3, &t2, &t1, &t0 );
-   /* This is less than ideal.  If it turns out to be a performance
-      bottleneck it can be improved. */
-#  define CVT(_t)                             \
-      binop( Iop_F64toI32S,                   \
-             mkexpr(rmode),                   \
-             unop( Iop_F32toF64,              \
-                   unop( Iop_ReinterpI32asF32, mkexpr(_t))) )
-      
-   putYMMRegLane32( rG, 7, CVT(t7) );
-   putYMMRegLane32( rG, 6, CVT(t6) );
-   putYMMRegLane32( rG, 5, CVT(t5) );
-   putYMMRegLane32( rG, 4, CVT(t4) );
-   putYMMRegLane32( rG, 3, CVT(t3) );
-   putYMMRegLane32( rG, 2, CVT(t2) );
-   putYMMRegLane32( rG, 1, CVT(t1) );
-   putYMMRegLane32( rG, 0, CVT(t0) );
-#  undef CVT
-
+   putYMMReg( rG,  binop(Iop_F32toI32Sx8, mkexpr(rmode), mkexpr(argV)) );
    return delta;
 }
 
@@ -11019,7 +11122,6 @@ static Long dis_CVTDQ2PS_128 ( const VexAbiInfo* vbi, Prefix pfx,
    IRTemp argV  = newTemp(Ity_V128);
    IRTemp rmode = newTemp(Ity_I32);
    UInt   rG    = gregOfRexRM(pfx,modrm);
-   IRTemp t0, t1, t2, t3;
 
    if (epartIsReg(modrm)) {
       UInt rE = eregOfRexRM(pfx,modrm);
@@ -11036,21 +11138,8 @@ static Long dis_CVTDQ2PS_128 ( const VexAbiInfo* vbi, Prefix pfx,
    }
 
    assign( rmode, get_sse_roundingmode() );
-   t0 = IRTemp_INVALID;
-   t1 = IRTemp_INVALID;
-   t2 = IRTemp_INVALID;
-   t3 = IRTemp_INVALID;
-   breakupV128to32s( argV, &t3, &t2, &t1, &t0 );
+   putXMMReg(rG, binop(Iop_I32StoF32x4, mkexpr(rmode), mkexpr(argV)));
 
-#  define CVT(_t)  binop( Iop_F64toF32,                    \
-                          mkexpr(rmode),                   \
-                          unop(Iop_I32StoF64,mkexpr(_t)))
-      
-   putXMMRegLane32F( rG, 3, CVT(t3) );
-   putXMMRegLane32F( rG, 2, CVT(t2) );
-   putXMMRegLane32F( rG, 1, CVT(t1) );
-   putXMMRegLane32F( rG, 0, CVT(t0) );
-#  undef CVT
    if (isAvx)
       putYMMRegLane128( rG, 1, mkV128(0) );
 
@@ -11067,7 +11156,6 @@ static Long dis_CVTDQ2PS_256 ( const VexAbiInfo* vbi, Prefix pfx,
    IRTemp argV   = newTemp(Ity_V256);
    IRTemp rmode  = newTemp(Ity_I32);
    UInt   rG     = gregOfRexRM(pfx,modrm);
-   IRTemp t0, t1, t2, t3, t4, t5, t6, t7;
 
    if (epartIsReg(modrm)) {
       UInt rE = eregOfRexRM(pfx,modrm);
@@ -11082,29 +11170,7 @@ static Long dis_CVTDQ2PS_256 ( const VexAbiInfo* vbi, Prefix pfx,
    }
 
    assign( rmode, get_sse_roundingmode() );
-   t0 = IRTemp_INVALID;
-   t1 = IRTemp_INVALID;
-   t2 = IRTemp_INVALID;
-   t3 = IRTemp_INVALID;
-   t4 = IRTemp_INVALID;
-   t5 = IRTemp_INVALID;
-   t6 = IRTemp_INVALID;
-   t7 = IRTemp_INVALID;
-   breakupV256to32s( argV, &t7, &t6, &t5, &t4, &t3, &t2, &t1, &t0 );
-
-#  define CVT(_t)  binop( Iop_F64toF32,                    \
-                          mkexpr(rmode),                   \
-                          unop(Iop_I32StoF64,mkexpr(_t)))
-      
-   putYMMRegLane32F( rG, 7, CVT(t7) );
-   putYMMRegLane32F( rG, 6, CVT(t6) );
-   putYMMRegLane32F( rG, 5, CVT(t5) );
-   putYMMRegLane32F( rG, 4, CVT(t4) );
-   putYMMRegLane32F( rG, 3, CVT(t3) );
-   putYMMRegLane32F( rG, 2, CVT(t2) );
-   putYMMRegLane32F( rG, 1, CVT(t1) );
-   putYMMRegLane32F( rG, 0, CVT(t0) );
-#  undef CVT
+   putYMMReg(rG, binop(Iop_I32StoF32x8, mkexpr(rmode), mkexpr(argV)));
 
    return delta;
 }
@@ -11303,30 +11369,6 @@ static IRTemp math_SHUFPD_256 ( IRTemp sV, IRTemp dV, UInt imm8 )
 }
 
 
-static IRTemp math_BLENDPD_128 ( IRTemp sV, IRTemp dV, UInt imm8 )
-{
-   UShort imm8_mask_16;
-   IRTemp imm8_mask = newTemp(Ity_V128);
-
-   switch( imm8 & 3 ) {
-      case 0:  imm8_mask_16 = 0x0000; break;
-      case 1:  imm8_mask_16 = 0x00FF; break;
-      case 2:  imm8_mask_16 = 0xFF00; break;
-      case 3:  imm8_mask_16 = 0xFFFF; break;
-      default: vassert(0);            break;
-   }
-   assign( imm8_mask, mkV128( imm8_mask_16 ) );
-
-   IRTemp res = newTemp(Ity_V128);
-   assign ( res, binop( Iop_OrV128, 
-                        binop( Iop_AndV128, mkexpr(sV),
-                                            mkexpr(imm8_mask) ), 
-                        binop( Iop_AndV128, mkexpr(dV), 
-                               unop( Iop_NotV128, mkexpr(imm8_mask) ) ) ) );
-   return res;
-}
-
-
 static IRTemp math_BLENDPD_256 ( IRTemp sV, IRTemp dV, UInt imm8 )
 {
    IRTemp sVhi = IRTemp_INVALID, sVlo = IRTemp_INVALID;
@@ -11340,26 +11382,6 @@ static IRTemp math_BLENDPD_256 ( IRTemp sV, IRTemp dV, UInt imm8 )
    return rV;
 }
 
-
-static IRTemp math_BLENDPS_128 ( IRTemp sV, IRTemp dV, UInt imm8 )
-{
-   UShort imm8_perms[16] = { 0x0000, 0x000F, 0x00F0, 0x00FF, 0x0F00,
-                             0x0F0F, 0x0FF0, 0x0FFF, 0xF000, 0xF00F,
-                             0xF0F0, 0xF0FF, 0xFF00, 0xFF0F, 0xFFF0,
-                             0xFFFF };
-   IRTemp imm8_mask = newTemp(Ity_V128);
-   assign( imm8_mask, mkV128( imm8_perms[ (imm8 & 15) ] ) );
-
-   IRTemp res = newTemp(Ity_V128);
-   assign ( res, binop( Iop_OrV128,
-                        binop( Iop_AndV128, mkexpr(sV), 
-                                            mkexpr(imm8_mask) ),
-                        binop( Iop_AndV128, mkexpr(dV),
-                               unop( Iop_NotV128, mkexpr(imm8_mask) ) ) ) );
-   return res;
-}
-
-
 static IRTemp math_BLENDPS_256 ( IRTemp sV, IRTemp dV, UInt imm8 )
 {
    IRTemp sVhi = IRTemp_INVALID, sVlo = IRTemp_INVALID;
@@ -11371,29 +11393,6 @@ static IRTemp math_BLENDPS_256 ( IRTemp sV, IRTemp dV, UInt imm8 )
    IRTemp rV   = newTemp(Ity_V256);
    assign(rV, binop(Iop_V128HLtoV256, mkexpr(rVhi), mkexpr(rVlo)));
    return rV;
-}
-
-
-static IRTemp math_PBLENDW_128 ( IRTemp sV, IRTemp dV, UInt imm8 )
-{
-   /* Make w be a 16-bit version of imm8, formed by duplicating each
-      bit in imm8. */
-   Int i;
-   UShort imm16 = 0;
-   for (i = 0; i < 8; i++) {
-      if (imm8 & (1 << i))
-         imm16 |= (3 << (2*i));
-   }
-   IRTemp imm16_mask = newTemp(Ity_V128);
-   assign( imm16_mask, mkV128( imm16 ));
-
-   IRTemp res = newTemp(Ity_V128);
-   assign ( res, binop( Iop_OrV128,
-                        binop( Iop_AndV128, mkexpr(sV), 
-                                            mkexpr(imm16_mask) ),
-                        binop( Iop_AndV128, mkexpr(dV),
-                               unop( Iop_NotV128, mkexpr(imm16_mask) ) ) ) );
-   return res;
 }
 
 
@@ -11994,7 +11993,7 @@ static Long dis_XSAVE ( const VexAbiInfo* vbi,
 
    addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
    delta += alen;
-   gen_SEGV_if_not_64_aligned(addr);
+   gen_SIGNAL_if_not_64_aligned(vbi, addr);
 
    DIP("%sxsave %s\n", sz==8 ? "rex64/" : "", dis_buf);
 
@@ -12038,7 +12037,7 @@ static Long dis_FXSAVE ( const VexAbiInfo* vbi,
 
    addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
    delta += alen;
-   gen_SEGV_if_not_16_aligned(addr);
+   gen_SIGNAL_if_not_16_aligned(vbi, addr);
 
    DIP("%sfxsave %s\n", sz==8 ? "rex64/" : "", dis_buf);
 
@@ -12249,7 +12248,7 @@ static Long dis_XRSTOR ( const VexAbiInfo* vbi,
 
    addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
    delta += alen;
-   gen_SEGV_if_not_64_aligned(addr);
+   gen_SIGNAL_if_not_64_aligned(vbi, addr);
 
    DIP("%sxrstor %s\n", sz==8 ? "rex64/" : "", dis_buf);
 
@@ -12319,7 +12318,7 @@ static Long dis_FXRSTOR ( const VexAbiInfo* vbi,
 
    addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
    delta += alen;
-   gen_SEGV_if_not_16_aligned(addr);
+   gen_SIGNAL_if_not_16_aligned(vbi, addr);
 
    DIP("%sfxrstor %s\n", sz==8 ? "rex64/" : "", dis_buf);
 
@@ -12338,7 +12337,7 @@ static Long dis_FXRSTOR ( const VexAbiInfo* vbi,
 
 static IRTemp math_PINSRW_128 ( IRTemp v128, IRTemp u16, UInt imm8 )
 {
-   vassert(imm8 >= 0 && imm8 <= 7);
+   vassert(imm8 <= 7);
 
    // Create a V128 value which has the selected word in the
    // specified lane, and zeroes everywhere else.
@@ -13025,7 +13024,7 @@ Long dis_ESC_0F__SSE2 ( Bool* decode_OK,
             delta += 1;
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             putXMMReg( gregOfRexRM(pfx,modrm), 
                        loadLE(Ity_V128, mkexpr(addr)) );
             DIP("movapd %s,%s\n", dis_buf,
@@ -13046,7 +13045,7 @@ Long dis_ESC_0F__SSE2 ( Bool* decode_OK,
             delta += 1;
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             putXMMReg( gregOfRexRM(pfx,modrm), 
                        loadLE(Ity_V128, mkexpr(addr)) );
             DIP("movaps %s,%s\n", dis_buf,
@@ -13070,7 +13069,7 @@ Long dis_ESC_0F__SSE2 ( Bool* decode_OK,
             delta += 1;
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             storeLE( mkexpr(addr), getXMMReg(gregOfRexRM(pfx,modrm)) );
             DIP("movaps %s,%s\n", nameXMMReg(gregOfRexRM(pfx,modrm)),
                                   dis_buf );
@@ -13090,7 +13089,7 @@ Long dis_ESC_0F__SSE2 ( Bool* decode_OK,
             delta += 1;
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             storeLE( mkexpr(addr), getXMMReg(gregOfRexRM(pfx,modrm)) );
             DIP("movapd %s,%s\n", nameXMMReg(gregOfRexRM(pfx,modrm)),
                                   dis_buf );
@@ -13288,7 +13287,7 @@ Long dis_ESC_0F__SSE2 ( Bool* decode_OK,
          modrm = getUChar(delta);
          if (!epartIsReg(modrm)) {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             storeLE( mkexpr(addr), getXMMReg(gregOfRexRM(pfx,modrm)) );
             DIP("movntp%s %s,%s\n", sz==2 ? "d" : "s",
                                     dis_buf,
@@ -14033,7 +14032,7 @@ Long dis_ESC_0F__SSE2 ( Bool* decode_OK,
             delta += 1;
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             putXMMReg( gregOfRexRM(pfx,modrm), 
                        loadLE(Ity_V128, mkexpr(addr)) );
             DIP("movdqa %s,%s\n", dis_buf,
@@ -14042,7 +14041,8 @@ Long dis_ESC_0F__SSE2 ( Bool* decode_OK,
          }
          goto decode_success;
       }
-      if (haveF3no66noF2(pfx) && sz == 4) {
+      if (haveF3no66noF2(pfx)
+          && (sz == 4 || /* ignore redundant REX.W */ sz == 8)) {
          /* F3 0F 6F = MOVDQU -- move from E (mem or xmm) to G (xmm). */
          modrm = getUChar(delta);
          if (epartIsReg(modrm)) {
@@ -14209,7 +14209,7 @@ Long dis_ESC_0F__SSE2 ( Bool* decode_OK,
          goto decode_success;
       }
       /* 66 0F 73 /6 ib = PSLLQ by immediate */
-      if (have66noF2noF3(pfx) && sz == 2 
+      if (have66noF2noF3(pfx) && (sz == 2 || /* ignore redundant REX.W */ sz == 8)
           && epartIsReg(getUChar(delta))
           && gregLO3ofRM(getUChar(delta)) == 6) {
          delta = dis_SSE_shiftE_imm( pfx, delta, "psllq", Iop_ShlN64x2 );
@@ -14303,7 +14303,8 @@ Long dis_ESC_0F__SSE2 ( Bool* decode_OK,
 
    case 0x7F:
       /* F3 0F 7F = MOVDQU -- move from G (xmm) to E (mem or xmm). */
-      if (haveF3no66noF2(pfx) && sz == 4) {
+      if (haveF3no66noF2(pfx)
+          && (sz == 4 || /* ignore redundant REX.W */ sz == 8)) {
          modrm = getUChar(delta);
          if (epartIsReg(modrm)) {
             goto decode_failure; /* awaiting test case */
@@ -14331,7 +14332,7 @@ Long dis_ESC_0F__SSE2 ( Bool* decode_OK,
                                    nameXMMReg(eregOfRexRM(pfx,modrm)));
          } else {
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             delta += alen;
             storeLE( mkexpr(addr), getXMMReg(gregOfRexRM(pfx,modrm)) );
             DIP("movdqa %s, %s\n", nameXMMReg(gregOfRexRM(pfx,modrm)), dis_buf);
@@ -15012,7 +15013,7 @@ Long dis_ESC_0F__SSE2 ( Bool* decode_OK,
          modrm = getUChar(delta);
          if (!epartIsReg(modrm)) {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             storeLE( mkexpr(addr), getXMMReg(gregOfRexRM(pfx,modrm)) );
             DIP("movntdq %s,%s\n", dis_buf,
                                    nameXMMReg(gregOfRexRM(pfx,modrm)));
@@ -15439,7 +15440,7 @@ static Long dis_MOVSxDUP_128 ( const VexAbiInfo* vbi, Prefix pfx,
    } else {
       addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
       if (!isAvx)
-         gen_SEGV_if_not_16_aligned( addr );
+         gen_SIGNAL_if_not_16_aligned( vbi, addr );
       assign( sV, loadLE(Ity_V128, mkexpr(addr)) );
       DIP("%smovs%cdup %s,%s\n",
           isAvx ? "v" : "", isL ? 'l' : 'h', dis_buf, nameXMMReg(rG));
@@ -15720,90 +15721,16 @@ Long dis_ESC_0F__SSE3 ( Bool* decode_OK,
 static
 IRTemp math_PSHUFB_XMM ( IRTemp dV/*data to perm*/, IRTemp sV/*perm*/ )
 {
-   IRTemp sHi        = newTemp(Ity_I64);
-   IRTemp sLo        = newTemp(Ity_I64);
-   IRTemp dHi        = newTemp(Ity_I64);
-   IRTemp dLo        = newTemp(Ity_I64);
-   IRTemp rHi        = newTemp(Ity_I64);
-   IRTemp rLo        = newTemp(Ity_I64);
-   IRTemp sevens     = newTemp(Ity_I64);
-   IRTemp mask0x80hi = newTemp(Ity_I64);
-   IRTemp mask0x80lo = newTemp(Ity_I64);
-   IRTemp maskBit3hi = newTemp(Ity_I64);
-   IRTemp maskBit3lo = newTemp(Ity_I64);
-   IRTemp sAnd7hi    = newTemp(Ity_I64);
-   IRTemp sAnd7lo    = newTemp(Ity_I64);
-   IRTemp permdHi    = newTemp(Ity_I64);
-   IRTemp permdLo    = newTemp(Ity_I64);
-   IRTemp res        = newTemp(Ity_V128);
-
-   assign( dHi, unop(Iop_V128HIto64, mkexpr(dV)) );
-   assign( dLo, unop(Iop_V128to64,   mkexpr(dV)) );
-   assign( sHi, unop(Iop_V128HIto64, mkexpr(sV)) );
-   assign( sLo, unop(Iop_V128to64,   mkexpr(sV)) );
-
-   assign( sevens, mkU64(0x0707070707070707ULL) );
-
-   /* mask0x80hi = Not(SarN8x8(sHi,7))
-      maskBit3hi = SarN8x8(ShlN8x8(sHi,4),7)
-      sAnd7hi    = And(sHi,sevens)
-      permdHi    = Or( And(Perm8x8(dHi,sAnd7hi),maskBit3hi),
-      And(Perm8x8(dLo,sAnd7hi),Not(maskBit3hi)) )
-      rHi        = And(permdHi,mask0x80hi)
-   */
-   assign(
-      mask0x80hi,
-      unop(Iop_Not64, binop(Iop_SarN8x8,mkexpr(sHi),mkU8(7))));
-
-   assign(
-      maskBit3hi,
-      binop(Iop_SarN8x8,
-            binop(Iop_ShlN8x8,mkexpr(sHi),mkU8(4)),
-            mkU8(7)));
-
-   assign(sAnd7hi, binop(Iop_And64,mkexpr(sHi),mkexpr(sevens)));
-
-   assign(
-      permdHi,
-      binop(
-         Iop_Or64,
-         binop(Iop_And64,
-               binop(Iop_Perm8x8,mkexpr(dHi),mkexpr(sAnd7hi)),
-               mkexpr(maskBit3hi)),
-         binop(Iop_And64,
-               binop(Iop_Perm8x8,mkexpr(dLo),mkexpr(sAnd7hi)),
-               unop(Iop_Not64,mkexpr(maskBit3hi))) ));
-
-   assign(rHi, binop(Iop_And64,mkexpr(permdHi),mkexpr(mask0x80hi)) );
-
-   /* And the same for the lower half of the result.  What fun. */
-
-   assign(
-      mask0x80lo,
-      unop(Iop_Not64, binop(Iop_SarN8x8,mkexpr(sLo),mkU8(7))));
-
-   assign(
-      maskBit3lo,
-      binop(Iop_SarN8x8,
-            binop(Iop_ShlN8x8,mkexpr(sLo),mkU8(4)),
-            mkU8(7)));
-
-   assign(sAnd7lo, binop(Iop_And64,mkexpr(sLo),mkexpr(sevens)));
-
-   assign(
-      permdLo,
-      binop(
-         Iop_Or64,
-         binop(Iop_And64,
-               binop(Iop_Perm8x8,mkexpr(dHi),mkexpr(sAnd7lo)),
-               mkexpr(maskBit3lo)),
-         binop(Iop_And64,
-               binop(Iop_Perm8x8,mkexpr(dLo),mkexpr(sAnd7lo)),
-               unop(Iop_Not64,mkexpr(maskBit3lo))) ));
-
-   assign(rLo, binop(Iop_And64,mkexpr(permdLo),mkexpr(mask0x80lo)) );
-
-   assign(res, binop(Iop_64HLtoV128, mkexpr(rHi), mkexpr(rLo)));
+   IRTemp halfMask = newTemp(Ity_I64);
+   assign(halfMask, mkU64(0x8F8F8F8F8F8F8F8FULL));
+   IRExpr* mask = binop(Iop_64HLtoV128, mkexpr(halfMask), mkexpr(halfMask));
+   IRTemp res = newTemp(Ity_V128);
+   assign(res,
+          binop(Iop_PermOrZero8x16,
+                mkexpr(dV),
+                // Mask off bits [6:3] of each source operand lane
+                binop(Iop_AndV128, mkexpr(sV), mask)
+   ));
    return res;
 }
 
@@ -15868,7 +15795,7 @@ static Long dis_PHADD_128 ( const VexAbiInfo* vbi, Prefix pfx, Long delta,
    } else {
       addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
       if (!isAvx)
-         gen_SEGV_if_not_16_aligned( addr );
+         gen_SIGNAL_if_not_16_aligned( vbi, addr );
       assign( sV, loadLE(Ity_V128, mkexpr(addr)) );
       DIP("%sph%s %s,%s\n", isAvx ? "v" : "", str,
           dis_buf, nameXMMReg(rG));
@@ -15972,26 +15899,8 @@ static Long dis_PHADD_256 ( const VexAbiInfo* vbi, Prefix pfx, Long delta,
 
 static IRTemp math_PMADDUBSW_128 ( IRTemp dV, IRTemp sV )
 {
-   IRTemp sVoddsSX  = newTemp(Ity_V128);
-   IRTemp sVevensSX = newTemp(Ity_V128);
-   IRTemp dVoddsZX  = newTemp(Ity_V128);
-   IRTemp dVevensZX = newTemp(Ity_V128);
-   /* compute dV unsigned x sV signed */
-   assign( sVoddsSX, binop(Iop_SarN16x8, mkexpr(sV), mkU8(8)) );
-   assign( sVevensSX, binop(Iop_SarN16x8, 
-                            binop(Iop_ShlN16x8, mkexpr(sV), mkU8(8)),
-                            mkU8(8)) );
-   assign( dVoddsZX, binop(Iop_ShrN16x8, mkexpr(dV), mkU8(8)) );
-   assign( dVevensZX, binop(Iop_ShrN16x8,
-                            binop(Iop_ShlN16x8, mkexpr(dV), mkU8(8)),
-                            mkU8(8)) );
-
    IRTemp res = newTemp(Ity_V128);
-   assign( res, binop(Iop_QAdd16Sx8,
-                      binop(Iop_Mul16x8, mkexpr(sVoddsSX), mkexpr(dVoddsZX)),
-                      binop(Iop_Mul16x8, mkexpr(sVevensSX), mkexpr(dVevensZX))
-                     )
-         );
+   assign(res, binop(Iop_PwExtUSMulQAdd8x16, mkexpr(dV), mkexpr(sV)));
    return res;
 }
 
@@ -16046,7 +15955,7 @@ Long dis_ESC_0F38__SupSSE3 ( Bool* decode_OK,
                                   nameXMMReg(gregOfRexRM(pfx,modrm)));
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             assign( sV, loadLE(Ity_V128, mkexpr(addr)) );
             delta += alen;
             DIP("pshufb %s,%s\n", dis_buf,
@@ -16082,15 +15991,10 @@ Long dis_ESC_0F38__SupSSE3 ( Bool* decode_OK,
          putMMXReg(
             gregLO3ofRM(modrm),
             binop(
-               Iop_And64,
-               /* permute the lanes */
-               binop(
-                  Iop_Perm8x8,
-                  mkexpr(dV),
-                  binop(Iop_And64, mkexpr(sV), mkU64(0x0707070707070707ULL))
-               ),
-               /* mask off lanes which have (index & 0x80) == 0x80 */
-               unop(Iop_Not64, binop(Iop_SarN8x8, mkexpr(sV), mkU8(7)))
+               Iop_PermOrZero8x8,
+               mkexpr(dV),
+               // Mask off bits [6:3] of each source operand lane
+               binop(Iop_And64, mkexpr(sV), mkU64(0x8787878787878787ULL))
             )
          );
          goto decode_success;
@@ -16203,7 +16107,7 @@ Long dis_ESC_0F38__SupSSE3 ( Bool* decode_OK,
             DIP("pmaddubsw %s,%s\n", nameXMMReg(rE), nameXMMReg(rG));
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             assign( sV, loadLE(Ity_V128, mkexpr(addr)) );
             delta += alen;
             DIP("pmaddubsw %s,%s\n", dis_buf, nameXMMReg(rG));
@@ -16298,7 +16202,7 @@ Long dis_ESC_0F38__SupSSE3 ( Bool* decode_OK,
                                         nameXMMReg(gregOfRexRM(pfx,modrm)));
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             assign( sV, loadLE(Ity_V128, mkexpr(addr)) );
             delta += alen;
             DIP("psign%s %s,%s\n", str, dis_buf,
@@ -16382,7 +16286,7 @@ Long dis_ESC_0F38__SupSSE3 ( Bool* decode_OK,
                                     nameXMMReg(gregOfRexRM(pfx,modrm)));
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             assign( sV, loadLE(Ity_V128, mkexpr(addr)) );
             delta += alen;
             DIP("pmulhrsw %s,%s\n", dis_buf,
@@ -16461,7 +16365,7 @@ Long dis_ESC_0F38__SupSSE3 ( Bool* decode_OK,
                                        nameXMMReg(gregOfRexRM(pfx,modrm)));
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             assign( sV, loadLE(Ity_V128, mkexpr(addr)) );
             delta += alen;
             DIP("pabs%s %s,%s\n", str, dis_buf,
@@ -16568,7 +16472,7 @@ Long dis_ESC_0F3A__SupSSE3 ( Bool* decode_OK,
                                        nameXMMReg(gregOfRexRM(pfx,modrm)));
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 1 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             assign( sV, loadLE(Ity_V128, mkexpr(addr)) );
             d64 = (Long)getUChar(delta+alen);
             delta += alen+1;
@@ -16861,29 +16765,6 @@ Long dis_ESC_0F__SSE4 ( Bool* decode_OK,
 /*---                                                      ---*/
 /*------------------------------------------------------------*/
 
-static IRTemp math_PBLENDVB_128 ( IRTemp vecE, IRTemp vecG,
-                                  IRTemp vec0/*controlling mask*/,
-                                  UInt gran, IROp opSAR )
-{
-   /* The tricky bit is to convert vec0 into a suitable mask, by
-      copying the most significant bit of each lane into all positions
-      in the lane. */
-   IRTemp sh = newTemp(Ity_I8);
-   assign(sh, mkU8(8 * gran - 1));
-
-   IRTemp mask = newTemp(Ity_V128);
-   assign(mask, binop(opSAR, mkexpr(vec0), mkexpr(sh)));
-
-   IRTemp notmask = newTemp(Ity_V128);
-   assign(notmask, unop(Iop_NotV128, mkexpr(mask)));
-
-   IRTemp res = newTemp(Ity_V128);
-   assign(res,  binop(Iop_OrV128,
-                      binop(Iop_AndV128, mkexpr(vecE), mkexpr(mask)),
-                      binop(Iop_AndV128, mkexpr(vecG), mkexpr(notmask))));
-   return res;
-}
-
 static IRTemp math_PBLENDVB_256 ( IRTemp vecE, IRTemp vecG,
                                   IRTemp vec0/*controlling mask*/,
                                   UInt gran, IROp opSAR128 )
@@ -16993,13 +16874,18 @@ static Long dis_VBLENDV_256 ( const VexAbiInfo* vbi, Prefix pfx, Long delta,
 
 static void finish_xTESTy ( IRTemp andV, IRTemp andnV, Int sign )
 {
-   /* Set Z=1 iff (vecE & vecG) == 0
-      Set C=1 iff (vecE & not vecG) == 0
+   /* Set Z=1 iff (vecE & vecG) == 0--(128)--0
+      Set C=1 iff (vecE & not vecG) == 0--(128)--0
+
+      For the case `sign == 0`, be careful to use only IROps that can be
+      instrumented exactly by memcheck.  This is because PTEST is used for
+      __builtin_strcmp in gcc14.  See
+      https://bugzilla.redhat.com/show_bug.cgi?id=2257546
    */
 
    /* andV, andnV:  vecE & vecG,  vecE and not(vecG) */
 
-   /* andV resp. andnV, reduced to 64-bit values, by or-ing the top
+   /* andV resp. andnV, are reduced to 64-bit values by or-ing the top
       and bottom 64-bits together.  It relies on this trick:
 
       InterleaveLO64x2([a,b],[c,d]) == [b,d]    hence
@@ -17029,11 +16915,13 @@ static void finish_xTESTy ( IRTemp andV, IRTemp andnV, Int sign )
                      binop(Iop_InterleaveHI64x2,
                            mkexpr(andnV), mkexpr(andnV)))));
 
+   // Make z64 and c64 be either all-0s or all-1s
    IRTemp z64 = newTemp(Ity_I64);
    IRTemp c64 = newTemp(Ity_I64);
+
    if (sign == 64) {
-      /* When only interested in the most significant bit, just shift
-         arithmetically right and negate.  */
+      /* When only interested in the most significant bit, just copy bit 63
+         into all bit positions, then invert. */
       assign(z64,
              unop(Iop_Not64,
                   binop(Iop_Sar64, mkexpr(and64), mkU8(63))));
@@ -17041,37 +16929,28 @@ static void finish_xTESTy ( IRTemp andV, IRTemp andnV, Int sign )
       assign(c64,
              unop(Iop_Not64,
                   binop(Iop_Sar64, mkexpr(andn64), mkU8(63))));
-   } else {
-      if (sign == 32) {
-         /* When interested in bit 31 and bit 63, mask those bits and
-            fallthrough into the PTEST handling.  */
-         IRTemp t0 = newTemp(Ity_I64);
-         IRTemp t1 = newTemp(Ity_I64);
-         IRTemp t2 = newTemp(Ity_I64);
-         assign(t0, mkU64(0x8000000080000000ULL));
-         assign(t1, binop(Iop_And64, mkexpr(and64), mkexpr(t0)));
-         assign(t2, binop(Iop_And64, mkexpr(andn64), mkexpr(t0)));
-         and64 = t1;
-         andn64 = t2;
-      }
-      /* Now convert and64, andn64 to all-zeroes or all-1s, so we can
-         slice out the Z and C bits conveniently.  We use the standard
-         trick all-zeroes -> all-zeroes, anything-else -> all-ones
-         done by "(x | -x) >>s (word-size - 1)".
-      */
+   } else if (sign == 32) {
+      /* If we're interested into bits 63 and 31, OR bit 31 into bit 63, copy
+         bit 63 into all bit positions, then invert. */
+      IRTemp and3264 = newTemp(Ity_I64);
+      assign(and3264, binop(Iop_Or64, mkexpr(and64),
+                            binop(Iop_Shl64, mkexpr(and64), mkU8(32))));
       assign(z64,
              unop(Iop_Not64,
-                  binop(Iop_Sar64,
-                        binop(Iop_Or64,
-                              binop(Iop_Sub64, mkU64(0), mkexpr(and64)),
-                                    mkexpr(and64)), mkU8(63))));
+                  binop(Iop_Sar64, mkexpr(and3264), mkU8(63))));
 
+      IRTemp andn3264 = newTemp(Ity_I64);
+      assign(andn3264, binop(Iop_Or64, mkexpr(andn64),
+                             binop(Iop_Shl64, mkexpr(andn64), mkU8(32))));
       assign(c64,
              unop(Iop_Not64,
-                  binop(Iop_Sar64,
-                        binop(Iop_Or64,
-                              binop(Iop_Sub64, mkU64(0), mkexpr(andn64)),
-                                    mkexpr(andn64)), mkU8(63))));
+                  binop(Iop_Sar64, mkexpr(andn3264), mkU8(63))));
+   } else {
+      vassert(sign == 0);
+      assign(z64, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(and64), mkU64(0)),
+                             mkU64(~0ULL), mkU64(0ULL)));
+      assign(c64, IRExpr_ITE(binop(Iop_CmpEQ64, mkexpr(andn64), mkU64(0)),
+                             mkU64(~0ULL), mkU64(0ULL)));
    }
 
    /* And finally, slice out the Z and C flags and set the flags
@@ -17113,7 +16992,7 @@ static Long dis_xTESTy_128 ( const VexAbiInfo* vbi, Prefix pfx,
    } else {
       addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 0 );
       if (!isAvx)
-         gen_SEGV_if_not_16_aligned( addr );
+         gen_SIGNAL_if_not_16_aligned( vbi, addr );
       assign(vecE, loadLE( Ity_V128, mkexpr(addr) ));
       delta += alen;
       DIP( "%s%stest%s %s,%s\n",
@@ -17133,9 +17012,7 @@ static Long dis_xTESTy_128 ( const VexAbiInfo* vbi, Prefix pfx,
    IRTemp andnV = newTemp(Ity_V128);
    assign(andV,  binop(Iop_AndV128, mkexpr(vecE), mkexpr(vecG)));
    assign(andnV, binop(Iop_AndV128,
-                       mkexpr(vecE),
-                       binop(Iop_XorV128, mkexpr(vecG),
-                                          mkV128(0xFFFF))));
+                       mkexpr(vecE), unop(Iop_NotV128, mkexpr(vecG))));
 
    finish_xTESTy ( andV, andnV, sign );
    return delta;
@@ -17197,6 +17074,41 @@ static Long dis_xTESTy_256 ( const VexAbiInfo* vbi, Prefix pfx,
    assign( andnV128, binop( Iop_OrV128, mkexpr(andnVhi), mkexpr(andnVlo) ) );
 
    finish_xTESTy ( andV128, andnV128, sign );
+   return delta;
+}
+
+
+/* Handles 128 and 256 bit versions of VCVTPH2PS. */
+static Long dis_VCVTPH2PS ( const VexAbiInfo* vbi, Prefix pfx,
+                            Long delta, Bool is256bit )
+{
+   /* This is a width-doubling load or reg-reg move, that does conversion on the
+      transferred data. */
+   UChar  modrm  = getUChar(delta);
+   UInt   rG     = gregOfRexRM(pfx, modrm);
+   IRTemp srcE   = newTemp(is256bit ? Ity_V128 : Ity_I64);
+
+   if (epartIsReg(modrm)) {
+      UInt rE = eregOfRexRM(pfx, modrm);
+      assign(srcE, is256bit ? unop(Iop_V256toV128_0, getYMMReg(rE))
+                            : unop(Iop_V128to64, getXMMReg(rE)));
+      delta += 1;
+      DIP("vcvtph2ps %s,%s\n", nameXMMReg(rE),
+                               (is256bit ? nameYMMReg: nameXMMReg)(rG));
+   } else {
+      Int    alen   = 0;
+      HChar  dis_buf[50];
+      IRTemp addr = disAMode(&alen, vbi, pfx, delta, dis_buf, 0);
+      // I don't think we need an alignment check here (not 100% sure tho.)
+      assign(srcE, loadLE(is256bit ? Ity_V128 : Ity_I64, mkexpr(addr)));
+      delta += alen;
+      DIP( "vcvtph2ps %s,%s\n", dis_buf,
+                                (is256bit ? nameYMMReg: nameXMMReg)(rG));
+   }
+
+   IRExpr* res = unop(is256bit ? Iop_F16toF32x8 : Iop_F16toF32x4, mkexpr(srcE));
+   (is256bit ? putYMMReg : putYMMRegLoAndZU)(rG, res);
+
    return delta;
 }
 
@@ -17880,7 +17792,7 @@ static Long dis_PHMINPOSUW_128 ( const VexAbiInfo* vbi, Prefix pfx,
    } else {
       addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
       if (!isAvx)
-         gen_SEGV_if_not_16_aligned(addr);
+         gen_SIGNAL_if_not_16_aligned(vbi, addr);
       assign( sV, loadLE(Ity_V128, mkexpr(addr)) );
       delta += alen;
       DIP("%sphminposuw %s,%s\n", mbV, dis_buf, nameXMMReg(rG));
@@ -18114,7 +18026,7 @@ Long dis_ESC_0F38__SSE4 ( Bool* decode_OK,
                  nameXMMReg( gregOfRexRM(pfx, modrm) ) );
          } else {
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             assign(vecE, loadLE( Ity_V128, mkexpr(addr) ));
             delta += alen;
             DIP( "%s %s,%s\n", nm,
@@ -18247,7 +18159,7 @@ Long dis_ESC_0F38__SSE4 ( Bool* decode_OK,
          modrm = getUChar(delta);
          if (!epartIsReg(modrm)) {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             putXMMReg( gregOfRexRM(pfx,modrm),
                        loadLE(Ity_V128, mkexpr(addr)) );
             DIP("movntdqa %s,%s\n", dis_buf,
@@ -18276,7 +18188,7 @@ Long dis_ESC_0F38__SSE4 ( Bool* decode_OK,
                  nameXMMReg( gregOfRexRM(pfx, modrm) ) );
          } else {
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             assign( argL, loadLE( Ity_V128, mkexpr(addr) ));
             delta += alen;
             DIP( "packusdw %s,%s\n",
@@ -18459,7 +18371,7 @@ Long dis_ESC_0F38__SSE4 ( Bool* decode_OK,
                  nameXMMReg( gregOfRexRM(pfx, modrm) ) );
          } else {
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             assign( argL, loadLE( Ity_V128, mkexpr(addr) ));
             delta += alen;
             DIP( "pmulld %s,%s\n",
@@ -18742,8 +18654,9 @@ static Long dis_PEXTRQ ( const VexAbiInfo* vbi, Prefix pfx,
 
 static IRExpr* math_CTZ32(IRExpr *exp)
 {
-   /* Iop_Ctz32 isn't implemented by the amd64 back end, so use Iop_Ctz64. */
-   return unop(Iop_64to32, unop(Iop_Ctz64, unop(Iop_32Uto64, exp)));
+   /* Iop_CtzNat32 isn't implemented by the amd64 back end, so use
+      Iop_CtzNat64. */
+   return unop(Iop_64to32, unop(Iop_CtzNat64, unop(Iop_32Uto64, exp)));
 }
 
 static Long dis_PCMPISTRI_3A ( UChar modrm, UInt regNoL, UInt regNoR,
@@ -18933,7 +18846,7 @@ static Long dis_PCMPxSTRx ( const VexAbiInfo* vbi, Prefix pfx,
    switch (imm) {
       case 0x00: case 0x02:
       case 0x08: case 0x0A: case 0x0C: case 0x0E:
-                 case 0x12: case 0x14:
+      case 0x10: case 0x12: case 0x14:
       case 0x18: case 0x1A:
       case 0x30:            case 0x34:
       case 0x38: case 0x3A:
@@ -18948,7 +18861,7 @@ static Long dis_PCMPxSTRx ( const VexAbiInfo* vbi, Prefix pfx,
                  case 0x13:
       case 0x19: case 0x1B:
       case 0x39: case 0x3B:
-                            case 0x45:
+      case 0x41:            case 0x45:
                  case 0x4B:
          break;
       default:
@@ -19024,7 +18937,7 @@ static Long dis_PCMPxSTRx ( const VexAbiInfo* vbi, Prefix pfx,
 
 static IRTemp math_PINSRB_128 ( IRTemp v128, IRTemp u8, UInt imm8 )
 {
-   vassert(imm8 >= 0 && imm8 <= 15);
+   vassert(imm8 <= 15);
 
    // Create a V128 value which has the selected byte in the
    // specified lane, and zeroes everywhere else.
@@ -19248,60 +19161,6 @@ static IRTemp math_DPPS_128 ( IRTemp src_vec, IRTemp dst_vec, UInt imm8 )
    return res;
 }
 
-
-static IRTemp math_MPSADBW_128 ( IRTemp dst_vec, IRTemp src_vec, UInt imm8 )
-{
-   /* Mask out bits of the operands we don't need.  This isn't
-      strictly necessary, but it does ensure Memcheck doesn't
-      give us any false uninitialised value errors as a
-      result. */
-   UShort src_mask[4] = { 0x000F, 0x00F0, 0x0F00, 0xF000 };
-   UShort dst_mask[2] = { 0x07FF, 0x7FF0 };
-
-   IRTemp src_maskV = newTemp(Ity_V128);
-   IRTemp dst_maskV = newTemp(Ity_V128);
-   assign(src_maskV, mkV128( src_mask[ imm8 & 3 ] ));
-   assign(dst_maskV, mkV128( dst_mask[ (imm8 >> 2) & 1 ] ));
-
-   IRTemp src_masked = newTemp(Ity_V128);
-   IRTemp dst_masked = newTemp(Ity_V128);
-   assign(src_masked, binop(Iop_AndV128, mkexpr(src_vec), mkexpr(src_maskV)));
-   assign(dst_masked, binop(Iop_AndV128, mkexpr(dst_vec), mkexpr(dst_maskV)));
-
-   /* Generate 4 64 bit values that we can hand to a clean helper */
-   IRTemp sHi = newTemp(Ity_I64);
-   IRTemp sLo = newTemp(Ity_I64);
-   assign( sHi, unop(Iop_V128HIto64, mkexpr(src_masked)) );
-   assign( sLo, unop(Iop_V128to64,   mkexpr(src_masked)) );
-
-   IRTemp dHi = newTemp(Ity_I64);
-   IRTemp dLo = newTemp(Ity_I64);
-   assign( dHi, unop(Iop_V128HIto64, mkexpr(dst_masked)) );
-   assign( dLo, unop(Iop_V128to64,   mkexpr(dst_masked)) );
-
-   /* Compute halves of the result separately */
-   IRTemp resHi = newTemp(Ity_I64);
-   IRTemp resLo = newTemp(Ity_I64);
-
-   IRExpr** argsHi
-      = mkIRExprVec_5( mkexpr(sHi), mkexpr(sLo), mkexpr(dHi), mkexpr(dLo),
-                       mkU64( 0x80 | (imm8 & 7) ));
-   IRExpr** argsLo
-      = mkIRExprVec_5( mkexpr(sHi), mkexpr(sLo), mkexpr(dHi), mkexpr(dLo),
-                       mkU64( 0x00 | (imm8 & 7) ));
-
-   assign(resHi, mkIRExprCCall( Ity_I64, 0/*regparm*/,
-                                "amd64g_calc_mpsadbw",
-                                &amd64g_calc_mpsadbw, argsHi ));
-   assign(resLo, mkIRExprCCall( Ity_I64, 0/*regparm*/,
-                                "amd64g_calc_mpsadbw",
-                                &amd64g_calc_mpsadbw, argsLo ));
-
-   IRTemp res = newTemp(Ity_V128);
-   assign(res, binop(Iop_64HLtoV128, mkexpr(resHi), mkexpr(resLo)));
-   return res;
-}
-
 static Long dis_EXTRACTPS ( const VexAbiInfo* vbi, Prefix pfx,
                             Long delta, Bool isAvx )
 {
@@ -19430,7 +19289,7 @@ Long dis_ESC_0F3A__SSE4 ( Bool* decode_OK,
                       nameXMMReg( gregOfRexRM(pfx, modrm) ) );
          } else {
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 1 );
-            gen_SEGV_if_not_16_aligned(addr);
+            gen_SIGNAL_if_not_16_aligned(vbi, addr);
             assign( src0, loadLE(Ity_F32,
                                  binop(Iop_Add64, mkexpr(addr), mkU64(0) )));
             assign( src1, loadLE(Ity_F32,
@@ -19492,7 +19351,7 @@ Long dis_ESC_0F3A__SSE4 ( Bool* decode_OK,
                       nameXMMReg( gregOfRexRM(pfx, modrm) ) );
          } else {
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 1 );
-            gen_SEGV_if_not_16_aligned(addr);
+            gen_SIGNAL_if_not_16_aligned(vbi, addr);
             assign( src0, loadLE(Ity_F64,
                                  binop(Iop_Add64, mkexpr(addr), mkU64(0) )));
             assign( src1, loadLE(Ity_F64,
@@ -19597,11 +19456,11 @@ Long dis_ESC_0F3A__SSE4 ( Bool* decode_OK,
          } else {
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 
                              1/* imm8 is 1 byte after the amode */ );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             assign( src_vec, loadLE( Ity_V128, mkexpr(addr) ) );
             imm8 = (Int)getUChar(delta+alen);
             delta += alen+1;
-            DIP( "blendpd $%d, %s,%s\n", 
+            DIP( "blendps $%d, %s,%s\n", 
                  imm8, dis_buf, nameXMMReg( gregOfRexRM(pfx, modrm) ) );
          }
 
@@ -19633,7 +19492,7 @@ Long dis_ESC_0F3A__SSE4 ( Bool* decode_OK,
          } else {
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 
                              1/* imm8 is 1 byte after the amode */ );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             assign( src_vec, loadLE( Ity_V128, mkexpr(addr) ) );
             imm8 = (Int)getUChar(delta+alen);
             delta += alen+1;
@@ -19670,7 +19529,7 @@ Long dis_ESC_0F3A__SSE4 ( Bool* decode_OK,
          } else {
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 
                              1/* imm8 is 1 byte after the amode */ );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             assign( src_vec, loadLE( Ity_V128, mkexpr(addr) ) );
             imm8 = (Int)getUChar(delta+alen);
             delta += alen+1;
@@ -19892,7 +19751,7 @@ Long dis_ESC_0F3A__SSE4 ( Bool* decode_OK,
          } else {
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 
                              1/* imm8 is 1 byte after the amode */ );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             assign( src_vec, loadLE( Ity_V128, mkexpr(addr) ) );
             imm8 = (Int)getUChar(delta+alen);
             delta += alen+1;
@@ -19925,7 +19784,7 @@ Long dis_ESC_0F3A__SSE4 ( Bool* decode_OK,
          } else {
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 
                              1/* imm8 is 1 byte after the amode */ );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             assign( src_vec, loadLE( Ity_V128, mkexpr(addr) ) );
             imm8 = (Int)getUChar(delta+alen);
             delta += alen+1;
@@ -19961,7 +19820,7 @@ Long dis_ESC_0F3A__SSE4 ( Bool* decode_OK,
          } else {
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 
                              1/* imm8 is 1 byte after the amode */ );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             assign( src_vec, loadLE( Ity_V128, mkexpr(addr) ) );
             imm8 = (Int)getUChar(delta+alen);
             delta += alen+1;
@@ -19998,7 +19857,7 @@ Long dis_ESC_0F3A__SSE4 ( Bool* decode_OK,
          } else {
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 
                              1/* imm8 is 1 byte after the amode */ );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             assign( svec, loadLE( Ity_V128, mkexpr(addr) ) );
             imm8 = (Int)getUChar(delta+alen);
             delta += alen+1;
@@ -20064,9 +19923,6 @@ static
 Long dis_ESC_NONE (
         /*MB_OUT*/DisResult* dres,
         /*MB_OUT*/Bool*      expect_CAS,
-        Bool         (*resteerOkFn) ( /*opaque*/void*, Addr ),
-        Bool         resteerCisOk,
-        void*        callback_opaque,
         const VexArchInfo* archinfo,
         const VexAbiInfo*  vbi,
         Prefix pfx, Int sz, Long deltaIN 
@@ -20476,53 +20332,10 @@ Long dis_ESC_NONE (
       vassert(-128 <= jmpDelta && jmpDelta < 128);
       d64 = (guest_RIP_bbstart+delta+1) + jmpDelta;
       delta++;
-      if (resteerCisOk
-          && vex_control.guest_chase_cond
-          && (Addr64)d64 != (Addr64)guest_RIP_bbstart
-          && jmpDelta < 0
-          && resteerOkFn( callback_opaque, (Addr64)d64) ) {
-         /* Speculation: assume this backward branch is taken.  So we
-            need to emit a side-exit to the insn following this one,
-            on the negation of the condition, and continue at the
-            branch target address (d64).  If we wind up back at the
-            first instruction of the trace, just stop; it's better to
-            let the IR loop unroller handle that case. */
-         stmt( IRStmt_Exit( 
-                  mk_amd64g_calculate_condition(
-                     (AMD64Condcode)(1 ^ (opc - 0x70))),
-                  Ijk_Boring,
-                  IRConst_U64(guest_RIP_bbstart+delta),
-                  OFFB_RIP ) );
-         dres->whatNext   = Dis_ResteerC;
-         dres->continueAt = d64;
-         comment = "(assumed taken)";
-      }
-      else
-      if (resteerCisOk
-          && vex_control.guest_chase_cond
-          && (Addr64)d64 != (Addr64)guest_RIP_bbstart
-          && jmpDelta >= 0
-          && resteerOkFn( callback_opaque, guest_RIP_bbstart+delta ) ) {
-         /* Speculation: assume this forward branch is not taken.  So
-            we need to emit a side-exit to d64 (the dest) and continue
-            disassembling at the insn immediately following this
-            one. */
-         stmt( IRStmt_Exit( 
-                  mk_amd64g_calculate_condition((AMD64Condcode)(opc - 0x70)),
-                  Ijk_Boring,
-                  IRConst_U64(d64),
-                  OFFB_RIP ) );
-         dres->whatNext   = Dis_ResteerC;
-         dres->continueAt = guest_RIP_bbstart+delta;
-         comment = "(assumed not taken)";
-      }
-      else {
-         /* Conservative default translation - end the block at this
-            point. */
-         jcc_01( dres, (AMD64Condcode)(opc - 0x70),
-                 guest_RIP_bbstart+delta, d64 );
-         vassert(dres->whatNext == Dis_StopHere);
-      }
+      /* End the block at this point. */
+      jcc_01( dres, (AMD64Condcode)(opc - 0x70),
+              guest_RIP_bbstart+delta, d64 );
+      vassert(dres->whatNext == Dis_StopHere);
       DIP("j%s-8 0x%llx %s\n", name_AMD64Condcode(opc - 0x70), (ULong)d64,
           comment);
       return delta;
@@ -20679,7 +20492,7 @@ Long dis_ESC_NONE (
                             ? unop(Iop_64to32, mkexpr(addr))
                             : mkexpr(addr)
               );
-      DIP("lea%c %s, %s\n", nameISize(sz), dis_buf, 
+      DIP("lea%c %s, %s\n", nameISize(sz), dis_buf,
                             nameIRegG(sz,pfx,modrm));
       return delta;
 
@@ -20763,7 +20576,7 @@ Long dis_ESC_NONE (
       if (haveF2orF3(pfx)) goto decode_failure;
       if (sz == 8) {
          putIRegRAX( 8, unop(Iop_32Sto64, getIRegRAX(4)) );
-         DIP(/*"cdqe\n"*/"cltq");
+         DIP(/*"cdqe\n"*/"cltq\n");
          return delta;
       }
       if (sz == 4) {
@@ -20858,7 +20671,7 @@ Long dis_ESC_NONE (
       /* Note.  There is no encoding for a 32-bit popf in 64-bit mode.
          So sz==4 actually means sz==8. */
       if (haveF2orF3(pfx)) goto decode_failure;
-      vassert(sz == 2 || sz == 4);
+      vassert(sz == 2 || sz == 4 || sz == 8);
       if (sz == 4) sz = 8;
       if (sz != 8) goto decode_failure; // until we know a sz==2 test case exists
       t1 = newTemp(Ity_I64); t2 = newTemp(Ity_I64);
@@ -20878,6 +20691,7 @@ Long dis_ESC_NONE (
                              )
                        )
           );
+      stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
 
       /* Also need to set the D flag, which is held in bit 10 of t1.
          If zero, put 1 in OFFB_DFLAG, else -1 in OFFB_DFLAG. */
@@ -20973,8 +20787,8 @@ Long dis_ESC_NONE (
          dis_REP_op ( dres, AMD64CondAlways, dis_MOVS, sz,
                       guest_RIP_curr_instr,
                       guest_RIP_bbstart+delta, "rep movs", pfx );
-        dres->whatNext = Dis_StopHere;
-        return delta;
+         vassert(dres->whatNext == Dis_StopHere);
+         return delta;
       }
       /* A4: movsb */
       if (!haveF3(pfx) && !haveF2(pfx)) {
@@ -20987,30 +20801,31 @@ Long dis_ESC_NONE (
 
    case 0xA6:
    case 0xA7:
-      /* F3 A6/A7: repe cmps/rep cmps{w,l,q} */
-      if (haveF3(pfx) && !haveF2(pfx)) {
+      /* F2 A6/A7: repne cmpsb/repne cmps{w,l,q} */
+      if (haveF2(pfx) && !haveF3(pfx)) {
+         if (opc == 0xA6)
+            sz = 1;
+         dis_REP_op ( dres, AMD64CondNZ, dis_CMPS, sz, 
+                      guest_RIP_curr_instr,
+                      guest_RIP_bbstart+delta, "repne cmps", pfx );
+         vassert(dres->whatNext == Dis_StopHere);
+         return delta;
+      }
+      /* F3 A6/A7: repe cmpsb/repe cmps{w,l,q} */
+      if (!haveF2(pfx) && haveF3(pfx)) {
          if (opc == 0xA6)
             sz = 1;
          dis_REP_op ( dres, AMD64CondZ, dis_CMPS, sz, 
                       guest_RIP_curr_instr,
                       guest_RIP_bbstart+delta, "repe cmps", pfx );
-         dres->whatNext = Dis_StopHere;
+         vassert(dres->whatNext == Dis_StopHere);
          return delta;
       }
-      /* F2 A6/A7: repe cmps/repnz cmps{w,l,q} */
-      if (!haveF3(pfx) && haveF2(pfx)) {
+      /* A6/A7: cmpsb/cmps{w,l,q} */
+      if (!haveF2(pfx) && !haveF3(pfx)) {
          if (opc == 0xA6)
             sz = 1;
-         dis_REP_op ( dres, AMD64CondNZ, dis_CMPS, sz,
-                      guest_RIP_curr_instr,
-                      guest_RIP_bbstart+delta, "repne cmps", pfx );
-         dres->whatNext = Dis_StopHere;
-         return delta;
-      }
-      if (!haveF3(pfx) && !haveF2(pfx)) {
-         if (opc == 0xA6)
-            sz = 1;
-         dis_string_op( dis_CMPS, sz, "cmps", pfx );
+         dis_string_op ( dis_CMPS, sz, "cmps", pfx );
          return delta;
       }
       goto decode_failure;
@@ -21305,7 +21120,7 @@ Long dis_ESC_NONE (
       d64 = getUDisp16(delta);
       delta += 2;
       dis_retf(dres, vbi, d64);
-      DIP("ret $%lld\n", d64);
+      DIP("retf $%lld\n", d64);
       return delta;
 
    case 0xCB: /* RETF */
@@ -21313,7 +21128,7 @@ Long dis_ESC_NONE (
       /* F3 is acceptable on AMD. */
       if (haveF2(pfx)) DIP("bnd ; "); /* MPX bnd prefix. */
       dis_retf(dres, vbi, 0);
-      DIP(haveF3(pfx) ? "rep ; ret\n" : "ret\n");
+      DIP("%s\n", haveF3(pfx) ? "rep ; retf" : "retf");
       return delta;
 
    case 0xCC: /* INT 3 */
@@ -21326,7 +21141,88 @@ Long dis_ESC_NONE (
       d64 = getUChar(delta); delta++;
       jmp_lit(dres, Ijk_Sys_int, guest_RIP_bbstart + delta);
       vassert(dres->whatNext == Dis_StopHere);
-      DIP("int $0x%x\n", d64);
+      DIP("int $0x%x\n", (UInt)d64);
+      return delta;
+
+   case 0xCF: /* IRET */
+      /* Note, this is an extremely kludgey and limited implementation of iret
+         based on the extremely kludgey and limited implementation of iret for x86
+            popq %RIP; popl %CS; popq %RFLAGS; popq %RSP; popl %SS
+         %CS and %SS are ignored */
+      if (sz != 8 || have66orF2orF3(pfx)) goto decode_failure;
+
+      t1 = newTemp(Ity_I64); /* RSP */
+      t2 = newTemp(Ity_I64); /* new RIP */
+      /* t3 = newTemp(Ity_I32);  new CS */
+      t4 = newTemp(Ity_I64); /* new RFLAGS */
+      t5 = newTemp(Ity_I64); /* new RSP */
+      /* t6 = newTemp(Ity_I32);  new SS */
+
+      assign(t1, getIReg64(R_RSP));
+      assign(t2, loadLE(Ity_I64, binop(Iop_Add64,mkexpr(t1),mkU64(0))));
+      /* assign(t3, loadLE(Ity_I32, binop(Iop_Add64,mkexpr(t1),mkU64(8)))); */
+      assign(t4, loadLE(Ity_I64, binop(Iop_Add64,mkexpr(t1),mkU64(16))));
+      assign(t5, loadLE(Ity_I64, binop(Iop_Add64,mkexpr(t1),mkU64(24))));
+      /* assign(t6, loadLE(Ity_I32, binop(Iop_Add64,mkexpr(t1),mkU64(32)))); */
+
+      /* set %RFLAGS */
+      stmt( IRStmt_Put( OFFB_CC_OP,   mkU64(AMD64G_CC_OP_COPY) ));
+      stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
+      stmt( IRStmt_Put( OFFB_CC_DEP2, mkU64(0) ));
+      stmt( IRStmt_Put( OFFB_CC_DEP1,
+                        binop(Iop_And64,
+                              mkexpr(t4),
+                              mkU64( AMD64G_CC_MASK_C | AMD64G_CC_MASK_P
+                                     | AMD64G_CC_MASK_A | AMD64G_CC_MASK_Z
+                                     | AMD64G_CC_MASK_S| AMD64G_CC_MASK_O )
+                             )
+                       )
+          );
+
+      /* Also need to set the D flag, which is held in bit 10 of t4.
+         If zero, put 1 in OFFB_DFLAG, else -1 in OFFB_DFLAG. */
+      stmt( IRStmt_Put(
+               OFFB_DFLAG,
+               IRExpr_ITE(
+                  unop(Iop_64to1,
+                       binop(Iop_And64,
+                             binop(Iop_Shr64, mkexpr(t4), mkU8(10)),
+                             mkU64(1))),
+                  mkU64(0xFFFFFFFFFFFFFFFFULL),
+                  mkU64(1)))
+          );
+
+      /* And set the ID flag */
+      stmt( IRStmt_Put(
+               OFFB_IDFLAG,
+               IRExpr_ITE(
+                  unop(Iop_64to1,
+                       binop(Iop_And64,
+                             binop(Iop_Shr64, mkexpr(t4), mkU8(21)),
+                             mkU64(1))),
+                  mkU64(1),
+                  mkU64(0)))
+          );
+
+      /* And set the AC flag too */
+      stmt( IRStmt_Put(
+               OFFB_ACFLAG,
+               IRExpr_ITE(
+                  unop(Iop_64to1,
+                       binop(Iop_And64,
+                             binop(Iop_Shr64, mkexpr(t4), mkU8(18)),
+                             mkU64(1))),
+                  mkU64(1),
+                  mkU64(0)))
+          );
+
+
+      /* set new stack */
+      putIReg64(R_RSP, mkexpr(t5));
+
+      /* goto new RIP value */
+      jmp_treg(dres, Ijk_Ret, t2);
+      DIP("iret (very kludgey)\n");
       return delta;
 
    case 0xD0: { /* Grp2 1,Eb */
@@ -21627,62 +21523,47 @@ Long dis_ESC_NONE (
       t2 = newTemp(Ity_I64);
       assign(t2, mkU64((Addr64)d64));
       make_redzone_AbiHint(vbi, t1, t2/*nia*/, "call-d32");
-      if (resteerOkFn( callback_opaque, (Addr64)d64) ) {
-         /* follow into the call target. */
-         dres->whatNext   = Dis_ResteerU;
-         dres->continueAt = d64;
-      } else {
-         jmp_lit(dres, Ijk_Call, d64);
-         vassert(dres->whatNext == Dis_StopHere);
-      }
+      jmp_lit(dres, Ijk_Call, d64);
+      vassert(dres->whatNext == Dis_StopHere);
       DIP("call 0x%llx\n", (ULong)d64);
       return delta;
 
    case 0xE9: /* Jv (jump, 16/32 offset) */
       if (haveF3(pfx)) goto decode_failure;
-      if (sz != 4) 
-         goto decode_failure; /* JRS added 2004 July 11 */
+      sz = 4; /* Prefixes that change operand size are ignored for this
+                 instruction. Operand size is forced to 32bit. */
       if (haveF2(pfx)) DIP("bnd ; "); /* MPX bnd prefix. */
       d64 = (guest_RIP_bbstart+delta+sz) + getSDisp(sz,delta); 
       delta += sz;
-      if (resteerOkFn(callback_opaque, (Addr64)d64)) {
-         dres->whatNext   = Dis_ResteerU;
-         dres->continueAt = d64;
-      } else {
-         jmp_lit(dres, Ijk_Boring, d64);
-         vassert(dres->whatNext == Dis_StopHere);
-      }
+      jmp_lit(dres, Ijk_Boring, d64);
+      vassert(dres->whatNext == Dis_StopHere);
       DIP("jmp 0x%llx\n", (ULong)d64);
       return delta;
 
    case 0xEB: /* Jb (jump, byte offset) */
       if (haveF3(pfx)) goto decode_failure;
-      if (sz != 4) 
-         goto decode_failure; /* JRS added 2004 July 11 */
+      /* Prefixes that change operand size are ignored for this instruction. */
       if (haveF2(pfx)) DIP("bnd ; "); /* MPX bnd prefix. */
       d64 = (guest_RIP_bbstart+delta+1) + getSDisp8(delta); 
       delta++;
-      if (resteerOkFn(callback_opaque, (Addr64)d64)) {
-         dres->whatNext   = Dis_ResteerU;
-         dres->continueAt = d64;
-      } else {
-         jmp_lit(dres, Ijk_Boring, d64);
-         vassert(dres->whatNext == Dis_StopHere);
-      }
+      jmp_lit(dres, Ijk_Boring, d64);
+      vassert(dres->whatNext == Dis_StopHere);
       DIP("jmp-8 0x%llx\n", (ULong)d64);
       return delta;
-   case 0xFA:
-      DIP("cli\n");
-   case 0xFB: /* CLI / STI */
-      DIP("sti\n");
-      /* Treated as nop for now. could add actual behavior based on whatever or just an emnote */
+
+   case 0xFA: /* CLI */
+   case 0xFB: /* STI */
       jmp_lit(dres, Ijk_Privileged, guest_RIP_bbstart + delta);
+      vassert(dres->whatNext == Dis_StopHere);
+      DIP("%s\n", opc == 0xFA ? "cli" : "sti");
       return delta;
-   case 0xF4: /* hlt */
+
+   case 0xF4: /* HLT */
       jmp_lit(dres, Ijk_SigTRAP, guest_RIP_bbstart + delta);
       vassert(dres->whatNext == Dis_StopHere);
       DIP("hlt\n");
       return delta;
+
    case 0xF5: /* CMC */
    case 0xF8: /* CLC */
    case 0xF9: /* STC */
@@ -21862,9 +21743,6 @@ static
 Long dis_ESC_0F (
         /*MB_OUT*/DisResult* dres,
         /*MB_OUT*/Bool*      expect_CAS,
-        Bool         (*resteerOkFn) ( /*opaque*/void*, Addr ),
-        Bool         resteerCisOk,
-        void*        callback_opaque,
         const VexArchInfo* archinfo,
         const VexAbiInfo*  vbi,
         Prefix pfx, Int sz, Long deltaIN 
@@ -22034,34 +21912,22 @@ Long dis_ESC_0F (
       }
       return delta;
 
-   case 0x1E:  /* ENDBR */
-      if (pfx == (PFX_EMPTY | PFX_F3)) {
-        switch (getUChar(delta++)) {
-           case 0xFA:
-              DIP("endbr64");
-              break;
-           case 0xFB:
-              DIP("endbr32");
-              break;
-           default:
-              DIP("rdsspd");
-              break;
-        }
-        return delta;
-      } else if (pfx == (PFX_EMPTY | PFX_F3 | PFX_REX | PFX_REXW)) {
-        delta++;
-        DIP("rdsspq");
-        return delta;
-      }
-      goto decode_failure;
-
+   case 0x19:
+   case 0x1C:
+   case 0x1D:
+   case 0x1E:
    case 0x1F:
-      if (haveF2orF3(pfx)) goto decode_failure;
+      // Intel CET instructions can have any prefixes before NOPs
+      // and can use any ModRM, SIB and disp
       modrm = getUChar(delta);
-      if (epartIsReg(modrm)) goto decode_failure;
-      addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-      delta += alen;
-      DIP("nop%c %s\n", nameISize(sz), dis_buf);
+      if (epartIsReg(modrm)) {
+         delta += 1;
+         DIP("nop%c\n", nameISize(sz));
+      } else {
+         addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
+         delta += alen;
+         DIP("nop%c %s\n", nameISize(sz), dis_buf);
+      }
       return delta;
 
    case 0x31: { /* RDTSC */
@@ -22126,56 +21992,10 @@ Long dis_ESC_0F (
       jmpDelta = getSDisp32(delta);
       d64 = (guest_RIP_bbstart+delta+4) + jmpDelta;
       delta += 4;
-      if (resteerCisOk
-          && vex_control.guest_chase_cond
-          && (Addr64)d64 != (Addr64)guest_RIP_bbstart
-          && jmpDelta < 0
-          && resteerOkFn( callback_opaque, (Addr64)d64) ) {
-         /* Speculation: assume this backward branch is taken.  So
-            we need to emit a side-exit to the insn following this
-            one, on the negation of the condition, and continue at
-            the branch target address (d64).  If we wind up back at
-            the first instruction of the trace, just stop; it's
-            better to let the IR loop unroller handle that case. */
-         stmt( IRStmt_Exit( 
-                  mk_amd64g_calculate_condition(
-                     (AMD64Condcode)(1 ^ (opc - 0x80))),
-                  Ijk_Boring,
-                  IRConst_U64(guest_RIP_bbstart+delta),
-                  OFFB_RIP
-             ));
-         dres->whatNext   = Dis_ResteerC;
-         dres->continueAt = d64;
-         comment = "(assumed taken)";
-      }
-      else
-      if (resteerCisOk
-          && vex_control.guest_chase_cond
-          && (Addr64)d64 != (Addr64)guest_RIP_bbstart
-          && jmpDelta >= 0
-          && resteerOkFn( callback_opaque, guest_RIP_bbstart+delta ) ) {
-         /* Speculation: assume this forward branch is not taken.
-            So we need to emit a side-exit to d64 (the dest) and
-            continue disassembling at the insn immediately
-            following this one. */
-         stmt( IRStmt_Exit( 
-                  mk_amd64g_calculate_condition((AMD64Condcode)
-                                                (opc - 0x80)),
-                  Ijk_Boring,
-                  IRConst_U64(d64),
-                  OFFB_RIP
-             ));
-         dres->whatNext   = Dis_ResteerC;
-         dres->continueAt = guest_RIP_bbstart+delta;
-         comment = "(assumed not taken)";
-      }
-      else {
-         /* Conservative default translation - end the block at
-            this point. */
-         jcc_01( dres, (AMD64Condcode)(opc - 0x80),
-                 guest_RIP_bbstart+delta, d64 );
-         vassert(dres->whatNext == Dis_StopHere);
-      }
+      /* End the block at this point. */
+      jcc_01( dres, (AMD64Condcode)(opc - 0x80),
+              guest_RIP_bbstart+delta, d64 );
+      vassert(dres->whatNext == Dis_StopHere);
       DIP("j%s-32 0x%llx %s\n", name_AMD64Condcode(opc - 0x80), (ULong)d64,
           comment);
       return delta;
@@ -22287,24 +22107,30 @@ Long dis_ESC_0F (
 
       /* This isn't entirely correct, CPUID should depend on the VEX
          capabilities, not on the underlying CPU. See bug #324882. */
-      if ((archinfo->hwcaps & VEX_HWCAPS_AMD64_SSE3) &&
+      if ((archinfo->hwcaps & VEX_HWCAPS_AMD64_SSSE3) &&
           (archinfo->hwcaps & VEX_HWCAPS_AMD64_CX16) &&
           (archinfo->hwcaps & VEX_HWCAPS_AMD64_AVX2)) {
          fName = "amd64g_dirtyhelper_CPUID_avx2";
          fAddr = &amd64g_dirtyhelper_CPUID_avx2;
          /* This is a Core-i7-4910-like machine */
       }
-      else if ((archinfo->hwcaps & VEX_HWCAPS_AMD64_SSE3) &&
+      else if ((archinfo->hwcaps & VEX_HWCAPS_AMD64_SSSE3) &&
                (archinfo->hwcaps & VEX_HWCAPS_AMD64_CX16) &&
                (archinfo->hwcaps & VEX_HWCAPS_AMD64_AVX)) {
          fName = "amd64g_dirtyhelper_CPUID_avx_and_cx16";
          fAddr = &amd64g_dirtyhelper_CPUID_avx_and_cx16;
          /* This is a Core-i5-2300-like machine */
       }
-      else if ((archinfo->hwcaps & VEX_HWCAPS_AMD64_SSE3) &&
-               (archinfo->hwcaps & VEX_HWCAPS_AMD64_CX16)) {
+      else if ((archinfo->hwcaps & VEX_HWCAPS_AMD64_SSSE3) &&
+               (archinfo->hwcaps & VEX_HWCAPS_AMD64_CX16) &&
+               (archinfo->hwcaps & VEX_HWCAPS_AMD64_RDTSCP)) {
          fName = "amd64g_dirtyhelper_CPUID_sse42_and_cx16";
          fAddr = &amd64g_dirtyhelper_CPUID_sse42_and_cx16;
+      }
+      else if ((archinfo->hwcaps & VEX_HWCAPS_AMD64_SSSE3) &&
+               (archinfo->hwcaps & VEX_HWCAPS_AMD64_CX16)) {
+         fName = "amd64g_dirtyhelper_CPUID_sse3_and_cx16";
+         fAddr = &amd64g_dirtyhelper_CPUID_sse3_and_cx16;
          /* This is a Core-i5-670-like machine */
       }
       else {
@@ -22315,9 +22141,43 @@ Long dis_ESC_0F (
       }
 
       vassert(fName); vassert(fAddr);
-      d = unsafeIRDirty_0_N ( 0/*regparms*/, 
-                              fName, fAddr, mkIRExprVec_1(IRExpr_GSPTR()) );
-      /* declare guest state effects */
+      IRExpr** args = NULL;
+      if (fAddr == &amd64g_dirtyhelper_CPUID_avx2
+          || fAddr == &amd64g_dirtyhelper_CPUID_avx_and_cx16) {
+         Bool hasF16C   = (archinfo->hwcaps & VEX_HWCAPS_AMD64_F16C) != 0;
+         Bool hasRDRAND = (archinfo->hwcaps & VEX_HWCAPS_AMD64_RDRAND) != 0;
+         Bool hasRDSEED = (archinfo->hwcaps & VEX_HWCAPS_AMD64_RDSEED) != 0;
+         args = mkIRExprVec_4(IRExpr_GSPTR(),
+                              mkIRExpr_HWord(hasF16C ? 1 : 0),
+                              mkIRExpr_HWord(hasRDRAND ? 1 : 0),
+                              mkIRExpr_HWord(hasRDSEED ? 1 : 0));
+      } else {
+         args = mkIRExprVec_1(IRExpr_GSPTR());
+      }
+      d = unsafeIRDirty_0_N ( 0/*regparms*/, fName, fAddr, args );
+
+      /* Declare guest state effects.  EAX, EBX, ECX and EDX are written. EAX
+         is also read, hence is marked as Modified.  ECX is sometimes also
+         read, depending on the value in EAX; that much is obvious from
+         inspection of the helper function.
+
+         This is a bit of a problem: if we mark ECX as Modified -- hence, by
+         implication, Read -- then we may get false positives from Memcheck in
+         the case where ECX contains undefined bits, but the EAX value is such
+         that the instruction wouldn't read ECX anyway.  The obvious way out
+         of this is to mark it as written only, but that means Memcheck will
+         effectively ignore undefinedness in the incoming ECX value.  That
+         seems like a small loss to take to avoid false positives here,
+         though.  Fundamentally the problem exists because CPUID itself has
+         conditional dataflow -- whether ECX is read depends on the value in
+         EAX -- but the annotation mechanism for dirty helpers can't represent
+         that conditionality.
+
+         A fully-accurate solution might be to change the helpers so that the
+         EAX and ECX values are passed as parameters.  Then, for the ECX
+         value, we can pass, effectively "if EAX is some value for which ECX
+         is ignored { 0 } else { ECX }", and Memcheck will see and understand
+         this conditionality. */
       d->nFxState = 4;
       vex_bzero(&d->fxState, sizeof(d->fxState));
       d->fxState[0].fx     = Ifx_Modify;
@@ -22326,13 +22186,13 @@ Long dis_ESC_0F (
       d->fxState[1].fx     = Ifx_Write;
       d->fxState[1].offset = OFFB_RBX;
       d->fxState[1].size   = 8;
-      d->fxState[2].fx     = Ifx_Modify;
+      d->fxState[2].fx     = Ifx_Write; /* was: Ifx_Modify; */
       d->fxState[2].offset = OFFB_RCX;
       d->fxState[2].size   = 8;
       d->fxState[3].fx     = Ifx_Write;
       d->fxState[3].offset = OFFB_RDX;
       d->fxState[3].size   = 8;
-      /* execute the dirty call, side-effecting guest state */
+      /* Execute the dirty call, side-effecting guest state. */
       stmt( IRStmt_Dirty(d) );
       /* CPUID is a serialising insn.  So, just in case someone is
          using it as a memory fence ... */
@@ -22518,141 +22378,252 @@ Long dis_ESC_0F (
       return delta;
    }
 
-   case 0xC7: { /* CMPXCHG8B Ev, CMPXCHG16B Ev */
-      IRType  elemTy     = sz==4 ? Ity_I32 : Ity_I64;
-      IRTemp  expdHi     = newTemp(elemTy);
-      IRTemp  expdLo     = newTemp(elemTy);
-      IRTemp  dataHi     = newTemp(elemTy);
-      IRTemp  dataLo     = newTemp(elemTy);
-      IRTemp  oldHi      = newTemp(elemTy);
-      IRTemp  oldLo      = newTemp(elemTy);
-      IRTemp  flags_old  = newTemp(Ity_I64);
-      IRTemp  flags_new  = newTemp(Ity_I64);
-      IRTemp  success    = newTemp(Ity_I1);
-      IROp    opOR       = sz==4 ? Iop_Or32    : Iop_Or64;
-      IROp    opXOR      = sz==4 ? Iop_Xor32   : Iop_Xor64;
-      IROp    opCasCmpEQ = sz==4 ? Iop_CasCmpEQ32 : Iop_CasCmpEQ64;
-      IRExpr* zero       = sz==4 ? mkU32(0)    : mkU64(0);
-      IRTemp expdHi64    = newTemp(Ity_I64);
-      IRTemp expdLo64    = newTemp(Ity_I64);
-
-      /* Translate this using a DCAS, even if there is no LOCK
-         prefix.  Life is too short to bother with generating two
-         different translations for the with/without-LOCK-prefix
-         cases. */
-      *expect_CAS = True;
-
-      /* Decode, and generate address. */
-      if (have66(pfx)) goto decode_failure;
-      if (sz != 4 && sz != 8) goto decode_failure;
-      if (sz == 8 && !(archinfo->hwcaps & VEX_HWCAPS_AMD64_CX16))
-         goto decode_failure;
+   case 0xC7: {
       modrm = getUChar(delta);
-      if (epartIsReg(modrm)) goto decode_failure;
-      if (gregLO3ofRM(modrm) != 1) goto decode_failure;
-      if (haveF2orF3(pfx)) {
-         /* Since the e-part is memory only, F2 or F3 (one or the
-            other) is acceptable if LOCK is also present.  But only
-            for cmpxchg8b. */
-         if (sz == 8) goto decode_failure;
-         if (haveF2andF3(pfx) || !haveLOCK(pfx)) goto decode_failure;
+
+      // Detecting valid CMPXCHG combinations is pretty complex.
+      Bool isValidCMPXCHG = gregLO3ofRM(modrm) == 1;
+      if (isValidCMPXCHG) {
+         if (have66(pfx)) isValidCMPXCHG = False;
+         if (sz != 4 && sz != 8) isValidCMPXCHG = False;
+         if (sz == 8 && !(archinfo->hwcaps & VEX_HWCAPS_AMD64_CX16))
+            isValidCMPXCHG = False;
+         if (epartIsReg(modrm)) isValidCMPXCHG = False;
+         if (haveF2orF3(pfx)) {
+            /* Since the e-part is memory only, F2 or F3 (one or the
+               other) is acceptable if LOCK is also present.  But only
+               for cmpxchg8b. */
+            if (sz == 8) isValidCMPXCHG = False;
+            if (haveF2andF3(pfx) || !haveLOCK(pfx)) isValidCMPXCHG = False;
+         }
       }
 
-      addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-      delta += alen;
+      /* 0F C7 /1 (with qualifications) = CMPXCHG */
+      if (isValidCMPXCHG) {
+         // Note that we've already read the modrm byte by this point, but we
+         // haven't moved delta past it.
+         IRType  elemTy     = sz==4 ? Ity_I32 : Ity_I64;
+         IRTemp  expdHi     = newTemp(elemTy);
+         IRTemp  expdLo     = newTemp(elemTy);
+         IRTemp  dataHi     = newTemp(elemTy);
+         IRTemp  dataLo     = newTemp(elemTy);
+         IRTemp  oldHi      = newTemp(elemTy);
+         IRTemp  oldLo      = newTemp(elemTy);
+         IRTemp  flags_old  = newTemp(Ity_I64);
+         IRTemp  flags_new  = newTemp(Ity_I64);
+         IRTemp  success    = newTemp(Ity_I1);
+         IROp    opOR       = sz==4 ? Iop_Or32    : Iop_Or64;
+         IROp    opXOR      = sz==4 ? Iop_Xor32   : Iop_Xor64;
+         IROp    opCasCmpEQ = sz==4 ? Iop_CasCmpEQ32 : Iop_CasCmpEQ64;
+         IRExpr* zero       = sz==4 ? mkU32(0)    : mkU64(0);
+         IRTemp expdHi64    = newTemp(Ity_I64);
+         IRTemp expdLo64    = newTemp(Ity_I64);
 
-      /* cmpxchg16b requires an alignment check. */
-      if (sz == 8)
-         gen_SEGV_if_not_16_aligned( addr );
+         /* Translate this using a DCAS, even if there is no LOCK
+            prefix.  Life is too short to bother with generating two
+            different translations for the with/without-LOCK-prefix
+            cases. */
+         *expect_CAS = True;
 
-      /* Get the expected and new values. */
-      assign( expdHi64, getIReg64(R_RDX) );
-      assign( expdLo64, getIReg64(R_RAX) );
+         /* Generate address */
+         vassert(!epartIsReg(modrm));
+         addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
+         delta += alen;
 
-      /* These are the correctly-sized expected and new values.
-         However, we also get expdHi64/expdLo64 above as 64-bits
-         regardless, because we will need them later in the 32-bit
-         case (paradoxically). */
-      assign( expdHi, sz==4 ? unop(Iop_64to32, mkexpr(expdHi64))
-                            : mkexpr(expdHi64) );
-      assign( expdLo, sz==4 ? unop(Iop_64to32, mkexpr(expdLo64))
-                            : mkexpr(expdLo64) );
-      assign( dataHi, sz==4 ? getIReg32(R_RCX) : getIReg64(R_RCX) );
-      assign( dataLo, sz==4 ? getIReg32(R_RBX) : getIReg64(R_RBX) );
+         /* cmpxchg16b requires an alignment check. */
+         if (sz == 8)
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
 
-      /* Do the DCAS */
-      stmt( IRStmt_CAS(
-               mkIRCAS( oldHi, oldLo, 
-                        Iend_LE, mkexpr(addr), 
-                        mkexpr(expdHi), mkexpr(expdLo),
-                        mkexpr(dataHi), mkexpr(dataLo)
-            )));
+         /* Get the expected and new values. */
+         assign( expdHi64, getIReg64(R_RDX) );
+         assign( expdLo64, getIReg64(R_RAX) );
 
-      /* success when oldHi:oldLo == expdHi:expdLo */
-      assign( success,
-              binop(opCasCmpEQ,
-                    binop(opOR,
-                          binop(opXOR, mkexpr(oldHi), mkexpr(expdHi)),
-                          binop(opXOR, mkexpr(oldLo), mkexpr(expdLo))
-                    ),
-                    zero
-              ));
+         /* These are the correctly-sized expected and new values.
+            However, we also get expdHi64/expdLo64 above as 64-bits
+            regardless, because we will need them later in the 32-bit
+            case (paradoxically). */
+         assign( expdHi, sz==4 ? unop(Iop_64to32, mkexpr(expdHi64))
+                               : mkexpr(expdHi64) );
+         assign( expdLo, sz==4 ? unop(Iop_64to32, mkexpr(expdLo64))
+                               : mkexpr(expdLo64) );
+         assign( dataHi, sz==4 ? getIReg32(R_RCX) : getIReg64(R_RCX) );
+         assign( dataLo, sz==4 ? getIReg32(R_RBX) : getIReg64(R_RBX) );
 
-      /* If the DCAS is successful, that is to say oldHi:oldLo ==
-         expdHi:expdLo, then put expdHi:expdLo back in RDX:RAX,
-         which is where they came from originally.  Both the actual
-         contents of these two regs, and any shadow values, are
-         unchanged.  If the DCAS fails then we're putting into
-         RDX:RAX the value seen in memory. */
-      /* Now of course there's a complication in the 32-bit case
-         (bah!): if the DCAS succeeds, we need to leave RDX:RAX
-         unchanged; but if we use the same scheme as in the 64-bit
-         case, we get hit by the standard rule that a write to the
-         bottom 32 bits of an integer register zeros the upper 32
-         bits.  And so the upper halves of RDX and RAX mysteriously
-         become zero.  So we have to stuff back in the original
-         64-bit values which we previously stashed in
-         expdHi64:expdLo64, even if we're doing a cmpxchg8b. */
-      /* It's just _so_ much fun ... */
-      putIRegRDX( 8,
-                  IRExpr_ITE( mkexpr(success),
-                              mkexpr(expdHi64),
-                              sz == 4 ? unop(Iop_32Uto64, mkexpr(oldHi))
-                                      : mkexpr(oldHi)
-                ));
-      putIRegRAX( 8,
-                  IRExpr_ITE( mkexpr(success),
-                              mkexpr(expdLo64),
-                              sz == 4 ? unop(Iop_32Uto64, mkexpr(oldLo))
-                                      : mkexpr(oldLo)
-                ));
+         /* Do the DCAS */
+         stmt( IRStmt_CAS(
+                  mkIRCAS( oldHi, oldLo,
+                           Iend_LE, mkexpr(addr),
+                           mkexpr(expdHi), mkexpr(expdLo),
+                           mkexpr(dataHi), mkexpr(dataLo)
+               )));
 
-      /* Copy the success bit into the Z flag and leave the others
-         unchanged */
-      assign( flags_old, widenUto64(mk_amd64g_calculate_rflags_all()));
-      assign( 
-         flags_new,
-         binop(Iop_Or64,
-               binop(Iop_And64, mkexpr(flags_old), 
-                                mkU64(~AMD64G_CC_MASK_Z)),
-               binop(Iop_Shl64,
-                     binop(Iop_And64,
-                           unop(Iop_1Uto64, mkexpr(success)), mkU64(1)), 
-                     mkU8(AMD64G_CC_SHIFT_Z)) ));
+         /* success when oldHi:oldLo == expdHi:expdLo */
+         assign( success,
+                 binop(opCasCmpEQ,
+                       binop(opOR,
+                             binop(opXOR, mkexpr(oldHi), mkexpr(expdHi)),
+                             binop(opXOR, mkexpr(oldLo), mkexpr(expdLo))
+                       ),
+                       zero
+                 ));
 
-      stmt( IRStmt_Put( OFFB_CC_OP,   mkU64(AMD64G_CC_OP_COPY) ));
-      stmt( IRStmt_Put( OFFB_CC_DEP1, mkexpr(flags_new) ));
-      stmt( IRStmt_Put( OFFB_CC_DEP2, mkU64(0) ));
-      /* Set NDEP even though it isn't used.  This makes
-         redundant-PUT elimination of previous stores to this field
-         work better. */
-      stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
+         /* If the DCAS is successful, that is to say oldHi:oldLo ==
+            expdHi:expdLo, then put expdHi:expdLo back in RDX:RAX,
+            which is where they came from originally.  Both the actual
+            contents of these two regs, and any shadow values, are
+            unchanged.  If the DCAS fails then we're putting into
+            RDX:RAX the value seen in memory. */
+         /* Now of course there's a complication in the 32-bit case
+            (bah!): if the DCAS succeeds, we need to leave RDX:RAX
+            unchanged; but if we use the same scheme as in the 64-bit
+            case, we get hit by the standard rule that a write to the
+            bottom 32 bits of an integer register zeros the upper 32
+            bits.  And so the upper halves of RDX and RAX mysteriously
+            become zero.  So we have to stuff back in the original
+            64-bit values which we previously stashed in
+            expdHi64:expdLo64, even if we're doing a cmpxchg8b. */
+         /* It's just _so_ much fun ... */
+         putIRegRDX( 8,
+                     IRExpr_ITE( mkexpr(success),
+                                 mkexpr(expdHi64),
+                                 sz == 4 ? unop(Iop_32Uto64, mkexpr(oldHi))
+                                         : mkexpr(oldHi)
+                   ));
+         putIRegRAX( 8,
+                     IRExpr_ITE( mkexpr(success),
+                                 mkexpr(expdLo64),
+                                 sz == 4 ? unop(Iop_32Uto64, mkexpr(oldLo))
+                                         : mkexpr(oldLo)
+                   ));
 
-      /* Sheesh.  Aren't you glad it was me and not you that had to
-         write and validate all this grunge? */
+         /* Copy the success bit into the Z flag and leave the others
+            unchanged */
+         assign( flags_old, widenUto64(mk_amd64g_calculate_rflags_all()));
+         assign(
+            flags_new,
+            binop(Iop_Or64,
+                  binop(Iop_And64, mkexpr(flags_old),
+                                   mkU64(~AMD64G_CC_MASK_Z)),
+                  binop(Iop_Shl64,
+                        binop(Iop_And64,
+                              unop(Iop_1Uto64, mkexpr(success)), mkU64(1)),
+                        mkU8(AMD64G_CC_SHIFT_Z)) ));
 
-      DIP("cmpxchg8b %s\n", dis_buf);
-      return delta;
+         stmt( IRStmt_Put( OFFB_CC_OP,   mkU64(AMD64G_CC_OP_COPY) ));
+         stmt( IRStmt_Put( OFFB_CC_DEP1, mkexpr(flags_new) ));
+         stmt( IRStmt_Put( OFFB_CC_DEP2, mkU64(0) ));
+         /* Set NDEP even though it isn't used.  This makes
+            redundant-PUT elimination of previous stores to this field
+            work better. */
+         stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
+
+         /* Sheesh.  Aren't you glad it was me and not you that had to
+            write and validate all this grunge? */
+
+         DIP("cmpxchg8b %s\n", dis_buf);
+         return delta;
+      } // if (isValidCMPXCHG)
+
+      /* 0F C7 /6 no-F2-or-F3 = RDRAND, 0F C7 /7 = RDSEED */
+      int insn = gregLO3ofRM(modrm);
+      if (((insn == 6 && (archinfo->hwcaps & VEX_HWCAPS_AMD64_RDRAND))
+           || (insn == 7 && (archinfo->hwcaps & VEX_HWCAPS_AMD64_RDSEED)))
+          && epartIsReg(modrm) && haveNoF2noF3(pfx)
+          && (sz == 8 || sz == 4 || sz == 2)) {
+
+         delta++; // move past modrm
+         IRType   ty    = szToITy(sz);
+
+         // Pull a first 32 bits of randomness, plus C flag, out of the host.
+         IRTemp pairLO = newTemp(Ity_I64);
+         IRDirty* dLO;
+         if (insn == 6) /* RDRAND */
+             dLO = unsafeIRDirty_1_N(pairLO, 0/*regparms*/,
+                                     "amd64g_dirtyhelper_RDRAND",
+                                     &amd64g_dirtyhelper_RDRAND, mkIRExprVec_0());
+         else /* RDSEED */
+             dLO = unsafeIRDirty_1_N(pairLO, 0/*regparms*/,
+                                     "amd64g_dirtyhelper_RDSEED",
+                                     &amd64g_dirtyhelper_RDSEED, mkIRExprVec_0());
+
+         // There are no guest state or memory effects to declare for |dLO|.
+         stmt( IRStmt_Dirty(dLO) );
+
+         IRTemp randsLO = newTemp(Ity_I32);
+         assign(randsLO, unop(Iop_64to32, mkexpr(pairLO)));
+         IRTemp cLO = newTemp(Ity_I64);
+         assign(cLO, binop(Iop_Shr64, mkexpr(pairLO), mkU8(32)));
+
+         // We'll assemble the final pairing in (cFinal, randsNearlyFinal).
+         IRTemp randsNearlyFinal = newTemp(Ity_I64);
+         IRTemp cFinal = newTemp(Ity_I64);
+
+         if (ty == Ity_I64) {
+            // Pull another 32 bits of randomness out of the host.
+            IRTemp pairHI = newTemp(Ity_I64);
+            IRDirty* dHI;
+            if (insn == 6) /* RDRAND */
+                dHI = unsafeIRDirty_1_N(pairHI, 0/*regparms*/,
+                                        "amd64g_dirtyhelper_RDRAND",
+                                        &amd64g_dirtyhelper_RDRAND, mkIRExprVec_0());
+            else /* RDSEED */
+                dHI = unsafeIRDirty_1_N(pairHI, 0/*regparms*/,
+                                        "amd64g_dirtyhelper_RDSEED",
+                                        &amd64g_dirtyhelper_RDSEED, mkIRExprVec_0());
+
+            // There are no guest state or memory effects to declare for |dHI|.
+            stmt( IRStmt_Dirty(dHI) );
+
+            IRTemp randsHI = newTemp(Ity_I32);
+            assign(randsHI, unop(Iop_64to32, mkexpr(pairHI)));
+            IRTemp cHI = newTemp(Ity_I64);
+            assign(cHI, binop(Iop_Shr64, mkexpr(pairHI), mkU8(32)));
+            assign(randsNearlyFinal, binop(Iop_32HLto64,
+                                           mkexpr(randsHI), mkexpr(randsLO)));
+            assign(cFinal, binop(Iop_And64,
+                                 binop(Iop_And64, mkexpr(cHI), mkexpr(cLO)),
+                                 mkU64(1)));
+         } else {
+            assign(randsNearlyFinal, unop(Iop_32Uto64, mkexpr(randsLO)));
+            assign(cFinal, binop(Iop_And64, mkexpr(cLO), mkU64(1)));
+         }
+
+         /* Now cFinal[0] is the final success/failure flag (cFinal[0] == 1
+            means success).  But there's another twist.  If we failed then the
+            returned value must be forced to zero.  Otherwise we could have the
+            situation, when sz==8, where one of the host calls failed but the
+            other didn't.  This would give cFinal[0] == 0 (correctly) but
+            randsNearlyFinal not being zero, because it contains the 32 bit
+            result of the non-failing call. */
+         IRTemp randsFinal = newTemp(Ity_I64);
+         assign(randsFinal,
+                binop(Iop_And64,
+                      mkexpr(randsNearlyFinal),
+                      binop(Iop_Sar64,
+                            binop(Iop_Shl64, mkexpr(cFinal), mkU8(63)),
+                            mkU8(63))
+         ));
+
+         // So, finally, update the guest state.
+         putIRegE(sz, pfx, modrm, narrowTo(ty, mkexpr(randsFinal)));
+
+         // Set C=<success indication>, O,S,Z,A,P = 0.  cFinal has already been
+         // masked so only the lowest bit remains.
+         stmt( IRStmt_Put( OFFB_CC_OP,   mkU64(AMD64G_CC_OP_COPY) ));
+         stmt( IRStmt_Put( OFFB_CC_DEP1, mkexpr(cFinal) ));
+         stmt( IRStmt_Put( OFFB_CC_DEP2, mkU64(0) ));
+         stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
+
+         if (insn == 6) {
+             DIP("rdrand %s", nameIRegE(sz, pfx, modrm));
+	 } else {
+             DIP("rdseed %s", nameIRegE(sz, pfx, modrm));
+	 }
+
+         return delta;
+      }
+
+      goto decode_failure;
    }
 
    case 0xC8: /* BSWAP %eax */
@@ -22849,9 +22820,6 @@ __attribute__((noinline))
 static
 Long dis_ESC_0F38 (
         /*MB_OUT*/DisResult* dres,
-        Bool         (*resteerOkFn) ( /*opaque*/void*, Addr ),
-        Bool         resteerCisOk,
-        void*        callback_opaque,
         const VexArchInfo* archinfo,
         const VexAbiInfo*  vbi,
         Prefix pfx, Int sz, Long deltaIN 
@@ -22929,9 +22897,9 @@ Long dis_ESC_0F38 (
    case 0xF6: {
       /* 66 0F 38 F6 = ADCX r32/64(G), m32/64(E) */
       /* F3 0F 38 F6 = ADOX r32/64(G), m32/64(E) */
-      /* These were introduced in Broadwell.  Gate them on AVX2 so as to at
+      /* These were introduced in Broadwell.  Gate them on AVX so as to at
          least reject them on earlier guests.  Has no host requirements. */
-      if (have66noF2noF3(pfx) && (archinfo->hwcaps & VEX_HWCAPS_AMD64_AVX2)) {
+      if (have66noF2noF3(pfx) && (archinfo->hwcaps & VEX_HWCAPS_AMD64_AVX)) {
          if (sz == 2) {
             sz = 4; /* 66 prefix but operand size is 4/8 */
          }
@@ -22939,7 +22907,7 @@ Long dis_ESC_0F38 (
                                sz, delta, "adcx" );
          return delta;
       }
-      if (haveF3no66noF2(pfx) && (archinfo->hwcaps & VEX_HWCAPS_AMD64_AVX2)) {
+      if (haveF3no66noF2(pfx) && (archinfo->hwcaps & VEX_HWCAPS_AMD64_AVX)) {
          delta = dis_op2_E_G ( vbi, pfx, Iop_Add8, WithFlagOverX, True,
                                sz, delta, "adox" );
          return delta;
@@ -22967,9 +22935,6 @@ __attribute__((noinline))
 static
 Long dis_ESC_0F3A (
         /*MB_OUT*/DisResult* dres,
-        Bool         (*resteerOkFn) ( /*opaque*/void*, Addr ),
-        Bool         resteerCisOk,
-        void*        callback_opaque,
         const VexArchInfo* archinfo,
         const VexAbiInfo*  vbi,
         Prefix pfx, Int sz, Long deltaIN 
@@ -23019,31 +22984,23 @@ __attribute__((noinline))
 static
 Long dis_ESC_0F20 (
         /*MB_OUT*/DisResult* dres,
-        Bool         (*resteerOkFn) ( /*opaque*/void*, Addr ),
-        Bool         resteerCisOk,
-        void*        callback_opaque,
         const VexArchInfo* archinfo,
         const VexAbiInfo*  vbi,
         Prefix pfx, Int sz, Long deltaIN
      )
 {
-
-   Long   delta = deltaIN;
-   UChar  rm   = getUChar(delta);
-   Int size = sz;
+   Long  delta = deltaIN;
+   UChar rm    = getUChar(delta);
 
    if (epartIsReg(rm)) {
-      putIRegE(size, pfx, rm, getControlRegG(size, pfx, rm));
-      DIP("mov%c %s,%s\n", nameISize(size),
+      putIRegE(sz, pfx, rm, getControlRegG(sz, pfx, rm));
+      DIP("mov%c %s,%s\n", nameISize(sz),
                            nameControlRegG(pfx,rm),
-                           nameIRegE(size,pfx,rm));
+                           nameIRegE(sz,pfx,rm));
       return 1+delta;
    }
 
    return deltaIN; /* fail */
-
-
-
 }
 
 
@@ -23057,30 +23014,23 @@ __attribute__((noinline))
 static
 Long dis_ESC_0F22 (
         /*MB_OUT*/DisResult* dres,
-        Bool         (*resteerOkFn) ( /*opaque*/void*, Addr ),
-        Bool         resteerCisOk,
-        void*        callback_opaque,
         const VexArchInfo* archinfo,
         const VexAbiInfo*  vbi,
         Prefix pfx, Int sz, Long deltaIN
      )
 {
-
-
-   Long   delta = deltaIN;
-   UChar  rm   = getUChar(delta);
-   Int size = sz;
+   Long  delta = deltaIN;
+   UChar rm    = getUChar(delta);
 
    if (epartIsReg(rm)) {
-      putControlRegG(size, pfx, rm, getIRegE(size, pfx, rm));
-      DIP("mov%c %s,%s\n", nameISize(size),
-                           nameIRegE(size,pfx,rm),
+      putControlRegG(sz, pfx, rm, getIRegE(sz, pfx, rm));
+      DIP("mov%c %s,%s\n", nameISize(sz),
+                           nameIRegE(sz,pfx,rm),
                            nameControlRegG(pfx,rm));
       return 1+delta;
    }
 
    return deltaIN; /* fail */
-
 }
 
 
@@ -23428,6 +23378,8 @@ static ULong dis_AVX_var_shiftV_byE ( const VexAbiInfo* vbi,
                     op == Iop_Sar32 ? binop(op, mkexpr(sVs[i]), mkU8(size-1))
                                     : size == 32 ? mkU32(0) : mkU64(0)
          ));
+      } else {
+         res[i] = IRTemp_INVALID;
       }
    switch (size) {
       case 32:
@@ -23773,6 +23725,7 @@ Long dis_AVX128_cmp_V_E_to_G ( /*OUT*/Bool* uses_vvvv,
    Int     alen;
    UInt    imm8;
    IRTemp  addr;
+   Bool    preZero = False;
    Bool    preSwap = False;
    IROp    op      = Iop_INVALID;
    Bool    postNot = False;
@@ -23780,13 +23733,14 @@ Long dis_AVX128_cmp_V_E_to_G ( /*OUT*/Bool* uses_vvvv,
    UChar   rm      = getUChar(delta);
    UInt    rG      = gregOfRexRM(pfx, rm);
    UInt    rV      = getVexNvvvv(pfx);
-   IRTemp argL     = newTemp(Ity_V128);
-   IRTemp argR     = newTemp(Ity_V128);
+   IRTemp  argL    = newTemp(Ity_V128);
+   IRTemp  argR    = newTemp(Ity_V128);
 
    assign(argL, getXMMReg(rV));
    if (epartIsReg(rm)) {
       imm8 = getUChar(delta+1);
-      Bool ok = findSSECmpOp(&preSwap, &op, &postNot, imm8, all_lanes, sz);
+      Bool ok = findSSECmpOp(&preZero, &preSwap, &op, &postNot,
+                             imm8, all_lanes, sz);
       if (!ok) return deltaIN; /* FAIL */
       UInt rE = eregOfRexRM(pfx,rm);
       assign(argR, getXMMReg(rE));
@@ -23797,7 +23751,8 @@ Long dis_AVX128_cmp_V_E_to_G ( /*OUT*/Bool* uses_vvvv,
    } else {
       addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 1 );
       imm8 = getUChar(delta+alen);
-      Bool ok = findSSECmpOp(&preSwap, &op, &postNot, imm8, all_lanes, sz);
+      Bool ok = findSSECmpOp(&preZero, &preSwap, &op, &postNot,
+                             imm8, all_lanes, sz);
       if (!ok) return deltaIN; /* FAIL */
       assign(argR, 
              all_lanes   ? loadLE(Ity_V128, mkexpr(addr))
@@ -23808,8 +23763,22 @@ Long dis_AVX128_cmp_V_E_to_G ( /*OUT*/Bool* uses_vvvv,
           opname, imm8, dis_buf, nameXMMReg(rV), nameXMMReg(rG));
    }
 
-   assign(plain, preSwap ? binop(op, mkexpr(argR), mkexpr(argL))
-                         : binop(op, mkexpr(argL), mkexpr(argR)));
+   IRTemp argMask = newTemp(Ity_V128);
+   if (preZero) {
+      // In this case, preSwap is irrelevant, but it's harmless to honour it
+      // anyway.
+      assign(argMask, mkV128(all_lanes ? 0x0000 : (sz==4 ? 0xFFF0 : 0xFF00)));
+   } else {
+      assign(argMask, mkV128(0xFFFF));
+   }
+
+   assign(
+      plain,
+      preSwap ? binop(op, binop(Iop_AndV128, mkexpr(argR), mkexpr(argMask)),
+                          binop(Iop_AndV128, mkexpr(argL), mkexpr(argMask)))
+              : binop(op, binop(Iop_AndV128, mkexpr(argL), mkexpr(argMask)),
+                          binop(Iop_AndV128, mkexpr(argR), mkexpr(argMask)))
+   );
 
    if (all_lanes) {
       /* This is simple: just invert the result, if necessary, and
@@ -23883,6 +23852,7 @@ Long dis_AVX256_cmp_V_E_to_G ( /*OUT*/Bool* uses_vvvv,
    Int     alen;
    UInt    imm8;
    IRTemp  addr;
+   Bool    preZero = False;
    Bool    preSwap = False;
    IROp    op      = Iop_INVALID;
    Bool    postNot = False;
@@ -23900,7 +23870,7 @@ Long dis_AVX256_cmp_V_E_to_G ( /*OUT*/Bool* uses_vvvv,
    assign(argL, getYMMReg(rV));
    if (epartIsReg(rm)) {
       imm8 = getUChar(delta+1);
-      Bool ok = findSSECmpOp(&preSwap, &op, &postNot, imm8,
+      Bool ok = findSSECmpOp(&preZero, &preSwap, &op, &postNot, imm8,
                              True/*all_lanes*/, sz);
       if (!ok) return deltaIN; /* FAIL */
       UInt rE = eregOfRexRM(pfx,rm);
@@ -23912,7 +23882,7 @@ Long dis_AVX256_cmp_V_E_to_G ( /*OUT*/Bool* uses_vvvv,
    } else {
       addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 1 );
       imm8 = getUChar(delta+alen);
-      Bool ok = findSSECmpOp(&preSwap, &op, &postNot, imm8,
+      Bool ok = findSSECmpOp(&preZero, &preSwap, &op, &postNot, imm8,
                              True/*all_lanes*/, sz);
       if (!ok) return deltaIN; /* FAIL */
       assign(argR, loadLE(Ity_V256, mkexpr(addr)) );
@@ -23923,9 +23893,24 @@ Long dis_AVX256_cmp_V_E_to_G ( /*OUT*/Bool* uses_vvvv,
 
    breakupV256toV128s( preSwap ? argR : argL, &argLhi, &argLlo );
    breakupV256toV128s( preSwap ? argL : argR, &argRhi, &argRlo );
-   assign(plain, binop( Iop_V128HLtoV256,
-                        binop(op, mkexpr(argLhi), mkexpr(argRhi)),
-                        binop(op, mkexpr(argLlo), mkexpr(argRlo)) ) );
+
+   IRTemp argMask = newTemp(Ity_V128);
+   if (preZero) {
+      // In this case, preSwap is irrelevant, but it's harmless to honour it
+      // anyway.
+      assign(argMask, mkV128(0x0000));
+   } else {
+      assign(argMask, mkV128(0xFFFF));
+   }
+
+   assign(
+      plain,
+      binop( Iop_V128HLtoV256,
+             binop(op, binop(Iop_AndV128, mkexpr(argLhi), mkexpr(argMask)),
+                       binop(Iop_AndV128, mkexpr(argRhi), mkexpr(argMask))),
+             binop(op, binop(Iop_AndV128, mkexpr(argLlo), mkexpr(argMask)),
+                       binop(Iop_AndV128, mkexpr(argRlo), mkexpr(argMask))))
+   );
 
    /* This is simple: just invert the result, if necessary, and
       have done. */
@@ -24351,9 +24336,6 @@ static
 Long dis_ESC_0F__VEX (
         /*MB_OUT*/DisResult* dres,
         /*OUT*/   Bool*      uses_vvvv,
-        Bool         (*resteerOkFn) ( /*opaque*/void*, Addr ),
-        Bool         resteerCisOk,
-        void*        callback_opaque,
         const VexArchInfo* archinfo,
         const VexAbiInfo*  vbi,
         Prefix pfx, Int sz, Long deltaIN 
@@ -24534,12 +24516,12 @@ Long dis_ESC_0F__VEX (
          UInt  rV    = getVexNvvvv(pfx);
          delta++;
          DIP("vmovsd %s,%s,%s\n",
-             nameXMMReg(rE), nameXMMReg(rV), nameXMMReg(rG));
+             nameXMMReg(rG), nameXMMReg(rV), nameXMMReg(rE));
          IRTemp res = newTemp(Ity_V128);
          assign(res, binop(Iop_64HLtoV128,
                            getXMMRegLane64(rV, 1),
-                           getXMMRegLane64(rE, 0)));
-         putYMMRegLoAndZU(rG, mkexpr(res));
+                           getXMMRegLane64(rG, 0)));
+         putYMMRegLoAndZU(rE, mkexpr(res));
          *uses_vvvv = True;
          goto decode_success;
       }
@@ -24564,14 +24546,14 @@ Long dis_ESC_0F__VEX (
          UInt  rV    = getVexNvvvv(pfx);
          delta++;
          DIP("vmovss %s,%s,%s\n",
-             nameXMMReg(rE), nameXMMReg(rV), nameXMMReg(rG));
+             nameXMMReg(rG), nameXMMReg(rV), nameXMMReg(rE));
          IRTemp res = newTemp(Ity_V128);
          assign( res, binop( Iop_64HLtoV128,
                              getXMMRegLane64(rV, 1),
                              binop(Iop_32HLto64,
                                    getXMMRegLane32(rV, 1),
-                                   getXMMRegLane32(rE, 0)) ) );
-         putYMMRegLoAndZU(rG, mkexpr(res));
+                                   getXMMRegLane32(rG, 0)) ) );
+         putYMMRegLoAndZU(rE, mkexpr(res));
          *uses_vvvv = True;
          goto decode_success;
       }
@@ -24926,7 +24908,7 @@ Long dis_ESC_0F__VEX (
             delta += 1;
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             putYMMRegLoAndZU( rG, loadLE(Ity_V128, mkexpr(addr)) );
             DIP("vmovapd %s,%s\n", dis_buf, nameXMMReg(rG));
             delta += alen;
@@ -24944,7 +24926,7 @@ Long dis_ESC_0F__VEX (
             delta += 1;
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_32_aligned( addr );
+            gen_SIGNAL_if_not_32_aligned( vbi, addr );
             putYMMReg( rG, loadLE(Ity_V256, mkexpr(addr)) );
             DIP("vmovapd %s,%s\n", dis_buf, nameYMMReg(rG));
             delta += alen;
@@ -24962,7 +24944,7 @@ Long dis_ESC_0F__VEX (
             delta += 1;
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             putYMMRegLoAndZU( rG, loadLE(Ity_V128, mkexpr(addr)) );
             DIP("vmovaps %s,%s\n", dis_buf, nameXMMReg(rG));
             delta += alen;
@@ -24980,7 +24962,7 @@ Long dis_ESC_0F__VEX (
             delta += 1;
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_32_aligned( addr );
+            gen_SIGNAL_if_not_32_aligned( vbi, addr );
             putYMMReg( rG, loadLE(Ity_V256, mkexpr(addr)) );
             DIP("vmovaps %s,%s\n", dis_buf, nameYMMReg(rG));
             delta += alen;
@@ -25001,7 +24983,7 @@ Long dis_ESC_0F__VEX (
             delta += 1;
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             storeLE( mkexpr(addr), getXMMReg(rG) );
             DIP("vmovapd %s,%s\n", nameXMMReg(rG), dis_buf );
             delta += alen;
@@ -25019,7 +25001,7 @@ Long dis_ESC_0F__VEX (
             delta += 1;
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_32_aligned( addr );
+            gen_SIGNAL_if_not_32_aligned( vbi, addr );
             storeLE( mkexpr(addr), getYMMReg(rG) );
             DIP("vmovapd %s,%s\n", nameYMMReg(rG), dis_buf );
             delta += alen;
@@ -25038,7 +25020,7 @@ Long dis_ESC_0F__VEX (
             goto decode_success;
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             storeLE( mkexpr(addr), getXMMReg(rG) );
             DIP("vmovaps %s,%s\n", nameXMMReg(rG), dis_buf );
             delta += alen;
@@ -25057,7 +25039,7 @@ Long dis_ESC_0F__VEX (
             goto decode_success;
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_32_aligned( addr );
+            gen_SIGNAL_if_not_32_aligned( vbi, addr );
             storeLE( mkexpr(addr), getYMMReg(rG) );
             DIP("vmovaps %s,%s\n", nameYMMReg(rG), dis_buf );
             delta += alen;
@@ -25196,7 +25178,7 @@ Long dis_ESC_0F__VEX (
          assign(tS, getXMMReg(rS));
          addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 0 );
          delta += alen;
-         gen_SEGV_if_not_16_aligned(addr);
+         gen_SIGNAL_if_not_16_aligned(vbi, addr);
          storeLE(mkexpr(addr), mkexpr(tS));
          DIP("vmovntp%c %s,%s\n", have66(pfx) ? 'd' : 's',
              nameXMMReg(rS), dis_buf);
@@ -25212,7 +25194,7 @@ Long dis_ESC_0F__VEX (
          assign(tS, getYMMReg(rS));
          addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 0 );
          delta += alen;
-         gen_SEGV_if_not_32_aligned(addr);
+         gen_SIGNAL_if_not_32_aligned(vbi, addr);
          storeLE(mkexpr(addr), mkexpr(tS));
          DIP("vmovntp%c %s,%s\n", have66(pfx) ? 'd' : 's',
              nameYMMReg(rS), dis_buf);
@@ -26203,7 +26185,7 @@ Long dis_ESC_0F__VEX (
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 0 );
             delta += alen;
             if (isA)
-               gen_SEGV_if_not_32_aligned(addr);
+               gen_SIGNAL_if_not_32_aligned(vbi, addr);
             assign(tD, loadLE(Ity_V256, mkexpr(addr)));
             DIP("vmovdq%c %s,%s\n", ch, dis_buf, nameYMMReg(rD));
          }
@@ -26228,7 +26210,7 @@ Long dis_ESC_0F__VEX (
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 0 );
             delta += alen;
             if (isA)
-               gen_SEGV_if_not_16_aligned(addr);
+               gen_SIGNAL_if_not_16_aligned(vbi, addr);
             assign(tD, loadLE(Ity_V128, mkexpr(addr)));
             DIP("vmovdq%c %s,%s\n", ch, dis_buf, nameXMMReg(rD));
          }
@@ -26766,7 +26748,7 @@ Long dis_ESC_0F__VEX (
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 0 );
             delta += alen;
             if (isA)
-               gen_SEGV_if_not_32_aligned(addr);
+               gen_SIGNAL_if_not_32_aligned(vbi, addr);
             storeLE(mkexpr(addr), mkexpr(tS));
             DIP("vmovdq%c %s,%s\n", ch, nameYMMReg(rS), dis_buf);
          }
@@ -26791,7 +26773,7 @@ Long dis_ESC_0F__VEX (
             addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 0 );
             delta += alen;
             if (isA)
-               gen_SEGV_if_not_16_aligned(addr);
+               gen_SIGNAL_if_not_16_aligned(vbi, addr);
             storeLE(mkexpr(addr), mkexpr(tS));
             DIP("vmovdq%c %s,%s\n", ch, nameXMMReg(rS), dis_buf);
          }
@@ -27167,7 +27149,6 @@ Long dis_ESC_0F__VEX (
       break;
 
    case 0xD6:
-      /* I can't even find any Intel docs for this one. */
       /* Basically: 66 0F D6 = MOVQ -- move 64 bits from G (lo half
          xmm) to E (mem or lo half xmm).  Looks like L==0(128), W==0
          (WIG, maybe?) */
@@ -27176,8 +27157,15 @@ Long dis_ESC_0F__VEX (
          UChar modrm = getUChar(delta);
          UInt  rG    = gregOfRexRM(pfx,modrm);
          if (epartIsReg(modrm)) {
-            /* fall through, awaiting test case */
             /* dst: lo half copied, hi half zeroed */
+            UInt rE = eregOfRexRM(pfx,modrm);
+            putXMMRegLane64( rE, 0, getXMMRegLane64( rG, 0 ));
+            /* zero bits 255:64 */
+            putXMMRegLane64( rE, 1, mkU64(0) );
+            putYMMRegLane128( rE, 1, mkV128(0) );
+            DIP("vmovq %s,%s\n", nameXMMReg(rG), nameXMMReg(rE));
+            delta += 1;
+            goto decode_success;
          } else {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
             storeLE( mkexpr(addr), getXMMRegLane64( rG, 0 ));
@@ -27463,7 +27451,7 @@ Long dis_ESC_0F__VEX (
          UInt rG     = gregOfRexRM(pfx,modrm);
          if (!epartIsReg(modrm)) {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_16_aligned( addr );
+            gen_SIGNAL_if_not_16_aligned( vbi, addr );
             storeLE( mkexpr(addr), getXMMReg(rG) );
             DIP("vmovntdq %s,%s\n", dis_buf, nameXMMReg(rG));
             delta += alen;
@@ -27477,7 +27465,7 @@ Long dis_ESC_0F__VEX (
          UInt rG     = gregOfRexRM(pfx,modrm);
          if (!epartIsReg(modrm)) {
             addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
-            gen_SEGV_if_not_32_aligned( addr );
+            gen_SIGNAL_if_not_32_aligned( vbi, addr );
             storeLE( mkexpr(addr), getYMMReg(rG) );
             DIP("vmovntdq %s,%s\n", dis_buf, nameYMMReg(rG));
             delta += alen;
@@ -28012,11 +28000,7 @@ static Long dis_FMA ( const VexAbiInfo* vbi, Prefix pfx, Long delta, UChar opc )
    UInt   rV      = getVexNvvvv(pfx);
    Bool   scalar  = (opc & 0xF) > 7 && (opc & 1);
    IRType ty      = getRexW(pfx) ? Ity_F64 : Ity_F32;
-   IRType vty     = scalar ? ty : getVexL(pfx) ? Ity_V256 : Ity_V128;
-   IRTemp vX      = newTemp(vty);
-   IRTemp vY      = newTemp(vty);
-   IRTemp vZ      = newTemp(vty);
-   IRExpr *x[8], *y[8], *z[8];
+   IRType vty     = scalar ? ty : (getVexL(pfx) ? Ity_V256 : Ity_V128);
    IRTemp addr    = IRTemp_INVALID;
    HChar  dis_buf[50];
    Int    alen    = 0;
@@ -28026,76 +28010,60 @@ static Long dis_FMA ( const VexAbiInfo* vbi, Prefix pfx, Long delta, UChar opc )
    Bool   negateRes   = False;
    Bool   negateZeven = False;
    Bool   negateZodd  = False;
-   Int    i, j;
-   Int    count;
-   static IROp ops[] = { Iop_V256to64_0, Iop_V256to64_1,
-                         Iop_V256to64_2, Iop_V256to64_3,
-                         Iop_V128to64, Iop_V128HIto64 };
+   UInt   count = 0;
 
    switch (opc & 0xF) {
-   case 0x6:
-      name = "addsub";
-      negateZeven = True;
-      break;
-   case 0x7:
-      name = "subadd";
-      negateZodd = True;
-      break;
-   case 0x8:
-   case 0x9:
-      name = "add";
-      break;
-   case 0xA:
-   case 0xB:
-      name = "sub";
-      negateZeven = True;
-      negateZodd = True;
-      break;
-   case 0xC:
-   case 0xD:
-      name = "add";
-      negateRes = True;
-      negateZeven = True;
-      negateZodd = True;
-      break;
-   case 0xE:
-   case 0xF:
-      name = "sub";
-      negateRes = True;
-      break;
-   default:
-      vpanic("dis_FMA(amd64)");
-      break;
+      case 0x6: name = "addsub"; negateZeven = True; break;
+      case 0x7: name = "subadd"; negateZodd = True; break;
+      case 0x8:
+      case 0x9: name = "add"; break;
+      case 0xA:
+      case 0xB: name = "sub"; negateZeven = True; negateZodd = True;
+         break;
+      case 0xC:
+      case 0xD: name = "add"; negateRes = True; negateZeven = True;
+                                                negateZodd = True; break;
+      case 0xE:
+      case 0xF: name = "sub"; negateRes = True; break;
+      default:  vpanic("dis_FMA(amd64)"); break;
    }
    switch (opc & 0xF0) {
-   case 0x90: order = "132"; break;
-   case 0xA0: order = "213"; break;
-   case 0xB0: order = "231"; break;
-   default: vpanic("dis_FMA(amd64)"); break;
+      case 0x90: order = "132"; break;
+      case 0xA0: order = "213"; break;
+      case 0xB0: order = "231"; break;
+      default:   vpanic("dis_FMA(amd64)"); break;
    }
-   if (scalar)
-      suffix = ty == Ity_F64 ? "sd" : "ss";
-   else
-      suffix = ty == Ity_F64 ? "pd" : "ps";
-
    if (scalar) {
-      assign( vX, ty == Ity_F64
-                  ? getXMMRegLane64F(rG, 0) : getXMMRegLane32F(rG, 0) );
-      assign( vZ, ty == Ity_F64
-                  ? getXMMRegLane64F(rV, 0) : getXMMRegLane32F(rV, 0) );
+      suffix = ty == Ity_F64 ? "sd" : "ss";
    } else {
-      assign( vX, vty == Ity_V256 ? getYMMReg(rG) : getXMMReg(rG) );
-      assign( vZ, vty == Ity_V256 ? getYMMReg(rV) : getXMMReg(rV) );
+      suffix = ty == Ity_F64 ? "pd" : "ps";
+   }
+
+   // Figure out |count| (the number of elements) by considering |vty| and |ty|.
+   count = sizeofIRType(vty) / sizeofIRType(ty);
+   vassert(count == 1 || count == 2 || count == 4 || count == 8);
+
+   // Fetch operands into the first |count| elements of |sX|, |sY| and |sZ|.
+   UInt i;
+   IRExpr *sX[8], *sY[8], *sZ[8], *res[8];
+   for (i = 0; i < 8; i++) sX[i] = sY[i] = sZ[i] = res[i] = NULL;
+
+   IRExpr* (*getYMMRegLane)(UInt,Int)
+      = ty == Ity_F32 ? getYMMRegLane32F : getYMMRegLane64F;
+   void (*putYMMRegLane)(UInt,Int,IRExpr*)
+      = ty == Ity_F32 ? putYMMRegLane32F : putYMMRegLane64F;
+
+   for (i = 0; i < count; i++) {
+      sX[i] = getYMMRegLane(rG, i);
+      sZ[i] = getYMMRegLane(rV, i);
    }
 
    if (epartIsReg(modrm)) {
       UInt rE = eregOfRexRM(pfx, modrm);
       delta += 1;
-      if (scalar)
-         assign( vY, ty == Ity_F64
-                     ? getXMMRegLane64F(rE, 0) : getXMMRegLane32F(rE, 0) );
-      else
-         assign( vY, vty == Ity_V256 ? getYMMReg(rE) : getXMMReg(rE) );
+      for (i = 0; i < count; i++) {
+         sY[i] = getYMMRegLane(rE, i);
+      }
       if (vty == Ity_V256) {
          DIP("vf%sm%s%s%s %s,%s,%s\n", negateRes ? "n" : "",
              name, order, suffix, nameYMMReg(rE), nameYMMReg(rV),
@@ -28108,7 +28076,10 @@ static Long dis_FMA ( const VexAbiInfo* vbi, Prefix pfx, Long delta, UChar opc )
    } else {
       addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 0 );
       delta += alen;
-      assign(vY, loadLE(vty, mkexpr(addr)));
+      for (i = 0; i < count; i++) {
+         sY[i] = loadLE(ty, binop(Iop_Add64, mkexpr(addr),
+                                  mkU64(i * sizeofIRType(ty))));
+      }
       if (vty == Ity_V256) {
          DIP("vf%sm%s%s%s %s,%s,%s\n", negateRes ? "n" : "",
              name, order, suffix, dis_buf, nameYMMReg(rV),
@@ -28120,73 +28091,50 @@ static Long dis_FMA ( const VexAbiInfo* vbi, Prefix pfx, Long delta, UChar opc )
       }
    }
 
-   /* vX/vY/vZ now in 132 order.  If it is different order, swap the
-      arguments.  */
+   /* vX/vY/vZ are now in 132 order.  If the instruction requires a different
+      order, swap them around.  */
+
+#  define COPY_ARR(_dst, _src) \
+      do { for (int j = 0; j < 8; j++) { _dst[j] = _src[j]; } } while (0)
+
    if ((opc & 0xF0) != 0x90) {
-      IRTemp tem = vX;
+      IRExpr* temp[8];
+      COPY_ARR(temp, sX);
       if ((opc & 0xF0) == 0xA0) {
-         vX = vZ;
-         vZ = vY;
-         vY = tem;
+         COPY_ARR(sX, sZ);
+         COPY_ARR(sZ, sY);
+         COPY_ARR(sY, temp);
       } else {
-         vX = vZ;
-         vZ = tem;
+         COPY_ARR(sX, sZ);
+         COPY_ARR(sZ, temp);
       }
    }
 
-   if (scalar) {
-      count = 1;
-      x[0] = mkexpr(vX);
-      y[0] = mkexpr(vY);
-      z[0] = mkexpr(vZ);
-   } else if (ty == Ity_F32) {
-      count = vty == Ity_V256 ? 8 : 4;
-      j = vty == Ity_V256 ? 0 : 4;
-      for (i = 0; i < count; i += 2) {
-         IRTemp tem = newTemp(Ity_I64);
-         assign(tem, unop(ops[i / 2 + j], mkexpr(vX)));
-         x[i] = unop(Iop_64to32, mkexpr(tem));
-         x[i + 1] = unop(Iop_64HIto32, mkexpr(tem));
-         tem = newTemp(Ity_I64);
-         assign(tem, unop(ops[i / 2 + j], mkexpr(vY)));
-         y[i] = unop(Iop_64to32, mkexpr(tem));
-         y[i + 1] = unop(Iop_64HIto32, mkexpr(tem));
-         tem = newTemp(Ity_I64);
-         assign(tem, unop(ops[i / 2 + j], mkexpr(vZ)));
-         z[i] = unop(Iop_64to32, mkexpr(tem));
-         z[i + 1] = unop(Iop_64HIto32, mkexpr(tem));
-      }
-   } else {
-      count = vty == Ity_V256 ? 4 : 2;
-      j = vty == Ity_V256 ? 0 : 4;
-      for (i = 0; i < count; i++) {
-         x[i] = unop(ops[i + j], mkexpr(vX));
-         y[i] = unop(ops[i + j], mkexpr(vY));
-         z[i] = unop(ops[i + j], mkexpr(vZ));
-      }
-   }
-   if (!scalar)
-      for (i = 0; i < count; i++) {
-         IROp op = ty == Ity_F64
-                   ? Iop_ReinterpI64asF64 : Iop_ReinterpI32asF32;
-         x[i] = unop(op, x[i]);
-         y[i] = unop(op, y[i]);
-         z[i] = unop(op, z[i]);
-      }
+#  undef COPY_ARR
+
    for (i = 0; i < count; i++) {
-      if ((i & 1) ? negateZodd : negateZeven)
-         z[i] = unop(ty == Ity_F64 ? Iop_NegF64 : Iop_NegF32, z[i]);
-      x[i] = IRExpr_Qop(ty == Ity_F64 ? Iop_MAddF64 : Iop_MAddF32,
-                        get_FAKE_roundingmode(), x[i], y[i], z[i]);
-      if (negateRes)
-         x[i] = unop(ty == Ity_F64 ? Iop_NegF64 : Iop_NegF32, x[i]);
-      if (ty == Ity_F64)
-         putYMMRegLane64F( rG, i, x[i] );
-      else
-         putYMMRegLane32F( rG, i, x[i] );
+      IROp opNEG = ty == Ity_F64 ? Iop_NegF64 : Iop_NegF32;
+      if ((i & 1) ? negateZodd : negateZeven) {
+         sZ[i] = unop(opNEG, sZ[i]);
+      }
+      res[i] = IRExpr_Qop(ty == Ity_F64 ? Iop_MAddF64 : Iop_MAddF32,
+                          get_FAKE_roundingmode(), sX[i], sY[i], sZ[i]);
+      if (negateRes) {
+         res[i] = unop(opNEG, res[i]);
+      }
    }
-   if (vty != Ity_V256)
-      putYMMRegLane128( rG, 1, mkV128(0) );
+
+   for (i = 0; i < count; i++) {
+      putYMMRegLane(rG, i, res[i]);
+   }
+
+   switch (vty) {
+      case Ity_F32:
+      case Ity_F64:
+      case Ity_V128: putYMMRegLane128(rG, 1, mkV128(0)); /*fallthru*/
+      case Ity_V256: break;
+      default: vassert(0);
+   }
 
    return delta;
 }
@@ -28362,9 +28310,6 @@ static
 Long dis_ESC_0F38__VEX (
         /*MB_OUT*/DisResult* dres,
         /*OUT*/   Bool*      uses_vvvv,
-        Bool         (*resteerOkFn) ( /*opaque*/void*, Addr ),
-        Bool         resteerCisOk,
-        void*        callback_opaque,
         const VexArchInfo* archinfo,
         const VexAbiInfo*  vbi,
         Prefix pfx, Int sz, Long deltaIN 
@@ -28649,6 +28594,7 @@ Long dis_ESC_0F38__VEX (
             )
          );
          *uses_vvvv = True;
+         dres->hint = Dis_HintVerbose;
          goto decode_success;
       }
       break;
@@ -28789,6 +28735,23 @@ Long dis_ESC_0F38__VEX (
       /* VTESTPD ymm2/m256, ymm1 = VEX.256.66.0F38.WIG 0F /r */
       if (have66noF2noF3(pfx) && 1==getVexL(pfx)/*256*/) {
          delta = dis_xTESTy_256( vbi, pfx, delta, 64 );
+         goto decode_success;
+      }
+      break;
+
+   case 0x13:
+      /* VCVTPH2PS xmm2/m64, xmm1 = VEX.128.66.0F38.W0 13 /r */
+      if (have66noF2noF3(pfx)
+          && 0==getVexL(pfx)/*128*/ && 0==getRexW(pfx)/*W0*/
+          && (archinfo->hwcaps & VEX_HWCAPS_AMD64_F16C)) {
+         delta = dis_VCVTPH2PS( vbi, pfx, delta, /*is256bit=*/False );
+         goto decode_success;
+      }
+      /* VCVTPH2PS xmm2/m128, xmm1 = VEX.256.66.0F38.W0 13 /r */
+      if (have66noF2noF3(pfx)
+          && 1==getVexL(pfx)/*256*/ && 0==getRexW(pfx)/*W0*/
+          && (archinfo->hwcaps & VEX_HWCAPS_AMD64_F16C)) {
+         delta = dis_VCVTPH2PS( vbi, pfx, delta, /*is256bit=*/True );
          goto decode_success;
       }
       break;
@@ -29123,7 +29086,7 @@ Long dis_ESC_0F38__VEX (
          IRTemp tD    = newTemp(Ity_V128);
          addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 0 );
          delta += alen;
-         gen_SEGV_if_not_16_aligned(addr);
+         gen_SIGNAL_if_not_16_aligned(vbi, addr);
          assign(tD, loadLE(Ity_V128, mkexpr(addr)));
          DIP("vmovntdqa %s,%s\n", dis_buf, nameXMMReg(rD));
          putYMMRegLoAndZU(rD, mkexpr(tD));
@@ -29137,7 +29100,7 @@ Long dis_ESC_0F38__VEX (
          IRTemp tD    = newTemp(Ity_V256);
          addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 0 );
          delta += alen;
-         gen_SEGV_if_not_32_aligned(addr);
+         gen_SIGNAL_if_not_32_aligned(vbi, addr);
          assign(tD, loadLE(Ity_V256, mkexpr(addr)));
          DIP("vmovntdqa %s,%s\n", dis_buf, nameYMMReg(rD));
          putYMMReg(rD, mkexpr(tD));
@@ -30196,6 +30159,7 @@ Long dis_ESC_0F38__VEX (
                                                : AMD64G_CC_OP_ANDN32)) );
          stmt( IRStmt_Put( OFFB_CC_DEP1, widenUto64(mkexpr(dst))) );
          stmt( IRStmt_Put( OFFB_CC_DEP2, mkU64(0)) );
+         stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
          *uses_vvvv = True;
          goto decode_success;
       }
@@ -30233,6 +30197,7 @@ Long dis_ESC_0F38__VEX (
                                                : AMD64G_CC_OP_BLSI32)) );
          stmt( IRStmt_Put( OFFB_CC_DEP1, widenUto64(mkexpr(dst))) );
          stmt( IRStmt_Put( OFFB_CC_DEP2, widenUto64(mkexpr(src))) );
+         stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
          *uses_vvvv = True;
          goto decode_success;
       }
@@ -30267,6 +30232,7 @@ Long dis_ESC_0F38__VEX (
                                                : AMD64G_CC_OP_BLSMSK32)) );
          stmt( IRStmt_Put( OFFB_CC_DEP1, widenUto64(mkexpr(dst))) );
          stmt( IRStmt_Put( OFFB_CC_DEP2, widenUto64(mkexpr(src))) );
+         stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
          *uses_vvvv = True;
          goto decode_success;
       }
@@ -30301,6 +30267,7 @@ Long dis_ESC_0F38__VEX (
                                                : AMD64G_CC_OP_BLSR32)) );
          stmt( IRStmt_Put( OFFB_CC_DEP1, widenUto64(mkexpr(dst))) );
          stmt( IRStmt_Put( OFFB_CC_DEP2, widenUto64(mkexpr(src))) );
+         stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
          *uses_vvvv = True;
          goto decode_success;
       }
@@ -30370,6 +30337,7 @@ Long dis_ESC_0F38__VEX (
                                                : AMD64G_CC_OP_BLSR32)) );
          stmt( IRStmt_Put( OFFB_CC_DEP1, widenUto64(mkexpr(dst))) );
          stmt( IRStmt_Put( OFFB_CC_DEP2, widenUto64(mkexpr(cond))) );
+         stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
          *uses_vvvv = True;
          goto decode_success;
       }
@@ -30578,6 +30546,7 @@ Long dis_ESC_0F38__VEX (
                                                : AMD64G_CC_OP_ANDN32)) );
          stmt( IRStmt_Put( OFFB_CC_DEP1, widenUto64(mkexpr(dst))) );
          stmt( IRStmt_Put( OFFB_CC_DEP2, mkU64(0)) );
+         stmt( IRStmt_Put( OFFB_CC_NDEP, mkU64(0) ));
          *uses_vvvv = True;
          goto decode_success;
       }
@@ -30749,14 +30718,55 @@ static IRTemp math_VPERMILPS_128 ( IRTemp sV, UInt imm8 )
    return res;
 }
 
+/* Handles 128 and 256 bit versions of VCVTPS2PH. */
+static Long dis_VCVTPS2PH ( const VexAbiInfo* vbi, Prefix pfx,
+                            Long delta, Bool is256bit )
+{
+   /* This is a width-halving store or reg-reg move, that does conversion on the
+      transferred data. */
+   UChar  modrm = getUChar(delta);
+   UInt    rG   = gregOfRexRM(pfx, modrm);
+   IRTemp  rm   = newTemp(Ity_I32);
+   IROp    op   = is256bit ? Iop_F32toF16x8 : Iop_F32toF16x4;
+   IRExpr* srcG = (is256bit ? getYMMReg : getXMMReg)(rG);
+
+   /* (imm & 3) contains an Intel-encoded rounding mode.  Because that encoding
+      is the same as the encoding for IRRoundingMode, we can use that value
+      directly in the IR as a rounding mode. */
+
+   if (epartIsReg(modrm)) {
+      UInt rE = eregOfRexRM(pfx, modrm);
+      delta += 1;
+      UInt imm = getUChar(delta);
+      assign(rm, (imm & 4) ? get_sse_roundingmode() : mkU32(imm & 3));
+      IRExpr* res = binop(op, mkexpr(rm), srcG);
+      if (!is256bit)
+         res = unop(Iop_64UtoV128, res);
+      putYMMRegLoAndZU(rE, res);
+      DIP("vcvtps2ph $%u,%s,%s\n",
+          imm, (is256bit ? nameYMMReg : nameXMMReg)(rG), nameXMMReg(rE));
+   } else {
+      Int    alen   = 0;
+      HChar  dis_buf[50];
+      IRTemp addr = disAMode( &alen, vbi, pfx, delta, dis_buf, 1 );
+      delta += alen;
+      UInt imm = getUChar(delta);
+      assign(rm, (imm & 4) ? get_sse_roundingmode() : mkU32(imm & 3));
+      IRExpr* res = binop(op, mkexpr(rm), srcG);
+      storeLE(mkexpr(addr), res);
+      DIP("vcvtps2ph $%u,%s,%s\n",
+          imm, (is256bit ? nameYMMReg : nameXMMReg)(rG), dis_buf);
+   }
+   delta++;
+   /* doesn't use vvvv */
+   return delta;
+}
+
 __attribute__((noinline))
 static
 Long dis_ESC_0F3A__VEX (
         /*MB_OUT*/DisResult* dres,
         /*OUT*/   Bool*      uses_vvvv,
-        Bool         (*resteerOkFn) ( /*opaque*/void*, Addr ),
-        Bool         resteerCisOk,
-        void*        callback_opaque,
         const VexArchInfo* archinfo,
         const VexAbiInfo*  vbi,
         Prefix pfx, Int sz, Long deltaIN 
@@ -31175,6 +31185,7 @@ Long dis_ESC_0F3A__VEX (
 #        undef CVT
          goto decode_success;
       }
+      break;
 
    case 0x09:
       /* VROUNDPD imm8, xmm2/m128, xmm1 */
@@ -31249,7 +31260,7 @@ Long dis_ESC_0F3A__VEX (
             imm = getUChar(delta+alen);
             if (imm & ~15) break;
             delta += alen+1;
-            DIP( "vroundps $%d,%s,%s\n", imm, dis_buf, nameYMMReg(rG) );
+            DIP( "vroundpd $%d,%s,%s\n", imm, dis_buf, nameYMMReg(rG) );
          }
 
          /* (imm & 3) contains an Intel-encoded rounding mode.  Because
@@ -31268,6 +31279,7 @@ Long dis_ESC_0F3A__VEX (
 #        undef CVT
          goto decode_success;
       }
+      break;
 
    case 0x0A:
    case 0x0B:
@@ -31713,6 +31725,23 @@ Long dis_ESC_0F3A__VEX (
       }
       break;
 
+   case 0x1D:
+      /* VCVTPS2PH imm8, xmm2, xmm1/m64 = VEX.128.66.0F3A.W0 1D /r ib */
+      if (have66noF2noF3(pfx)
+          && 0==getVexL(pfx)/*128*/ && 0==getRexW(pfx)/*W0*/
+          && (archinfo->hwcaps & VEX_HWCAPS_AMD64_F16C)) {
+         delta = dis_VCVTPS2PH( vbi, pfx, delta, /*is256bit=*/False );
+         goto decode_success;
+      }
+      /* VCVTPS2PH imm8, ymm2, ymm1/m128 = VEX.256.66.0F3A.W0 1D /r ib */
+      if (have66noF2noF3(pfx)
+          && 1==getVexL(pfx)/*256*/ && 0==getRexW(pfx)/*W0*/
+          && (archinfo->hwcaps & VEX_HWCAPS_AMD64_F16C)) {
+         delta = dis_VCVTPS2PH( vbi, pfx, delta, /*is256bit=*/True );
+         goto decode_success;
+      }
+      break;
+
    case 0x20:
       /* VPINSRB r32/m8, xmm2, xmm1 = VEX.NDS.128.66.0F3A.W0 20 /r ib */
       if (have66noF2noF3(pfx)
@@ -31842,7 +31871,7 @@ Long dis_ESC_0F3A__VEX (
             imm8_0 = (Int)(getUChar(delta+alen) & 1);
             assign( src_u64, loadLE( Ity_I64, mkexpr(addr) ) );
             delta += alen+1;
-            DIP( "vpinsrd $%d,%s,%s,%s\n", 
+            DIP( "vpinsrq $%d,%s,%s,%s\n", 
                  imm8_0, dis_buf, nameXMMReg(rV), nameXMMReg(rG) );
          }
 
@@ -32251,7 +32280,10 @@ Long dis_ESC_0F3A__VEX (
       }
       break;
 
-   case 0x60: case 0x61: case 0x62: case 0x63:
+   case 0x60:
+   case 0x61:
+   case 0x62:
+   case 0x63:
       /* VEX.128.66.0F3A.WIG 63 /r ib = VPCMPISTRI imm8, xmm2/m128, xmm1
          VEX.128.66.0F3A.WIG 62 /r ib = VPCMPISTRM imm8, xmm2/m128, xmm1
          VEX.128.66.0F3A.WIG 61 /r ib = VPCMPESTRI imm8, xmm2/m128, xmm1
@@ -32309,7 +32341,7 @@ Long dis_ESC_0F3A__VEX (
                                    nameIRegG(size,pfx,rm));
             delta += 2;
          } else {
-            addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 0 );
+            addr = disAMode ( &alen, vbi, pfx, delta, dis_buf, 1 );
             imm8 = getUChar(delta+alen);
             assign( src, loadLE(ty, mkexpr(addr)) );
             DIP("rorx %d,%s,%s\n", imm8, dis_buf, nameIRegG(size,pfx,rm));
@@ -32355,9 +32387,6 @@ Long dis_ESC_0F3A__VEX (
 static
 DisResult disInstr_AMD64_WRK ( 
              /*OUT*/Bool* expect_CAS,
-             Bool         (*resteerOkFn) ( /*opaque*/void*, Addr ),
-             Bool         resteerCisOk,
-             void*        callback_opaque,
              Long         delta64,
              const VexArchInfo* archinfo,
              const VexAbiInfo*  vbi,
@@ -32390,7 +32419,6 @@ DisResult disInstr_AMD64_WRK (
    /* Set result defaults. */
    dres.whatNext    = Dis_Continue;
    dres.len         = 0;
-   dres.continueAt  = 0;
    dres.jk_StopHere = Ijk_INVALID;
    dres.hint        = Dis_HintNone;
    *expect_CAS = False;
@@ -32499,7 +32527,6 @@ DisResult disInstr_AMD64_WRK (
          case 0x64: pfx |= PFX_FS; break;
          case 0x65: pfx |= PFX_GS; break;
          case 0x36: pfx |= PFX_SS; break;
-
          case 0x40: case 0x41: case 0x42: case 0x43:
          case 0x44: case 0x45: case 0x46: case 0x47:
          case 0x48: case 0x49: case 0x4a: case 0x4b:
@@ -32658,32 +32685,26 @@ DisResult disInstr_AMD64_WRK (
       switch (esc) {
          case ESC_NONE:
             delta = dis_ESC_NONE( &dres, expect_CAS,
-                                  resteerOkFn, resteerCisOk, callback_opaque,
                                   archinfo, vbi, pfx, sz, delta );
             break;
          case ESC_0F:
             delta = dis_ESC_0F  ( &dres, expect_CAS,
-                                  resteerOkFn, resteerCisOk, callback_opaque,
                                   archinfo, vbi, pfx, sz, delta );
             break;
          case ESC_0F38:
             delta = dis_ESC_0F38( &dres,
-                                  resteerOkFn, resteerCisOk, callback_opaque,
                                   archinfo, vbi, pfx, sz, delta );
             break;
          case ESC_0F3A:
             delta = dis_ESC_0F3A( &dres,
-                                  resteerOkFn, resteerCisOk, callback_opaque,
                                   archinfo, vbi, pfx, sz, delta );
             break;
          case ESC_0F20:
             delta = dis_ESC_0F20( &dres,
-                                  resteerOkFn, resteerCisOk, callback_opaque,
                                   archinfo, vbi, pfx, sz, delta );
             break;
          case ESC_0F22:
             delta = dis_ESC_0F22( &dres,
-                                  resteerOkFn, resteerCisOk, callback_opaque,
                                   archinfo, vbi, pfx, sz, delta );
             break;
          default:
@@ -32698,20 +32719,14 @@ DisResult disInstr_AMD64_WRK (
       switch (esc) {
          case ESC_0F:
             delta = dis_ESC_0F__VEX ( &dres, &uses_vvvv,
-                                      resteerOkFn, resteerCisOk,
-                                      callback_opaque,
                                       archinfo, vbi, pfx, sz, delta );
             break;
          case ESC_0F38:
             delta = dis_ESC_0F38__VEX ( &dres, &uses_vvvv,
-                                        resteerOkFn, resteerCisOk,
-                                        callback_opaque,
                                         archinfo, vbi, pfx, sz, delta );
             break;
          case ESC_0F3A:
             delta = dis_ESC_0F3A__VEX ( &dres, &uses_vvvv,
-                                        resteerOkFn, resteerCisOk,
-                                        callback_opaque,
                                         archinfo, vbi, pfx, sz, delta );
             break;
          case ESC_NONE:
@@ -32795,10 +32810,6 @@ DisResult disInstr_AMD64_WRK (
       case Dis_Continue:
          stmt( IRStmt_Put( OFFB_RIP, mkU64(guest_RIP_bbstart + delta) ) );
          break;
-      case Dis_ResteerU:
-      case Dis_ResteerC:
-         stmt( IRStmt_Put( OFFB_RIP, mkU64(dres.continueAt) ) );
-         break;
       case Dis_StopHere:
          break;
       default:
@@ -32822,9 +32833,6 @@ DisResult disInstr_AMD64_WRK (
    is located in host memory at &guest_code[delta]. */
 
 DisResult disInstr_AMD64 ( IRSB*        irsb_IN,
-                           Bool         (*resteerOkFn) ( void*, Addr ),
-                           Bool         resteerCisOk,
-                           void*        callback_opaque,
                            const UChar* guest_code_IN,
                            Long         delta,
                            Addr         guest_IP,
@@ -32852,9 +32860,7 @@ DisResult disInstr_AMD64 ( IRSB*        irsb_IN,
 
    x1 = irsb_IN->stmts_used;
    expect_CAS = False;
-   dres = disInstr_AMD64_WRK ( &expect_CAS, resteerOkFn,
-                               resteerCisOk,
-                               callback_opaque,
+   dres = disInstr_AMD64_WRK ( &expect_CAS,
                                delta, archinfo, abiinfo, sigill_diag_IN );
    x2 = irsb_IN->stmts_used;
    vassert(x2 >= x1);
@@ -32865,10 +32871,32 @@ DisResult disInstr_AMD64 ( IRSB*        irsb_IN,
    if (guest_RIP_next_mustcheck 
        && guest_RIP_next_assumed != guest_RIP_curr_instr + dres.len) {
       vex_printf("\n");
+      vex_printf("     current %%rip = 0x%llx\n",
+                 guest_RIP_curr_instr );
       vex_printf("assumed next %%rip = 0x%llx\n", 
                  guest_RIP_next_assumed );
       vex_printf(" actual next %%rip = 0x%llx\n", 
                  guest_RIP_curr_instr + dres.len );
+      vex_printf("instruction bytes: "
+                 "0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
+                 getUChar(delta+0),
+                 getUChar(delta+1),
+                 getUChar(delta+2),
+                 getUChar(delta+3),
+                 getUChar(delta+4),
+                 getUChar(delta+5),
+                 getUChar(delta+6),
+                 getUChar(delta+7),
+                 getUChar(delta+8),
+                 getUChar(delta+9) );
+
+      /* re-disassemble the instruction so as
+         to generate a useful error message; then assert. */
+      vex_traceflags |= VEX_TRACE_FE;
+      guest_RIP_next_assumed   = 0;
+      guest_RIP_next_mustcheck = False;
+      dres = disInstr_AMD64_WRK ( &expect_CAS,
+                                 delta, archinfo, abiinfo, sigill_diag_IN );
       vpanic("disInstr_AMD64: disInstr miscalculated next %rip");
    }
 
@@ -32885,9 +32913,7 @@ DisResult disInstr_AMD64 ( IRSB*        irsb_IN,
       /* inconsistency detected.  re-disassemble the instruction so as
          to generate a useful error message; then assert. */
       vex_traceflags |= VEX_TRACE_FE;
-      dres = disInstr_AMD64_WRK ( &expect_CAS, resteerOkFn,
-                                  resteerCisOk,
-                                  callback_opaque,
+      dres = disInstr_AMD64_WRK ( &expect_CAS,
                                   delta, archinfo, abiinfo, sigill_diag_IN );
       for (i = x1; i < x2; i++) {
          vex_printf("\t\t");

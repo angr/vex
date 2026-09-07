@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -46,18 +46,15 @@
 
 /* Convert one riscv64 insn to IR. See the type DisOneInstrFn in
    guest_generic_bb_to_IR.h. */
-DisResult disInstr_RISCV64(IRSB*        irsb_IN,
-                           Bool         (*resteerOkFn) ( void*, Addr ),
-                           Bool         resteerCisOk,
-                           void*        callback_opaque,
-                           const UChar* guest_code_IN,
-                           Long         delta_IN,
-                           Addr         guest_IP,
-                           VexArch      guest_arch,
+DisResult disInstr_RISCV64(IRSB*              irbb,
+                           const UChar*       guest_code,
+                           Long               delta,
+                           Addr               guest_IP,
+                           VexArch            guest_arch,
                            const VexArchInfo* archinfo,
                            const VexAbiInfo*  abiinfo,
-                           VexEndness   host_endness_IN,
-                           Bool         sigill_diag_IN );
+                           VexEndness         host_endness,
+                           Bool               sigill_diag);
 
 /* Used by the optimiser to specialise calls to helpers. */
 IRExpr* guest_riscv64_spechelper(const HChar* function_name,
@@ -132,21 +129,19 @@ UInt riscv64g_calculate_fflags_fmadd_d(Double a1,
 ULong riscv64g_calculate_fclass_s(Float a1);
 ULong riscv64g_calculate_fclass_d(Double a1);
 
-/*
-  Dirty helpers for CSR accesses.
-  riscv_dirtyhelper_CSR_rw is for read/write of full width values. (e.g. csrrw)
-  riscv_dirtyhelper_CSR_s is for setting bits via a mask (e.g. csrrs)
-  riscv_dirtyhelper_CSR_c is for clearing bits via a mask (e.g. csrrc)
-  riscv_dirtyhelper_mret is for the mret instruction
-  Both immediate and non-immediate forms of these instructions flow through these helpers.
-  The 'csr' parameter is the RISCV address of the CSR being operated on.
-  The 'write' parameter is true if the CSR is written by the instruction.  The 'read' parameter
-  is set to true if the CSR is read by the instruction.
- */
-ULong riscv_dirtyhelper_CSR_rw(VexGuestRISCV64State *st, UInt csr, Bool write, Bool read, ULong value);
-ULong riscv_dirtyhelper_CSR_s(VexGuestRISCV64State *st, UInt csr, Bool write, Bool read, ULong value);
-ULong riscv_dirtyhelper_CSR_c(VexGuestRISCV64State *st, UInt csr, Bool write, Bool read, ULong value);
-ULong riscv_dirtyhelper_mret(VexGuestRISCV64State *st);
+/* Dirty helpers for accesses to CSRs that are not handled inline, and for
+   mret.  _rw handles read/write of full-width values (csrrw/csrrwi), _s
+   sets bits via a mask (csrrs/csrrsi), _c clears bits via a mask
+   (csrrc/csrrci).  'csr' is the CSR address; 'write'/'read' tell whether
+   the instruction writes/reads the CSR.  The bodies are stubs meant to be
+   intercepted by tools. */
+ULong riscv_dirtyhelper_CSR_rw(VexGuestRISCV64State* st, UInt csr,
+                               Bool write, Bool read, ULong value);
+ULong riscv_dirtyhelper_CSR_s(VexGuestRISCV64State* st, UInt csr,
+                              Bool write, Bool read, ULong value);
+ULong riscv_dirtyhelper_CSR_c(VexGuestRISCV64State* st, UInt csr,
+                              Bool write, Bool read, ULong value);
+ULong riscv_dirtyhelper_mret(VexGuestRISCV64State* st);
 
 #endif /* ndef __VEX_GUEST_RISCV64_DEFS_H */
 

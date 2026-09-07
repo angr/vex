@@ -8,11 +8,11 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright IBM Corp. 2010-2017
+   Copyright IBM Corp. 2010-2026
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -34,14 +34,12 @@
 #include "libvex_basictypes.h"        // offsetof
 #include "guest_generic_bb_to_IR.h"   // DisResult
 #include "libvex_guest_s390x.h"       // VexGuestS390XState
+#include "main_util.h"                // STATIC_ASSERT
 
 
 /* Convert one s390 insn to IR.  See the type DisOneInstrFn in
    guest_generic_bb_to_IR.h. */
 DisResult disInstr_S390 ( IRSB*        irbb,
-                          Bool         (*resteerOkFn) ( void*, Addr ),
-                          Bool         resteerCisOk,
-                          void*        callback_opaque,
                           const UChar* guest_code,
                           Long         delta,
                           Addr         guest_IP,
@@ -72,11 +70,10 @@ extern VexGuestLayout s390xGuest_layout;
 /*------------------------------------------------------------*/
 /*--- Helper functions.                                    ---*/
 /*------------------------------------------------------------*/
-void s390x_dirtyhelper_EX(ULong torun);
+void s390x_dirtyhelper_EX(ULong torun, Addr64 addr);
 ULong s390x_dirtyhelper_STCK(ULong *addr);
 ULong s390x_dirtyhelper_STCKF(ULong *addr);
 ULong s390x_dirtyhelper_STCKE(ULong *addr);
-ULong s390x_dirtyhelper_STFLE(VexGuestS390XState *guest_state, ULong *addr);
 void  s390x_dirtyhelper_CUxy(UChar *addr, ULong data, ULong num_bytes);
 ULong s390x_dirtyhelper_vec_op(VexGuestS390XState *guest_state,
                                ULong details);
@@ -93,9 +90,7 @@ UInt  s390_do_cvb(ULong decimal);
 ULong s390_do_cvd(ULong binary);
 ULong s390_do_ecag(ULong op2addr);
 UInt  s390_do_pfpo(UInt gpr0);
-void  s390x_dirtyhelper_PPNO_query(VexGuestS390XState *guest_state, ULong r1, ULong r2);
-ULong  s390x_dirtyhelper_PPNO_sha512(VexGuestS390XState *guest_state, ULong r1, ULong r2);
-void  s390x_dirtyhelper_PPNO_sha512_load_param_block( void );
+
 /* The various ways to compute the condition code. */
 enum {
    S390_CC_OP_BITWISE = 0,
@@ -160,7 +155,8 @@ enum {
    S390_CC_OP_PFPO_64 = 59,
    S390_CC_OP_PFPO_128 = 60,
    S390_CC_OP_MUL_32 = 61,
-   S390_CC_OP_MUL_64 = 62
+   S390_CC_OP_MUL_64 = 62,
+   S390_CC_OP_BITWISE2 = 63
 };
 
 /*------------------------------------------------------------*/
@@ -257,6 +253,9 @@ UInt s390_calculate_cond(ULong mask, ULong op, ULong dep1, ULong dep2,
 /* Last target instruction for the EX helper */
 extern ULong last_execute_target;
 
+/* Base for relative addressing while processing EX */
+extern Addr64 guest_IA_rel_base;
+
 /*------------------------------------------------------------*/
 /*--- Vector helpers.                                      ---*/
 /*------------------------------------------------------------*/
@@ -266,26 +265,21 @@ extern ULong last_execute_target;
    before  S390_VEC_OP_LAST. */
 typedef enum {
    S390_VEC_OP_INVALID = 0,
-   S390_VEC_OP_VPKS = 1,
-   S390_VEC_OP_VPKLS = 2,
-   S390_VEC_OP_VFAE = 3,
-   S390_VEC_OP_VFEE = 4,
-   S390_VEC_OP_VFENE = 5,
-   S390_VEC_OP_VISTR = 6,
-   S390_VEC_OP_VSTRC = 7,
-   S390_VEC_OP_VCEQ = 8,
-   S390_VEC_OP_VTM = 9,
-   S390_VEC_OP_VGFM = 10,
-   S390_VEC_OP_VGFMA = 11,
-   S390_VEC_OP_VMAH = 12,
-   S390_VEC_OP_VMALH = 13,
-   S390_VEC_OP_VCH = 14,
-   S390_VEC_OP_VCHL = 15,
-   S390_VEC_OP_VFCE = 16,
-   S390_VEC_OP_VFCH = 17,
-   S390_VEC_OP_VFCHE = 18,
-   S390_VEC_OP_VFTCI = 19,
-   S390_VEC_OP_LAST = 20 // supposed to be the last element in enum
+   S390_VEC_OP_VPKS,
+   S390_VEC_OP_VPKLS,
+   S390_VEC_OP_VGFM,
+   S390_VEC_OP_VGFMA,
+   S390_VEC_OP_VFTCI,
+   S390_VEC_OP_VFMIN,
+   S390_VEC_OP_VFMAX,
+   S390_VEC_OP_VBPERM,
+   S390_VEC_OP_VMSL,
+   S390_VEC_OP_VCNF,
+   S390_VEC_OP_VCLFNH,
+   S390_VEC_OP_VCFN,
+   S390_VEC_OP_VCLFNL,
+   S390_VEC_OP_VCRNF,
+   S390_VEC_OP_LAST             // supposed to be the last element in enum
 } s390x_vec_op_t;
 
 /* Arguments of s390x_dirtyhelper_vec_op(...) which are packed into one
@@ -302,12 +296,13 @@ typedef union {
       unsigned int v4 : 5;        // argument two of operation or
                                   // zero for unary and binary operations
 
+      unsigned int m3 : 4;        // field m3 of insn or zero if it's missing
       unsigned int m4 : 4;        // field m4 of insn or zero if it's missing
       unsigned int m5 : 4;        // field m5 of insn or zero if it's missing
       unsigned int m6 : 4;        // field m6 of insn or zero if it's missing
       unsigned int i3 : 12;       // field i3 of insn or zero if it's missing
       unsigned int read_only: 1;  // don't write result to Guest State
-      unsigned int reserved : 11; // reserved for future
+      unsigned int reserved : 7; // reserved for future
    };
    ULong serialized;
 } s390x_vec_op_details_t;

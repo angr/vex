@@ -7,12 +7,11 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2015 RT-RK
-      mips-valgrind@rt-rk.com
+   Copyright (C) 2010-2017 RT-RK
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +20,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -150,9 +147,55 @@ typedef
       /*  480 */ ULong guest_ac3;
 
       /*  488 */ UInt guest_CP0_status;
+      /*  492 */ UInt guest_CP0_Config5;
 
-      /*  492 */ UInt guest_IP_AT_SYSCALL;
+      /*  496 */ UInt guest_LLaddr;
+      /*  500 */ UInt guest_LLdata;
+
+      /* MIPS32 MSA 128-bit vector registers */
+      /*  504 */ V128 guest_w0;
+      /*  520 */ V128 guest_w1;
+      /*  536 */ V128 guest_w2;
+      /*  552 */ V128 guest_w3;
+      /*  568 */ V128 guest_w4;
+      /*  584 */ V128 guest_w5;
+      /*  600 */ V128 guest_w6;
+      /*  616 */ V128 guest_w7;
+      /*  632 */ V128 guest_w8;
+      /*  648 */ V128 guest_w9;
+      /*  664 */ V128 guest_w10;
+      /*  680 */ V128 guest_w11;
+      /*  696 */ V128 guest_w12;
+      /*  712 */ V128 guest_w13;
+      /*  728 */ V128 guest_w14;
+      /*  744 */ V128 guest_w15;
+      /*  760 */ V128 guest_w16;
+      /*  776 */ V128 guest_w17;
+      /*  792 */ V128 guest_w18;
+      /*  808 */ V128 guest_w19;
+      /*  824 */ V128 guest_w20;
+      /*  840 */ V128 guest_w21;
+      /*  856 */ V128 guest_w22;
+      /*  872 */ V128 guest_w23;
+      /*  888 */ V128 guest_w24;
+      /*  904 */ V128 guest_w25;
+      /*  920 */ V128 guest_w26;
+      /*  936 */ V128 guest_w27;
+      /*  952 */ V128 guest_w28;
+      /*  968 */ V128 guest_w29;
+      /*  984 */ V128 guest_w30;
+      /*  1000 */ V128 guest_w31;
+
+      /*  1016 */ UInt guest_MSACSR;
+
+      /*  1020 */ UInt guest_IP_AT_SYSCALL;
+
+      /*  1024 */ ULong guest_LLdata64;
+      /*  1032 */ ULong _padding3;
 } VexGuestMIPS32State;
+
+VEX_STATIC_ASSERT(sizeof(VexGuestMIPS32State) % 16 == 0,
+                  "sizeof VexGuestMIPS32State is not a multiple of 16");
 /*---------------------------------------------------------------*/
 /*--- Utility functions for MIPS32 guest stuff.               ---*/
 /*---------------------------------------------------------------*/
@@ -166,6 +209,9 @@ void LibVEX_GuestMIPS32_initialise ( /*OUT*/VexGuestMIPS32State* vex_state );
 
 /* FR bit of CP0_STATUS_FR register */
 #define MIPS_CP0_STATUS_FR (1ul << 26)
+
+/* FRE bit of CP0_Config5 register */
+#define MIPS_CONF5_FRE     (1ul << 8)
 
 #endif /* ndef __LIBVEX_PUB_GUEST_MIPS32_H */
 

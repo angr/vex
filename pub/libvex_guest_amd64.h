@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -82,9 +80,9 @@ typedef
       /* 176 */ ULong  guest_DFLAG;
       /* 184 */ ULong  guest_RIP;
       /* Bit 18 (AC) of eflags stored here, as either 0 or 1. */
-      /* ... */ ULong  guest_ACFLAG;
+      /* 192 */ ULong  guest_ACFLAG;
       /* Bit 21 (ID) of eflags stored here, as either 0 or 1. */
-      /* 192 */ ULong guest_IDFLAG;
+      /* 200 */ ULong guest_IDFLAG;
       /* Probably a lot more stuff too. 
          D,ID flags
          16  128-bit SSE registers
@@ -101,8 +99,8 @@ typedef
          consecutively in order that the SSE4.2 PCMP{E,I}STR{I,M}
          helpers can treat them as an array.  YMM16 is a fake reg used
          as an intermediary in handling aforementioned insns. */
-      /* 208 */ULong guest_SSEROUND;
-      /* 216 */U256  guest_YMM0;
+      /* 216 */ULong guest_SSEROUND;
+      /* 224 */U256  guest_YMM0;
       U256  guest_YMM1;
       U256  guest_YMM2;
       U256  guest_YMM3;
@@ -119,24 +117,6 @@ typedef
       U256  guest_YMM14;
       U256  guest_YMM15;
       U256  guest_YMM16;
-
-      // Control registers
-      ULong guest_CR0;
-      ULong guest_CR1;
-      ULong guest_CR2;
-      ULong guest_CR3;
-      ULong guest_CR4;
-      ULong guest_CR5;
-      ULong guest_CR6;
-      ULong guest_CR7;
-      ULong guest_CR8;
-      ULong guest_CR9;
-      ULong guest_CR10;
-      ULong guest_CR11;
-      ULong guest_CR12;
-      ULong guest_CR13;
-      ULong guest_CR14;
-      ULong guest_CR15;
 
       /* FPU */
       /* Note.  Setting guest_FTOP to be ULong messes up the
@@ -187,6 +167,10 @@ typedef
          been interrupted by a signal. */
       ULong guest_IP_AT_SYSCALL;
 
+      /* Used on FreeBSD as part of a mechanism to allow signal handlers
+           to use TLS. */
+      ULong guest_TLSBASE;
+
       /* Segment registers. */
       UShort guest_CS;
       UShort guest_DS;
@@ -195,11 +179,32 @@ typedef
       UShort guest_GS;
       UShort guest_SS;
 
-      /* Padding to make it have an 16-aligned size */
+      /* Padding to keep the control registers 8-aligned and the
+         overall size 16-aligned. */
       UInt pad4;
-      ULong pad3;
+
+      // Control registers
+      ULong guest_CR0;
+      ULong guest_CR1;
+      ULong guest_CR2;
+      ULong guest_CR3;
+      ULong guest_CR4;
+      ULong guest_CR5;
+      ULong guest_CR6;
+      ULong guest_CR7;
+      ULong guest_CR8;
+      ULong guest_CR9;
+      ULong guest_CR10;
+      ULong guest_CR11;
+      ULong guest_CR12;
+      ULong guest_CR13;
+      ULong guest_CR14;
+      ULong guest_CR15;
    }
    VexGuestAMD64State;
+
+VEX_STATIC_ASSERT(sizeof(VexGuestAMD64State) % 16 == 0,
+                  "sizeof VexGuestAMD64State is not a multiple of 16");
 
 
 

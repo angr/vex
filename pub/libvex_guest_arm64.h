@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2013-2015 OpenWorks
+   Copyright (C) 2013-2017 OpenWorks
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -159,12 +157,25 @@ typedef
          note of bits 23 and 22. */
       UInt  guest_FPCR;
 
+      /* Fallback LL/SC support.  See bugs 344524 and 369459.  _LO64 and _HI64
+         contain the original contents of _ADDR+0 .. _ADDR+15, but only _SIZE
+         number of bytes of it.  The remaining 16-_SIZE bytes of them must be
+         zero. */
+      ULong guest_LLSC_SIZE; // 0==no current transaction, else 1,2,4,8 or 16.
+      ULong guest_LLSC_ADDR; // Address of transaction.
+      ULong guest_LLSC_DATA_LO64; // Original value at _ADDR+0.
+      ULong guest_LLSC_DATA_HI64; // Original value at _ADDR+8.
+
+      /* Used for FreeBSD syscall dispatching. */
+      ULong guest_SC_CLASS;
       /* Padding to make it have an 16-aligned size */
-      /* UInt  pad_end_0; */
-      /* ULong pad_end_1; */
+      ULong pad_end_1;
+
    }
    VexGuestARM64State;
 
+VEX_STATIC_ASSERT(sizeof(VexGuestARM64State) % 16 == 0,
+                  "sizeof VexGuestARM64State is not a multiple of 16");
 
 /*---------------------------------------------------------------*/
 /*--- Utility functions for ARM64 guest stuff.                ---*/
@@ -182,6 +193,11 @@ void LibVEX_GuestARM64_initialise ( /*OUT*/VexGuestARM64State* vex_state );
 extern
 ULong LibVEX_GuestARM64_get_nzcv ( /*IN*/
                                    const VexGuestARM64State* vex_state );
+
+/* Put a new value in the carry flag. */
+extern
+void LibVEX_GuestARM64_put_nzcv_c ( /*IN*/  ULong new_carry_flag,
+                                    /*MOD*/ VexGuestARM64State* vex_state );
 
 /* Calculate the ARM64 FPSR state from the saved data, in the format
    36x0:qc:27x0 */

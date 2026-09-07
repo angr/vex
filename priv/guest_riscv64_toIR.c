@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -52,8 +52,6 @@
    never occur except in specific code fragments designed for Valgrind to catch.
 */
 
-#include <stdio.h>
-
 #include "libvex_guest_riscv64.h"
 
 #include "guest_riscv64_defs.h"
@@ -65,21 +63,29 @@
 /*------------------------------------------------------------*/
 
 #ifndef _MSC_VER
-#define DIP(format, args...)           \
-   if (vex_traceflags & VEX_TRACE_FE)  \
-      vex_printf(format, ## args)
+#define DIP(format, args...)                                                   \
+   do {                                                                        \
+      if (vex_traceflags & VEX_TRACE_FE)                                       \
+         vex_printf(format, ##args);                                           \
+   } while (0)
 
-#define DIS(buf, format, args...)      \
-   if (vex_traceflags & VEX_TRACE_FE)  \
-      vex_sprintf(buf, format, ## args)
+#define DIS(buf, format, args...)                                              \
+   do {                                                                        \
+      if (vex_traceflags & VEX_TRACE_FE)                                       \
+         vex_sprintf(buf, format, ##args);                                     \
+   } while (0)
 #else
-#define DIP(format, ...)           \
-   if (vex_traceflags & VEX_TRACE_FE)  \
-      vex_printf(format, __VA_ARGS__)
+#define DIP(format, ...)                                                       \
+   do {                                                                        \
+      if (vex_traceflags & VEX_TRACE_FE)                                       \
+         vex_printf(format, __VA_ARGS__);                                      \
+   } while (0)
 
-#define DIS(buf, format, ...)      \
-   if (vex_traceflags & VEX_TRACE_FE)  \
-      vex_sprintf(buf, format, __VA_ARGS__)
+#define DIS(buf, format, ...)                                                  \
+   do {                                                                        \
+      if (vex_traceflags & VEX_TRACE_FE)                                       \
+         vex_sprintf(buf, format, __VA_ARGS__);                                \
+   } while (0)
 #endif
 
 /*------------------------------------------------------------*/
@@ -530,9 +536,13 @@ static IRExpr* getFReg32(UInt fregNo)
    vassert(fregNo < 32);
    /* Note that the following access depends on the host being little-endian
       which is checked in disInstr_RISCV64(). */
-   /* TODO Check that the value is correctly NaN-boxed. If not then return
-      the 32-bit canonical qNaN, as mandated by the RISC-V ISA. */
-   return IRExpr_Get(offsetFReg(fregNo), Ity_F32);
+   IRExpr* f64       = getFReg64(fregNo);
+   IRExpr* high_half = unop(Iop_64HIto32, unop(Iop_ReinterpF64asI64, f64));
+   IRExpr* cond      = binop(Iop_CmpEQ32, high_half, mkU32(0xffffffff));
+   IRExpr* res       = IRExpr_ITE(
+      cond, IRExpr_Get(offsetFReg(fregNo), Ity_F32),
+      /* canonical nan */ unop(Iop_ReinterpI32asF32, mkU32(0x7fc00000)));
+   return res;
 }
 
 /* Write a 32-bit value into a guest floating-point register. */
@@ -677,7 +687,7 @@ static const HChar* nameAqRlSuffix(UInt aqrl)
 /* Obtain a control/status register name. */
 static const HChar* nameCSR(UInt csr)
 {
-   static char buff[16];
+   static HChar buf[16];
    switch (csr) {
    case 0x001:
       return "fflags";
@@ -686,8 +696,8 @@ static const HChar* nameCSR(UInt csr)
    case 0x003:
       return "fcsr";
    default:
-      snprintf(buff, sizeof(buff), "0x%x", csr);
-      return &buff[0];
+      vex_sprintf(buf, "0x%x", csr);
+      return buf;
    }
 }
 
@@ -1534,7 +1544,7 @@ static Bool dis_RV64I(/*MB_OUT*/ DisResult* dres,
    }
 
    /* --------------- {add,sub} rd, rs1, rs2 ---------------- */
-   /* ----------- {sll,srl,sra} rd, rs1, rs2[5:0]------------ */
+   /* ------------- {sll,srl,sra} rd, rs1, rs2 -------------- */
    /* --------------- {slt,sltu} rd, rs1, rs2 --------------- */
    /* -------------- {xor,or,and} rd, rs1, rs2 -------------- */
    if (INSN(6, 0) == 0b0110011 && INSN(29, 25) == 0b00000 &&
@@ -1556,7 +1566,8 @@ static Bool dis_RV64I(/*MB_OUT*/ DisResult* dres,
                break;
             case 0b001:
                expr = binop(Iop_Shl64, getIReg64(rs1),
-                             binop(Iop_And8, mkU8(0b00111111), unop(Iop_64to8, getIReg64(rs2))));
+                            unop(Iop_64to8, binop(Iop_And64, mkU64(0b00111111),
+                                                  getIReg64(rs2))));
                break;
             case 0b010:
                expr = unop(Iop_1Uto64,
@@ -1571,7 +1582,8 @@ static Bool dis_RV64I(/*MB_OUT*/ DisResult* dres,
                break;
             case 0b101:
                expr = binop(is_base ? Iop_Shr64 : Iop_Sar64, getIReg64(rs1),
-                            binop(Iop_And8, mkU8(0b00111111), unop(Iop_64to8, getIReg64(rs2))));
+                            unop(Iop_64to8, binop(Iop_And64, mkU64(0b00111111),
+                                                  getIReg64(rs2))));
                break;
             case 0b110:
                expr = binop(Iop_Or64, getIReg64(rs1), getIReg64(rs2));
@@ -1620,19 +1632,26 @@ static Bool dis_RV64I(/*MB_OUT*/ DisResult* dres,
    }
 
    /* ------------------------ fence ------------------------ */
-   if (INSN(19, 0) == 0b00000000000000001111 && INSN(31, 28) == 0b0000) {
+   if (INSN(19, 0) == 0b00000000000000001111) {
+      UInt   fm = INSN(31, 28);
       UInt succ = INSN(23, 20);
       UInt pred = INSN(27, 24);
-      stmt(irsb, IRStmt_MBE(Imbe_Fence));
-      if (pred == 0b1111 && succ == 0b1111)
-         DIP("fence\n");
-      else
-         DIP("fence %s%s%s%s,%s%s%s%s\n", (pred & 0x8) ? "i" : "",
-             (pred & 0x4) ? "o" : "", (pred & 0x2) ? "r" : "",
-             (pred & 0x1) ? "w" : "", (succ & 0x8) ? "i" : "",
-             (succ & 0x4) ? "o" : "", (succ & 0x2) ? "r" : "",
-             (succ & 0x1) ? "w" : "");
-      return True;
+      if ((fm == 0b1000 && pred == 0b0011 && succ == 0b0011)
+          || fm == 0b0000)
+      {
+         if (fm == 0b1000)
+            DIP("fence.tso\n");
+         else if (pred == 0b1111 && succ == 0b1111)
+            DIP("fence\n");
+         else
+            DIP("fence %s%s%s%s,%s%s%s%s\n", (pred & 0x8) ? "i" : "",
+                (pred & 0x4) ? "o" : "", (pred & 0x2) ? "r" : "",
+                (pred & 0x1) ? "w" : "", (succ & 0x8) ? "i" : "",
+                (succ & 0x4) ? "o" : "", (succ & 0x2) ? "r" : "",
+                (succ & 0x1) ? "w" : "");
+         stmt(irsb, IRStmt_MBE(Imbe_Fence));
+         return True;
+      }
    }
 
    /* ------------------------ ecall ------------------------ */
@@ -1709,7 +1728,7 @@ static Bool dis_RV64I(/*MB_OUT*/ DisResult* dres,
       return True;
    }
 
-   /* --------------- sllw rd, rs1, rs2[4:0] ---------------- */
+   /* ------------------ sllw rd, rs1, rs2 ------------------ */
    if (INSN(6, 0) == 0b0111011 && INSN(14, 12) == 0b001 &&
        INSN(31, 25) == 0b0000000) {
       UInt rd  = INSN(11, 7);
@@ -1718,12 +1737,14 @@ static Bool dis_RV64I(/*MB_OUT*/ DisResult* dres,
       if (rd != 0)
          putIReg32(
             irsb, rd,
-            binop(Iop_Shl32, getIReg32(rs1), binop(Iop_And8, mkU8(0b00011111), unop(Iop_64to8, getIReg64(rs2)))));
+            binop(Iop_Shl32, getIReg32(rs1),
+                  unop(Iop_64to8, binop(Iop_And64, mkU64(0b00011111),
+                                        getIReg64(rs2)))));
       DIP("sllw %s, %s, %s\n", nameIReg(rd), nameIReg(rs1), nameIReg(rs2));
       return True;
    }
 
-   /* ------------ {srlw,sraw} rd, rs1, rs2[4:0] ------------ */
+   /* -------------- {srlw,sraw} rd, rs1, rs2 --------------- */
    if (INSN(6, 0) == 0b0111011 && INSN(14, 12) == 0b101 &&
        INSN(29, 25) == 0b00000 && INSN(31, 31) == 0b0) {
       Bool is_log = INSN(30, 30) == 0b0;
@@ -1733,7 +1754,8 @@ static Bool dis_RV64I(/*MB_OUT*/ DisResult* dres,
       if (rd != 0)
          putIReg32(irsb, rd,
                    binop(is_log ? Iop_Shr32 : Iop_Sar32, getIReg32(rs1),
-                          binop(Iop_And8, mkU8(0b00011111), unop(Iop_64to8, getIReg64(rs2)))));
+                         unop(Iop_64to8, binop(Iop_And64, mkU64(0b00011111),
+                                               getIReg64(rs2)))));
       DIP("%s %s, %s, %s\n", is_log ? "srlw" : "sraw", nameIReg(rd),
           nameIReg(rs1), nameIReg(rs2));
       return True;
@@ -1757,8 +1779,6 @@ static Bool dis_RV64M(/*MB_OUT*/ DisResult* dres,
       UInt rs1    = INSN(19, 15);
       UInt rs2    = INSN(24, 20);
       if (funct3 == 0b010) {
-         /* Invalid {MUL,DIV,REM}<x>, fall through. */
-      } else if (funct3 == 0b010) {
          /* MULHSU, not currently handled, fall through. */
       } else {
          if (rd != 0) {
@@ -1788,7 +1808,7 @@ static Bool dis_RV64M(/*MB_OUT*/ DisResult* dres,
                break;
             case 0b111:
                expr =
-                  unop(Iop_128HIto64, binop(Iop_DivModS64to64, getIReg64(rs1),
+                  unop(Iop_128HIto64, binop(Iop_DivModU64to64, getIReg64(rs1),
                                             getIReg64(rs2)));
                break;
             default:
@@ -1852,12 +1872,12 @@ static Bool dis_RV64M(/*MB_OUT*/ DisResult* dres,
                expr = binop(Iop_DivU32, getIReg32(rs1), getIReg32(rs2));
                break;
             case 0b110:
-               expr = unop(Iop_64HIto32, binop(Iop_DivModS64to32,
-                                               getIReg64(rs1), getIReg32(rs2)));
+               expr = unop(Iop_64HIto32, binop(Iop_DivModS32to32,
+                                               getIReg32(rs1), getIReg32(rs2)));
                break;
             case 0b111:
-               expr = unop(Iop_64HIto32, binop(Iop_DivModU64to32,
-                                               getIReg64(rs1), getIReg32(rs2)));
+               expr = unop(Iop_64HIto32, binop(Iop_DivModU32to32,
+                                               getIReg32(rs1), getIReg32(rs2)));
                break;
             default:
                vassert(0);
@@ -2015,7 +2035,7 @@ static Bool dis_RV64A(/*MB_OUT*/ DisResult* dres,
          if (rd != 0)
             putIReg64(irsb, rd, mkU64(0));
       } else {
-         IRTemp res = newTemp(irsb, Ity_I64);
+         IRTemp res = newTemp(irsb, Ity_I1);
          stmt(irsb, IRStmt_LLSC(Iend_LE, res, getIReg64(rs1),
                                 narrowFrom64(ty, getIReg64(rs2))));
          /* IR semantics: res is 1 if store succeeds, 0 if it fails. Need to set
@@ -2023,7 +2043,7 @@ static Bool dis_RV64A(/*MB_OUT*/ DisResult* dres,
          if (rd != 0)
             putIReg64(
                irsb, rd,
-               binop(Iop_Xor64, unop(Iop_32Uto64, mkexpr(res)), mkU64(1)));
+               binop(Iop_Xor64, unop(Iop_1Uto64, mkexpr(res)), mkU64(1)));
       }
 
       if (aqrl & 0x2)
@@ -2165,8 +2185,10 @@ static Bool dis_RV64F(/*MB_OUT*/ DisResult* dres,
       UInt  rs2     = INSN(24, 20);
       UInt  imm11_0 = INSN(31, 25) << 5 | INSN(11, 7);
       ULong simm    = vex_sx_to_64(imm11_0, 12);
-      storeLE(irsb, binop(Iop_Add64, getIReg64(rs1), mkU64(simm)),
-              getFReg32(rs2));
+      // do not modify the bits being transferred;
+      IRExpr* f64 = getFReg64(rs2);
+      IRExpr* i32 = unop(Iop_64to32, unop(Iop_ReinterpF64asI64, f64));
+      storeLE(irsb, binop(Iop_Add64, getIReg64(rs1), mkU64(simm)), i32);
       DIP("fsw %s, %lld(%s)\n", nameFReg(rs2), (Long)simm, nameIReg(rs1));
       return True;
    }
@@ -2461,8 +2483,16 @@ static Bool dis_RV64F(/*MB_OUT*/ DisResult* dres,
        INSN(24, 20) == 0b00000 && INSN(31, 25) == 0b1110000) {
       UInt rd  = INSN(11, 7);
       UInt rs1 = INSN(19, 15);
-      if (rd != 0)
-         putIReg32(irsb, rd, unop(Iop_ReinterpF32asI32, getFReg32(rs1)));
+      if (rd != 0) {
+         // For RV64, the higher 32 bits of the destination register are filled
+         // with copies of the floating-point number’s sign bit.
+         IRExpr* freg      = getFReg64(rs1);
+         IRExpr* low_half  = unop(Iop_64to32, unop(Iop_ReinterpF64asI64, freg));
+         IRExpr* sign      = binop(Iop_And32, low_half, mkU32(1u << 31));
+         IRExpr* cond      = binop(Iop_CmpEQ32, sign, mkU32(1u << 31));
+         IRExpr* high_part = IRExpr_ITE(cond, mkU32(0xffffffff), mkU32(0));
+         putIReg64(irsb, rd, binop(Iop_32HLto64, high_part, low_half));
+      }
       DIP("fmv.x.w %s, %s\n", nameIReg(rd), nameFReg(rs1));
       return True;
    }
@@ -2483,7 +2513,7 @@ static Bool dis_RV64F(/*MB_OUT*/ DisResult* dres,
          if (rd != 0) {
             IRTemp cmp = newTemp(irsb, Ity_I32);
             assign(irsb, cmp, binop(Iop_CmpF32, mkexpr(a1), mkexpr(a2)));
-            IRTemp res = newTemp(irsb, Ity_I32);
+            IRTemp res = newTemp(irsb, Ity_I1);
             switch (rm) {
             case 0b010:
                assign(irsb, res,
@@ -2495,14 +2525,14 @@ static Bool dis_RV64F(/*MB_OUT*/ DisResult* dres,
                break;
             case 0b000:
                assign(irsb, res,
-                      binop(Iop_Or32,
-                            unop(Iop_1Uto32, binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_LT))),
-                            unop(Iop_1Uto32, binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_EQ)))));
+                      binop(Iop_Or1,
+                            binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_LT)),
+                            binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_EQ))));
                break;
             default:
                vassert(0);
             }
-            putIReg64(irsb, rd, unop(Iop_32Uto64, mkexpr(res)));
+            putIReg64(irsb, rd, unop(Iop_1Uto64, mkexpr(res)));
          }
          const HChar* name;
          const HChar* helper_name;
@@ -2980,7 +3010,7 @@ static Bool dis_RV64D(/*MB_OUT*/ DisResult* dres,
          if (rd != 0) {
             IRTemp cmp = newTemp(irsb, Ity_I32);
             assign(irsb, cmp, binop(Iop_CmpF64, mkexpr(a1), mkexpr(a2)));
-            IRTemp res = newTemp(irsb, Ity_I32);
+            IRTemp res = newTemp(irsb, Ity_I1);
             switch (rm) {
             case 0b010:
                assign(irsb, res,
@@ -2992,14 +3022,14 @@ static Bool dis_RV64D(/*MB_OUT*/ DisResult* dres,
                break;
             case 0b000:
                assign(irsb, res,
-                      binop(Iop_Or32,
-                            unop(Iop_1Uto32, binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_LT))),
-                            unop(Iop_1Uto32, binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_EQ)))));
+                      binop(Iop_Or1,
+                            binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_LT)),
+                            binop(Iop_CmpEQ32, mkexpr(cmp), mkU32(Ircr_EQ))));
                break;
             default:
                vassert(0);
             }
-            putIReg64(irsb, rd, unop(Iop_32Uto64, mkexpr(res)));
+            putIReg64(irsb, rd, unop(Iop_1Uto64, mkexpr(res)));
          }
          const HChar* name;
          const HChar* helper_name;
@@ -3167,60 +3197,33 @@ static Bool dis_RV64D(/*MB_OUT*/ DisResult* dres,
    return False;
 }
 
-/*
-  Structure used to describe what in the guest state will be modified by a
-  given CSR operation.  This is a partial version of the fxState structure
-  in IRDirty structure.
- */
-typedef struct {
-  IREffect fx:16;
-  UShort offset;
-  UShort size;
-} csr_state_info_t;
-
-/*
-  Helper function to setup a dirty helper call for a CSR operation.
-  
-  @param helper_name name of the dirty helper function to call
-  @param helper_addr address of the dirty helper
-  @param csr RISCV address of the CSR being operated on.
-  @param write true if the CSR is written to, false otherwise
-  @param read true if the CSR is read, false otherwise
-  @param value expression representing the value being written.  This can either be
-  an expression for the value of a register, or an immediate.
-  @param rd the register that will hold the result
-  @param state_count number of csr_state_info_t objects in the array passed in
-  @param states the array of guest state update operations for the helper function
- */
-static IRTemp csr_op(IRSB *irsb, const char *helper_name, void *helper_addr,
-		     UInt csr,
-		     Bool write, Bool read, IRExpr *value,
-		     UInt rd,
-		     int state_count,
-		     csr_state_info_t *states)
+/* Emit a call to a CSR dirty helper and put its result in rd (unless x0).
+   The generic Ifx_Read-of-x0 effect satisfies the requirement that a
+   GSPTR-taking dirty call declares some guest-state access; the helpers
+   are stubs meant to be intercepted by tools. */
+static void csr_op(/*OUT*/ IRSB* irsb,
+                   const HChar*  helper_name,
+                   void*         helper_addr,
+                   UInt          csr,
+                   Bool          write,
+                   Bool          read,
+                   IRExpr*       value,
+                   UInt          rd)
 {
-   IRTemp res = newTemp(irsb, Ity_I64);
-   IRDirty *d = unsafeIRDirty_1_N (res,
-                                    0/*regparms*/,
-                                    helper_name, helper_addr,
-                                    mkIRExprVec_5(IRExpr_GSPTR(),
-                                                   mkU32(csr),
-                                                   mkU32((unsigned)write),
-                                                   mkU32((unsigned)read),
-                                                   value));
-   /* declare guest state effects */
-   d->nFxState = state_count;
+   IRTemp   res = newTemp(irsb, Ity_I64);
+   IRDirty* d =
+      unsafeIRDirty_1_N(res, 0 /*regparms*/, helper_name, helper_addr,
+                        mkIRExprVec_5(IRExpr_GSPTR(), mkU32(csr),
+                                      mkU32((UInt)write), mkU32((UInt)read),
+                                      value));
+   d->nFxState = 1;
    vex_bzero(&d->fxState, sizeof(d->fxState));
-   for (int i = 0; i < state_count; i++) {
-      d->fxState[0].fx     = states[i].fx;
-      d->fxState[0].offset = states[i].offset;
-      d->fxState[0].size   = states[i].size;
-   }
-   /* execute the dirty call, dumping the result in val. */
+   d->fxState[0].fx     = Ifx_Read;
+   d->fxState[0].offset = OFFB_X0;
+   d->fxState[0].size   = 4;
    stmt(irsb, IRStmt_Dirty(d));
    if (rd != 0)
       putIReg64(irsb, rd, mkexpr(res));
-   return res;
 }
 
 static Bool dis_RV64Zicsr(/*MB_OUT*/ DisResult* dres,
@@ -3229,274 +3232,238 @@ static Bool dis_RV64Zicsr(/*MB_OUT*/ DisResult* dres,
 {
    /* ------------ RV64Zicsr standard extension ------------- */
 
-   /* ----------------- csrrw rd, csr, rs1 ------------------ */
-   if (INSN(6, 0) == 0b1110011 && INSN(14, 12) == 0b001) {
-      UInt rd  = INSN(11, 7);
-      UInt rs1 = INSN(19, 15);
-      UInt csr = INSN(31, 20);
-      switch (csr) {
-      case 0x001: {
-         /* fflags */
-         IRTemp fcsr = newTemp(irsb, Ity_I32);
-         assign(irsb, fcsr, getFCSR());
-         if (rd != 0)
-            putIReg64(irsb, rd,
-                        unop(Iop_32Uto64,
-                           binop(Iop_And32, mkexpr(fcsr), mkU32(0x1f))));
-         putFCSR(irsb,
-               binop(Iop_Or32,
-                     binop(Iop_And32, mkexpr(fcsr), mkU32(0xffffffe0)),
-                     binop(Iop_And32, getIReg32(rs1), mkU32(0x1f))));
-         break;
-      }
-      case 0x002: {
-         /* frm */
-         IRTemp fcsr = newTemp(irsb, Ity_I32);
-         assign(irsb, fcsr, getFCSR());
-         if (rd != 0)
-            putIReg64(
-                     irsb, rd,
-                     unop(Iop_32Uto64,
-                        binop(Iop_And32, binop(Iop_Shr32, mkexpr(fcsr), mkU8(5)),
-                              mkU32(0x7))));
-         putFCSR(irsb,
-            binop(Iop_Or32,
-                  binop(Iop_And32, mkexpr(fcsr), mkU32(0xffffff1f)),
-                  binop(Iop_Shl32,
-                     binop(Iop_And32, getIReg32(rs1), mkU32(0x7)),
-                     mkU8(5))));
-         break;
-      }
-      case 0x003: {
-         /* fcsr */
-         IRTemp fcsr = newTemp(irsb, Ity_I32);
-         assign(irsb, fcsr, getFCSR());
-         if (rd != 0)
-            putIReg64(irsb, rd, unop(Iop_32Uto64, mkexpr(fcsr)));
-         putFCSR(irsb, binop(Iop_And32, getIReg32(rs1), mkU32(0xff)));
-         break;
-      }
-      default: {
-         Bool write = rs1 != 0;
-         Bool read = rd != 0;
-         /*
-            In order to use dirty helpers, we have to provide at least one state update.  In the
-            future, these will likely need to be made custom for different CSRs.  For now we provide
-            a generic descriptor that won't do anything bad to the world.
-         */
-         csr_state_info_t states[] = { {.fx = Ifx_Read, .offset = OFFB_X0, .size = 4} };
-         csr_op(irsb, 
-               "riscv_dirtyhelper_CSR_rw",
-               &riscv_dirtyhelper_CSR_rw,
-               csr,
-               write, read, getIReg32(rs1),
-               rd, 1, states);
-      }
-      }
-      DIP("csrrw %s, %s, %s\n", nameIReg(rd), nameCSR(csr), nameIReg(rs1));
-      return True;
-   }
+   /* -------------- csrr{w,s,c} rd, csr, rs1 --------------- */
+   if (INSN(6, 0) == 0b1110011) {
+      UInt rd     = INSN(11, 7);
+      UInt funct3 = INSN(14, 12);
+      UInt rs1    = INSN(19, 15);
+      UInt csr    = INSN(31, 20);
+      if ((funct3 != 0b001 && funct3 != 0b010 && funct3 != 0b011) ||
+          (csr != 0x001 && csr != 0x002 && csr != 0x003)) {
+         /* Invalid CSRR{W,S,C}, fall through. */
+      } else {
+         switch (csr) {
+         case 0x001: {
+            /* fflags */
+            IRTemp fcsr = newTemp(irsb, Ity_I32);
+            assign(irsb, fcsr, getFCSR());
+            if (rd != 0)
+               putIReg64(irsb, rd,
+                         unop(Iop_32Uto64,
+                              binop(Iop_And32, mkexpr(fcsr), mkU32(0x1f))));
 
-   /* ----------------- csrrs rd, csr, rs1 ------------------ */
-   if (INSN(6, 0) == 0b1110011 && INSN(14, 12) == 0b010) {
-      UInt rd  = INSN(11, 7);
-      UInt rs1 = INSN(19, 15);
-      UInt csr = INSN(31, 20);
-      switch (csr) {
-      case 0x001: {
-         /* fflags */
-         IRTemp fcsr = newTemp(irsb, Ity_I32);
-         assign(irsb, fcsr, getFCSR());
-         if (rd != 0)
-            putIReg64(irsb, rd,
-                     unop(Iop_32Uto64,
-                        binop(Iop_And32, mkexpr(fcsr), mkU32(0x1f))));
-         putFCSR(irsb, binop(Iop_Or32, mkexpr(fcsr),
-                              binop(Iop_And32, getIReg32(rs1), mkU32(0x1f))));
-         break;
-      }
-      case 0x002: {
-         /* frm */
-         IRTemp fcsr = newTemp(irsb, Ity_I32);
-         assign(irsb, fcsr, getFCSR());
-         if (rd != 0)
-            putIReg64(
+            IRExpr* expr;
+            switch (funct3) {
+            case 0b001:
+               expr = binop(Iop_Or32,
+                            binop(Iop_And32, mkexpr(fcsr), mkU32(0xffffffe0)),
+                            binop(Iop_And32, getIReg32(rs1), mkU32(0x1f)));
+               break;
+            case 0b010:
+               expr = binop(Iop_Or32, mkexpr(fcsr),
+                            binop(Iop_And32, getIReg32(rs1), mkU32(0x1f)));
+               break;
+            case 0b011:
+               expr = binop(Iop_And32, mkexpr(fcsr),
+                            unop(Iop_Not32, binop(Iop_And32, getIReg32(rs1),
+                                                  mkU32(0x1f))));
+               break;
+            default:
+               vassert(0);
+            }
+            putFCSR(irsb, expr);
+            break;
+         }
+         case 0x002: {
+            /* frm */
+            IRTemp fcsr = newTemp(irsb, Ity_I32);
+            assign(irsb, fcsr, getFCSR());
+            if (rd != 0)
+               putIReg64(
                   irsb, rd,
                   unop(Iop_32Uto64,
-                     binop(Iop_And32, binop(Iop_Shr32, mkexpr(fcsr), mkU8(5)),
-                           mkU32(0x7))));
-         putFCSR(irsb,
-               binop(Iop_Or32, mkexpr(fcsr),
-                     binop(Iop_Shl32,
-                           binop(Iop_And32, getIReg32(rs1), mkU32(0x7)),
-                           mkU8(5))));
+                       binop(Iop_And32, binop(Iop_Shr32, mkexpr(fcsr), mkU8(5)),
+                             mkU32(0x7))));
+
+            IRExpr* expr;
+            switch (funct3) {
+            case 0b001:
+               expr = binop(
+                  Iop_Or32, binop(Iop_And32, mkexpr(fcsr), mkU32(0xffffff1f)),
+                  binop(Iop_Shl32, binop(Iop_And32, getIReg32(rs1), mkU32(0x7)),
+                        mkU8(5)));
+               break;
+            case 0b010:
+               expr = binop(Iop_Or32, mkexpr(fcsr),
+                            binop(Iop_Shl32,
+                                  binop(Iop_And32, getIReg32(rs1), mkU32(0x7)),
+                                  mkU8(5)));
+               break;
+            case 0b011:
+               expr =
+                  binop(Iop_And32, mkexpr(fcsr),
+                        unop(Iop_Not32,
+                             binop(Iop_Shl32,
+                                   binop(Iop_And32, getIReg32(rs1), mkU32(0x7)),
+                                   mkU8(5))));
+               break;
+            default:
+               vassert(0);
+            }
+            putFCSR(irsb, expr);
+            break;
+         }
+         case 0x003: {
+            /* fcsr */
+            IRTemp fcsr = newTemp(irsb, Ity_I32);
+            assign(irsb, fcsr, getFCSR());
+            if (rd != 0)
+               putIReg64(irsb, rd, unop(Iop_32Uto64, mkexpr(fcsr)));
+
+            IRExpr* expr;
+            switch (funct3) {
+            case 0b001:
+               expr = binop(Iop_And32, getIReg32(rs1), mkU32(0xff));
+               break;
+            case 0b010:
+               expr = binop(Iop_Or32, mkexpr(fcsr),
+                            binop(Iop_And32, getIReg32(rs1), mkU32(0xff)));
+               break;
+            case 0b011:
+               expr = binop(Iop_And32, mkexpr(fcsr),
+                            unop(Iop_Not32, binop(Iop_And32, getIReg32(rs1),
+                                                  mkU32(0xff))));
+               break;
+            default:
+               vassert(0);
+            }
+            putFCSR(irsb, expr);
+            break;
+         }
+         default:
+            vassert(0);
+         }
+
+         const HChar* name;
+         switch (funct3) {
+         case 0b001:
+            name = "csrrw";
+            break;
+         case 0b010:
+            name = "csrrs";
+            break;
+         case 0b011:
+            name = "csrrc";
+            break;
+         default:
+            vassert(0);
+         }
+         DIP("%s %s, %s, %s\n", name, nameIReg(rd), nameCSR(csr),
+             nameIReg(rs1));
+         return True;
+      }
+   }
+
+   /* --------- csrr{w,s,c} rd, csr, rs1 -- non-FP CSRs --------- */
+   if (INSN(6, 0) == 0b1110011 &&
+       (INSN(14, 12) == 0b001 || INSN(14, 12) == 0b010 ||
+        INSN(14, 12) == 0b011)) {
+      UInt rd     = INSN(11, 7);
+      UInt funct3 = INSN(14, 12);
+      UInt rs1    = INSN(19, 15);
+      UInt csr    = INSN(31, 20);
+      /* FP CSRs were handled inline above; pass everything else to a
+         dirty helper. */
+      const HChar* name;
+      const HChar* helper_name;
+      void*        helper_addr;
+      switch (funct3) {
+      case 0b001:
+         name        = "csrrw";
+         helper_name = "riscv_dirtyhelper_CSR_rw";
+         helper_addr = riscv_dirtyhelper_CSR_rw;
          break;
-      }
-      case 0x003: {
-         /* fcsr */
-         IRTemp fcsr = newTemp(irsb, Ity_I32);
-         assign(irsb, fcsr, getFCSR());
-         if (rd != 0)
-            putIReg64(irsb, rd, unop(Iop_32Uto64, mkexpr(fcsr)));
-         putFCSR(irsb, binop(Iop_Or32, mkexpr(fcsr),
-                              binop(Iop_And32, getIReg32(rs1), mkU32(0xff))));
+      case 0b010:
+         name        = "csrrs";
+         helper_name = "riscv_dirtyhelper_CSR_s";
+         helper_addr = riscv_dirtyhelper_CSR_s;
          break;
+      case 0b011:
+         name        = "csrrc";
+         helper_name = "riscv_dirtyhelper_CSR_c";
+         helper_addr = riscv_dirtyhelper_CSR_c;
+         break;
+      default:
+         vassert(0);
       }
-      default: {
-         Bool write = rs1 != 0;
-         Bool read = rd != 0;
-         /*
-            In order to use dirty helpers, we have to provide at least one state update.  In the
-            future, these will likely need to be made custom for different CSRs.  For now we provide
-            a generic descriptor that won't do anything bad to the world.
-         */
-         csr_state_info_t states[] = { {.fx = Ifx_Read, .offset = OFFB_X0, .size = 4} };
-         csr_op(irsb, 
-               "riscv_dirtyhelper_CSR_s",
-               &riscv_dirtyhelper_CSR_s,
-               csr,
-               write, read, getIReg32(rs1),
-               rd, 1, states);
+      csr_op(irsb, helper_name, helper_addr, csr, rs1 != 0, rd != 0,
+             getIReg32(rs1), rd);
+      DIP("%s %s, %s, %s\n", name, nameIReg(rd), nameCSR(csr), nameIReg(rs1));
+      return True;
+   }
+
+   /* --------------- csrr{w,s,c}i rd, csr, uimm ---------------- */
+   if (INSN(6, 0) == 0b1110011 &&
+       (INSN(14, 12) == 0b101 || INSN(14, 12) == 0b110 ||
+        INSN(14, 12) == 0b111)) {
+      UInt rd     = INSN(11, 7);
+      UInt funct3 = INSN(14, 12);
+      UInt imm    = INSN(19, 15);
+      UInt csr    = INSN(31, 20);
+      const HChar* name;
+      const HChar* helper_name;
+      void*        helper_addr;
+      switch (funct3) {
+      case 0b101:
+         name        = "csrrwi";
+         helper_name = "riscv_dirtyhelper_CSR_rw";
+         helper_addr = riscv_dirtyhelper_CSR_rw;
+         break;
+      case 0b110:
+         name        = "csrrsi";
+         helper_name = "riscv_dirtyhelper_CSR_s";
+         helper_addr = riscv_dirtyhelper_CSR_s;
+         break;
+      case 0b111:
+         name        = "csrrci";
+         helper_name = "riscv_dirtyhelper_CSR_c";
+         helper_addr = riscv_dirtyhelper_CSR_c;
+         break;
+      default:
+         vassert(0);
       }
-      }
-      DIP("csrrs %s, %s, %s\n", nameIReg(rd), nameCSR(csr), nameIReg(rs1));
+      csr_op(irsb, helper_name, helper_addr, csr, imm != 0, rd != 0,
+             mkU32(imm), rd);
+      DIP("%s %s, %s, 0x%x\n", name, nameIReg(rd), nameCSR(csr), imm);
       return True;
    }
 
-    /* ----------------- csrrc, rd, csr, rs1 ------------------ */
-   if (INSN(6, 0) == 0b1110011 && INSN(14, 12) == 0b011) {
-      UInt rd  = INSN(11, 7);
-      UInt rs1 = INSN(19, 15);
-      UInt csr = INSN(31, 20);
-
-      Bool write = rs1 != 0;
-      Bool read = rd != 0;
-      /*
-         In order to use dirty helpers, we have to provide at least one state update.  In the
-         future, these will likely need to be made custom for different CSRs.  For now we provide
-         a generic descriptor that won't do anything bad to the world.
-      */
-      csr_state_info_t states[] = { {.fx = Ifx_Read, .offset = OFFB_X0, .size = 4} };
-      csr_op(irsb, 
-            "riscv_dirtyhelper_CSR_s",
-            &riscv_dirtyhelper_CSR_s,
-            csr,
-            write, read, getIReg32(rs1),
-            rd, 1, states);
-      DIP("csrrc %s, %s, %s\n", nameIReg(rd), nameCSR(csr), nameIReg(rs1));
-      return True;
-   }
-
-   /* ----------------- csrrci rd, csr, rs1 ------------------ */
-   if (INSN(6, 0) == 0b1110011 && INSN(14, 12) == 0b111) {
-      UInt rd  = INSN(11, 7);
-      UInt imm = INSN(19, 15);
-      UInt csr = INSN(31, 20);
-
-      Bool write = imm != 0;
-      Bool read = rd != 0;
-      /*
-         In order to use dirty helpers, we have to provide at least one state update.  In the
-         future, these will likely need to be made custom for different CSRs.  For now we provide
-         a generic descriptor that won't do anything bad to the world.
-      */
-      csr_state_info_t states[] = { {.fx = Ifx_Read, .offset = OFFB_X0, .size = 4} };
-      csr_op(irsb, 
-            "riscv_dirtyhelper_CSR_c",
-            &riscv_dirtyhelper_CSR_c,
-            csr,
-            write, read, mkU32(imm),
-            rd, 1, states);
-      DIP("csrrci %s, %s, 0x%x\n", nameIReg(rd), nameCSR(csr), imm);
-      return True;
-   }
-
-   /* ----------------- csrrsi rd, csr, rs1 ------------------ */
-   if (INSN(6, 0) == 0b1110011 && INSN(14, 12) == 0b110) {
-      UInt rd  = INSN(11, 7);
-      UInt imm = INSN(19, 15);
-      UInt csr = INSN(31, 20);
-
-      Bool write = imm != 0;
-      Bool read = rd != 0;
-      /*
-         In order to use dirty helpers, we have to provide at least one state update.  In the
-         future, these will likely need to be made custom for different CSRs.  For now we provide
-         a generic descriptor that won't do anything bad to the world.
-      */
-      csr_state_info_t states[] = { {.fx = Ifx_Read, .offset = OFFB_X0, .size = 4} };
-      csr_op(irsb, 
-            "riscv_dirtyhelper_CSR_s",
-            &riscv_dirtyhelper_CSR_s,
-            csr,
-            write, read, mkU32(imm),
-            rd, 1, states);
-      DIP("csrrsi %s, %s, 0x%x\n", nameIReg(rd), nameCSR(csr), imm);
-      return True;
-   }
-
-    /* ----------------- csrrwi, rd, csr, rs1 ------------------ */
-   if (INSN(6, 0) == 0b1110011 && INSN(14, 12) == 0b101) {
-      UInt rd  = INSN(11, 7);
-      UInt imm = INSN(19, 15);
-      UInt csr = INSN(31, 20);
-
-      Bool write = imm != 0;
-      Bool read = rd != 0;
-      /*
-         In order to use dirty helpers, we have to provide at least one state update.  In the
-         future, these will likely need to be made custom for different CSRs.  For now we provide
-         a generic descriptor that won't do anything bad to the world.
-      */
-      csr_state_info_t states[] = { {.fx = Ifx_Read, .offset = OFFB_X0, .size = 4} };
-      csr_op(irsb, 
-            "riscv_dirtyhelper_CSR_rw",
-            &riscv_dirtyhelper_CSR_rw,
-            csr,
-            write, read, mkU32(imm),
-            rd, 1, states);
-
-      DIP("csrrwi %s, %s, 0x%x\n", nameIReg(rd), nameCSR(csr), imm);
-      return True;
-   }
-
-   /* ----------------- wfi ------------------ */
-   if (INSN(6, 0) == 0b1110011 && INSN(14, 12) == 0b000 && INSN(24, 20) == 0b00101) {
-      /* Add a noOp statement to the list held by irsb. */
+   /* --------------------------- wfi --------------------------- */
+   if (INSN(6, 0) == 0b1110011 && INSN(14, 12) == 0b000 &&
+       INSN(24, 20) == 0b00101) {
       stmt(irsb, IRStmt_NoOp());
       DIP("wfi\n");
       return True;
    }
 
-   /* ----------------- mret ------------------ */
-   if (INSN(6, 0) == 0b1110011 && INSN(14, 12) == 0b000 && INSN(24, 20) == 0b00010 && INSN(31, 27) == 0b00110) {
-      IRTemp  temp = newTemp(irsb, Ity_I64);
-      IRDirty *d = unsafeIRDirty_1_N(
-               temp,
-               0/*regparms*/,
-               "riscv_dirtyhelper_mret",
-               &riscv_dirtyhelper_mret,
-               mkIRExprVec_1(IRExpr_GSPTR()));
-
-      /*declare guest state effects*/
+   /* -------------------------- mret --------------------------- */
+   if (INSN(6, 0) == 0b1110011 && INSN(14, 12) == 0b000 &&
+       INSN(24, 20) == 0b00010 && INSN(31, 27) == 0b00110) {
+      IRTemp   res = newTemp(irsb, Ity_I64);
+      IRDirty* d   = unsafeIRDirty_1_N(res, 0 /*regparms*/,
+                                       "riscv_dirtyhelper_mret",
+                                       riscv_dirtyhelper_mret,
+                                       mkIRExprVec_1(IRExpr_GSPTR()));
       d->nFxState = 1;
       vex_bzero(&d->fxState, sizeof(d->fxState));
       d->fxState[0].fx     = Ifx_Read;
-      d->fxState[0].offset = OFFB_X0; /* Should add an MEPC to guest register state to complete implementation*/
+      d->fxState[0].offset = OFFB_X0; /* An MEPC guest-state field would be
+                                         needed for a full implementation. */
       d->fxState[0].size   = 8;
-
-      /* execute the dirty call, and use the return result as the new PC. */
+      /* Use the dirty call's result as the new PC. */
       stmt(irsb, IRStmt_Dirty(d));
-      putPC(irsb, mkexpr(temp));
+      putPC(irsb, mkexpr(res));
       DIP("mret\n");
-      return True;
-   }
-
-   /* ----------------- wfi ------------------ */
-   if (INSN(6, 0) == 0b1110011 && INSN(14, 12) == 0b000 && INSN(24, 20) == 0b00101) {
-      /* Add a noOp statement to the list held by irsb. */
-      stmt(irsb, IRStmt_NoOp());
-      DIP("wfi\n");
       return True;
    }
 
@@ -3561,7 +3528,7 @@ static Bool disInstr_RISCV64_WRK(/*MB_OUT*/ DisResult* dres,
    vassert((guest_pc_curr_instr & 1) == 0);
 
    /* Spot "Special" instructions (see comment at top of file). */
-   {
+   if (vex_control.special_instruction_support) {
       const UChar* code = guest_instr;
       /* Spot the 16-byte preamble:
             00305013   srli zero, zero, 3
@@ -3664,9 +3631,6 @@ static Bool disInstr_RISCV64_WRK(/*MB_OUT*/ DisResult* dres,
 /* Disassemble a single instruction into IR. The instruction is located in host
    memory at &guest_code[delta]. */
 DisResult disInstr_RISCV64(IRSB*              irsb,
-                           Bool               (*resteerOkFn) ( void*, Addr ),
-                           Bool               resteerCisOk,
-                           void*              callback_opaque,
                            const UChar*       guest_code,
                            Long               delta,
                            Addr               guest_IP,

@@ -7,12 +7,12 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -223,8 +221,15 @@ typedef
 
       /* Padding to make it have an 16-aligned size */
       UInt padding1;
+      UInt padding2;
+      UInt padding3;
+      UInt padding4;
+      UInt padding5;
    }
    VexGuestX86State;
+
+VEX_STATIC_ASSERT(sizeof(VexGuestX86State) % 16 == 0,
+                  "sizeof VexGuestX86State is not a multiple of 16");
 
 #define VEX_GUEST_X86_LDT_NENT /*64*/ 8192 /* use complete LDT */
 #define VEX_GUEST_X86_GDT_NENT /*16*/ 8192 /* use complete GDT */
