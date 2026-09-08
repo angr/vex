@@ -44,9 +44,6 @@
    VFP on thumb: check that we exclude all r13/r15 cases that we
    should.
 
-   XXXX thumb to do: improve the ITSTATE-zeroing optimisation by
-   taking into account the number of insns guarded by an IT.
-
    remove the nasty hack, in the spechelper, of looking for Or32(...,
    0xE0) in as the first arg to armg_calculate_condition, and instead
    use Slice44 as specified in comments in the spechelper.
@@ -19147,9 +19144,8 @@ DisResult disInstr_THUMB_WRK (
    /* --- BEGIN ITxxx optimisation analysis --- */
    /* This is a crucial optimisation for the ITState boilerplate that
       follows.  Examine the 9 halfwords preceding this instruction,
-      and if we are absolutely sure that none of them constitute an
-      'it' instruction, then we can be sure that this instruction is
-      not under the control of any 'it' instruction, and so
+      and if we are absolutely sure that no possible 'it' instruction
+      among them can still guard or overlap this instruction, then
       guest_ITSTATE must be zero.  So write zero into ITSTATE right
       now, so that iropt can fold out almost all of the resulting
       junk.
@@ -19162,12 +19158,10 @@ DisResult disInstr_THUMB_WRK (
       statistically, 18/4096ths of the time, so is judged unlikely to
       be a performance problems.
 
-      FIXME: do better.  Take into account the number of insns covered
-      by any IT insns we find, to rule out cases where an IT clearly
-      cannot cover this instruction.  This would improve behaviour for
-      branch targets immediately following an IT-guarded group that is
-      not of full length.  Eg, (and completely ignoring issues of 16-
-      vs 32-bit insn length):
+      Take into account the number and width of the insns covered by
+      any IT insns we find, to rule out cases where an IT clearly
+      cannot cover this instruction.  This improves behaviour for
+      branch targets immediately following an IT-guarded group.  Eg:
 
              ite cond
              insn1
@@ -19175,10 +19169,8 @@ DisResult disInstr_THUMB_WRK (
       label: insn3
              insn4
 
-      The 'it' only conditionalises insn1 and insn2.  However, the
-      current analysis is conservative and considers insn3 and insn4
-      also possibly guarded.  Hence if 'label:' is the start of a hot
-      loop we will get a big performance hit.
+      The 'it' only conditionalises insn1 and insn2, so insn3 and
+      insn4 are known to be unconditional.
    */
    /* Summary result of this analysis: False == safe but
       suboptimal. */
@@ -19191,17 +19183,10 @@ DisResult disInstr_THUMB_WRK (
       if (vex_control.lookback_amount - 1 >= 18) {
          /* It's safe to poke about in the 9 halfwords preceding this
             insn.  So, have a look at them. */
-         guaranteedUnconditional = True; /* assume no 'it' insn found,
-                                            till we do */
-         const UShort* hwp = (const UShort*) guest_instr;
+         guaranteedUnconditional = True; /* assume every possible 'it'
+                                            has expired, till disproved */
          Int i;
          for (i = -1; i >= -9; i--) {
-            /* We're in the same page.  (True, but commented out due
-               to expense.) */
-            /*
-            vassert( ( ((UInt)(&hwp[i])) & 0xFFFFF000 )
-                      == ( pc & 0xFFFFF000 ) );
-            */
             /* All valid IT instructions must have the form 0xBFxy,
                where x can be anything, but y must be nonzero.  Find
                the number of insns covered by it (1 .. 4) and check to
@@ -19211,18 +19196,31 @@ DisResult disInstr_THUMB_WRK (
                returning 4 for those cases, so the analysis is safe
                even if the code uses unpredictable IT instructions (in
                which case its authors are nuts, but hey.)  */
-            UShort hwp_i = hwp[i];
+            UShort hwp_i = getUShortLittleEndianly(guest_instr + 2 * i);
             if (UNLIKELY((hwp_i & 0xFF00) == 0xBF00 && (hwp_i & 0xF) != 0)) {
                /* might be an 'it' insn. */
                /* # guarded insns */
                Int n_guarded = (Int)it_length_table[hwp_i & 0xFF];
+               Int n_consumed = 0;
+               Int cursor = i + 1;
                vassert(n_guarded >= 1 && n_guarded <= 4);
-               if (n_guarded * 2 /* # guarded HWs, worst case */
-                   > (-(i+1)))   /* -(i+1): # remaining HWs after the IT */
-                   /* -(i+0) also seems to work, even though I think
-                      it's wrong.  I don't understand that. */
+               while (n_consumed < n_guarded && cursor < 0) {
+                  UShort first_hw = getUShortLittleEndianly(guest_instr + 2 * cursor);
+                  /* A Thumb instruction is 32 bits iff its first
+                     halfword begins 11101, 11110, or 11111. */
+                  cursor += (first_hw >> 11) >= 0x1D ? 2 : 1;
+                  n_consumed++;
+               }
+               if (n_consumed < n_guarded || cursor > 0) {
+                  /* This candidate reaches or overlaps the current
+                     instruction, so it might still guard it. */
                   guaranteedUnconditional = False;
-               break;
+                  break;
+               }
+               /* This candidate expired at or before the current
+                  instruction.  Keep looking: a BFxy halfword can be
+                  part of a 32-bit instruction guarded by an earlier
+                  real IT instruction. */
             }
          }
       }
