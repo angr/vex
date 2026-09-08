@@ -20828,6 +20828,13 @@ Long dis_ESC_NONE (
          dis_string_op ( dis_CMPS, sz, "cmps", pfx );
          return delta;
       }
+      /* A6/A7: cmps{b,w,l,q} */
+      if (!haveF3(pfx) && !haveF2(pfx)) {
+         if (opc == 0xA6)
+            sz = 1;
+         dis_string_op( dis_CMPS, sz, "cmps", pfx );
+         return delta;
+      }
       goto decode_failure;
 
    case 0xAA:
