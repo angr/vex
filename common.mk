@@ -10,8 +10,10 @@ GEN_HEADERS = pub/libvex_guest_offsets.h
 PUB_HEADERS = \
 	pub/libvex.h \
 	pub/libvex_basictypes.h \
+	pub/libvex_basictypes_AVX512.h \
 	pub/libvex_emnote.h \
 	pub/libvex_guest_amd64.h \
+	pub/libvex_guest_amd_AVX512.h \
 	pub/libvex_guest_arm.h \
 	pub/libvex_guest_arm64.h \
 	pub/libvex_guest_mips32.h \
@@ -23,6 +25,7 @@ PUB_HEADERS = \
 	pub/libvex_guest_x86.h \
 	pub/libvex_inner.h \
 	pub/libvex_ir.h \
+	pub/libvex_ir_AVX512.h \
 	pub/libvex_s390x_common.h \
 	pub/libvex_trc_values.h
 
@@ -30,7 +33,9 @@ PUB_HEADERS = \
 # when any of them change
 PRIV_HEADERS = \
 	priv/common_nanomips_defs.h \
+	priv/guest_AVX512.h \
 	priv/guest_amd64_defs.h \
+	priv/guest_amd64_toIR_AVX512.h \
 	priv/guest_arm64_defs.h \
 	priv/guest_arm_defs.h \
 	priv/guest_generic_bb_to_IR.h \
@@ -43,10 +48,14 @@ PRIV_HEADERS = \
 	priv/guest_riscv64_defs.h \
 	priv/guest_s390_defs.h \
 	priv/guest_x86_defs.h \
+	priv/host_AVX512.h \
 	priv/host_amd64_defs.h \
+	priv/host_amd64_isel_AVX512.h \
 	priv/host_amd64_maddf.h \
 	priv/host_arm64_defs.h \
 	priv/host_arm_defs.h \
+	priv/host_generic_AVX512.h \
+	priv/host_generic_imm8_def.h \
 	priv/host_generic_maddf.h \
 	priv/host_generic_regs.h \
 	priv/host_generic_simd128.h \
@@ -58,9 +67,11 @@ PRIV_HEADERS = \
 	priv/host_riscv64_defs.h \
 	priv/host_s390_defs.h \
 	priv/host_x86_defs.h \
+	priv/ir_defs_AVX512.h \
 	priv/ir_match.h \
 	priv/ir_opt.h \
 	priv/main_globals.h \
+	priv/main_main_AVX512.h \
 	priv/main_util.h \
 	priv/mips_defs.h \
 	priv/objdump/dis-asm.h \
@@ -71,6 +82,7 @@ PRIV_HEADERS = \
 
 NORMAL_OBJS = \
 	priv/guest_amd64_helpers.o \
+	priv/guest_amd64_helpers_AVX512.o \
 	priv/guest_amd64_toIR.o \
 	priv/guest_arm64_helpers.o \
 	priv/guest_arm64_toIR.o \
@@ -98,6 +110,7 @@ NORMAL_OBJS = \
 	priv/host_arm64_isel.o \
 	priv/host_arm_defs.o \
 	priv/host_arm_isel.o \
+	priv/host_generic_AVX512_stub.o \
 	priv/host_generic_maddf.o \
 	priv/host_generic_reg_alloc2.o \
 	priv/host_generic_reg_alloc3.o \
@@ -118,10 +131,12 @@ NORMAL_OBJS = \
 	priv/host_x86_defs.o \
 	priv/host_x86_isel.o \
 	priv/ir_defs.o \
+	priv/ir_defs_AVX512.o \
 	priv/ir_inject.o \
 	priv/ir_match.o \
 	priv/ir_opt.o \
 	priv/main_globals.o \
+	priv/main_main_AVX512.o \
 	priv/main_util.o \
 	priv/objdump/dis-init.o \
 	priv/objdump/s390-dis.o \

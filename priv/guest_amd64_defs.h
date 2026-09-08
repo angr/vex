@@ -75,6 +75,10 @@ Bool guest_amd64_state_requires_precise_mem_exns ( Int, Int,
 extern
 VexGuestLayout amd64guest_layout;
 
+#ifdef AVX_512
+extern void  amd64g_dirtyhelper_CPUID_avx512_KNL ( VexGuestAMD64State* st );
+extern void  amd64g_dirtyhelper_CPUID_avx512_SKX ( VexGuestAMD64State* st );
+#endif
 
 /*---------------------------------------------------------*/
 /*--- amd64 guest helpers                               ---*/

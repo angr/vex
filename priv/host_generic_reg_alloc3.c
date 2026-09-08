@@ -520,7 +520,13 @@ HInstrArray* doRegisterAllocation_v3(
    /* The live range numbers are signed shorts, and so limiting the
       number of instructions to 15000 comfortably guards against them
       overflowing 32k. */
+#ifdef AVX_512
+   /* 15000 is not always enough for AVX-512. Getting dangerously close
+    * to overflow. */
+   vassert(instrs_in->arr_used <= 30000);
+#else
    vassert(instrs_in->arr_used <= 15000);
+#endif
 
    /* The output array of instructions. */
    HInstrArray* instrs_out = newHInstrArray();

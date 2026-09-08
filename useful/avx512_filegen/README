@@ -1,0 +1,118 @@
+Using this script
+~~~~~~~~~~~~~~~~~
+The script propagates changes made in master.csv into Valgrind source files.
+
+You DON'T need to run it it to build or run AVX-512 Valgrind.
+
+It should be run after you:
+- Change how a specific AVX-512 instruction is parsed or translated to IR
+- Change how a specific IR is translated to assembly
+- Introduce a new IR for AVX-512 support
+
+To do so, change master.csv accordingly and run the script:
+> cd ./filegen
+> ./filegen.sh
+
+If everything went well, you should see "validation passed" message.
+The script does not enable Valgrind tools, so add new IRs to the tools manually.
+
+
+Generated files
+~~~~~~~~~~~~~~~
+VEX/pub/libvex_ir_AVX512.h - enum of all AVX-512 IRs
+VEX/priv/guest_AVX512.h - structure for parsing AVX-512 assembly and 
+translating it to IR
+VEX/priv/host_AVX512.h - structure for translating IRs to assembly
+VEX/priv/host_generic_AVX512.h - list of AVX-512 helper function declarations
+
+
+Master file structure
+~~~~~~~~~~~~~~~~~~~~~
+master.csv - a comma-separated file describing AVX-512 assembly instructions:
+
+   name   - instruction name used for logging
+   opcode, prefix, escape - instruction parameters from the ISE
+   width  - source element width specified in the ISE (W0 for 32 bits, W1 for
+64 bits, WIG for the rest)
+   dst_w  - destination element width
+   tuple  - EVEX tuple type specified in the ISE
+   mask   - EVEX masking type specified in the ISE
+
+   misc - optional; one of the following special parameters:
+      - /<payload_value> to indicate /is4 encoding: imm[3:0] specifies
+instruction-specific payload, imm[7:4] specifies source register
+      - noVL in case EVEX.L parameter of the instruction does not match its dst
+or src1 vector length
+    E_class - exception classification is specified in the ISE. Currenltly only
+fault suppression is used. Broadcasts use "E6BC" instead of "E6"
+
+   dst_e,src1_e,src2_e,src3_e,src4_e - encoding of destination and source 
+operands. If an instruction uses destination value as one of its sources, it 
+must also specify it as one of the sources.
+   dst_t,src1_t,src2_t,src3_t,src4_t - types of destination and source operands, 
+in the same order as encoding columns.
+
+   asm->IR function - optional function that constructs IRs for the instruction.
+The signature must be:
+"IRTemp <function_name> (IRTemp src1, IRTemp src2, UInt imm8_or_parameter)"
+   IR - optional IR corresponding to the instruction
+Only one of these two parameters is required. If none is specified, instruction 
+is passed to dis_EVEX_exceptions for a manual parsing
+
+   mult - if IR should run multiple times to imitate the instruction (for 
+example, VADDPD on 512-bit vectors is Iop_Add64Fx2 repeated on upper and lower 
+halves of sources), specify this multiplier.
+   Negative multipliers are a special case. In case a new intruction has 
+different vector lengths, its IR is translated to intrinsic, and the instruction
+is available on KNL - it cannot use the normal approach "implement a 128-bit IR
+and use it several times for bigger vectors", because 128-bit intrinsics from
+AVX512VL subset are not available on KNL. So, we implement 512-bit IR, and only
+use half (multiplier -2) or quarter (multiplier -4) of its result for VL 
+versions.
+
+   param - an integer parameter in case the instruction needs to pass some data
+to asm->IR function and does not use imm8
+
+   IR->asm:
+      - LEGACY if IR is already translated to assembly on this architecture,
+      - LEGACY_IR if the IR already exists, but is not translated to assembly on
+this architecture
+      - DEFAULT if it is translated in function named h_<IR_name> in
+VEX/priv/host_generic_AVX512_<arch>.c
+      - blank if the instrution does not rely on IR column, or if its IR is
+handled manually in VEX/priv/host_amd64_isel_AVX512.c
+
+
+
+Adding new AVX-512 assembly instructions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The master file is sorted by opcode; please maintain this order.
+Instrution source operands usually follow their order in the ISE, but it is ok 
+to change this order if necessary
+
+   - If the instruction can be expressed through an exitent IR, for example,
+512-bit VADDPD can be expessed through "Iop_Add64Fx4" repeated on halves of 
+source vectors, leave "asm->IR function" and "param" blank, fill "IR" and "mult" 
+fields, and specify "LEGACY" in "IR->asm" field.
+If the existent IR is not supported on x86 architecture, specify "LEGACY_IR" in 
+"IR->asm" field and manually translate this IR to assembly in 
+VEX/priv/host_amd64_isel_AVX512.c
+
+   - If the instruction can be expressed through a combination of existent IRs,
+AND does not require more than 2 source values + possibly imm8, implement this
+function in VEX/priv/guest_amd64_toIR_AVX512.c file with signature
+"IRTemp <function_name> (IRTemp src1, IRTemp src2, UInt imm8_or_parameter)".
+Specify this function in "asm->IR function" field; specify "mult" and "param"
+if necessary; leave "IR" and "IR->asm" fields blank
+
+   - If the instruction requires its own IR, specify it in the IR column,
+specify "mult" if necessary and DEFAULT in "IR->asm" field. Implement its
+functionality in function named h_<IR_name> in 
+VEX/priv/host_generic_AVX512_<arch>.c
+Add Memcheck analysis of the new IR to ./memcheck/mc_translate_AVX512.c
+
+   - If the instruction requires special handling or uses unusual parameters,
+for example, VMOVSD can have 2 or 3 source elemnets, leave both
+"asm->IR function" and "IR" empty and handle the instruction manually in
+function dis_EVEX_exceptions in file VEX/priv/guest_amd64_toIR_AVX512.c
+

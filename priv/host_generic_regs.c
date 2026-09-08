@@ -358,6 +358,10 @@ void ppRetLoc ( RetLoc ska )
          vex_printf("RLPri_V128SpRel(%d)", ska.spOff); return;
       case RLPri_V256SpRel:
          vex_printf("RLPri_V256SpRel(%d)", ska.spOff); return;
+#ifdef AVX_512
+      case RLPri_V512SpRel:
+         vex_printf("RLPri_V512SpRel(%d)", ska.spOff); return;
+#endif
       default:
          vpanic("ppRetLoc");
    }

@@ -421,7 +421,10 @@ typedef
       RLPri_Int,       /* in the primary int return reg */
       RLPri_2Int,      /* in both primary and secondary int ret regs */
       RLPri_V128SpRel, /* 128-bit value, on the stack */
-      RLPri_V256SpRel  /* 256-bit value, on the stack */
+      RLPri_V256SpRel, /* 256-bit value, on the stack */
+#ifdef AVX_512
+      RLPri_V512SpRel  /* 512-bit value, on the stack */
+#endif
    }
    RetLocPrimary;
 
@@ -445,7 +448,11 @@ static inline RetLoc mk_RetLoc_simple ( RetLocPrimary pri ) {
 }
 
 static inline RetLoc mk_RetLoc_spRel ( RetLocPrimary pri, Int off ) {
+#ifdef AVX_512
+   vassert(pri >= RLPri_V128SpRel && pri <= RLPri_V512SpRel);
+#else
    vassert(pri >= RLPri_V128SpRel && pri <= RLPri_V256SpRel);
+#endif
    return (RetLoc){pri, off};
 }
 
@@ -454,6 +461,9 @@ static inline Bool is_sane_RetLoc ( RetLoc rloc ) {
       case RLPri_None: case RLPri_Int: case RLPri_2Int:
          return rloc.spOff == 0;
       case RLPri_V128SpRel: case RLPri_V256SpRel:
+#ifdef AVX_512
+      case RLPri_V512SpRel:
+#endif
          return True;
       default:
          return False;

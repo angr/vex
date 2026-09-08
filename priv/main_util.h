@@ -54,7 +54,11 @@
 #if defined(_MSC_VER) // building with MSVC
 # define LIKELY(x)          (x)
 # define UNLIKELY(x)        (x)
-# define CAST_TO_TYPEOF(x)  /**/
+# if _MSC_VER >= 1939 // VS 2022 17.9+: __typeof__ is available in C mode
+#  define CAST_TO_TYPEOF(x) (__typeof__(x))
+# else
+#  define CAST_TO_TYPEOF(x) /**/
+# endif
 #else
 # define LIKELY(x)          __builtin_expect(!!(x), 1)
 # define UNLIKELY(x)        __builtin_expect(!!(x), 0)

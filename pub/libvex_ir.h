@@ -231,7 +231,10 @@ typedef
       Ity_D128,  /* 128-bit Decimal floating point */
       Ity_F128,  /* 128-bit floating point; implementation defined */
       Ity_V128,  /* 128-bit SIMD */
-      Ity_V256   /* 256-bit SIMD */
+      Ity_V256,  /* 256-bit SIMD */
+#ifdef AVX_512
+      Ity_V512,  /* 512-bit SIMD */
+#endif
    }
    IRType;
 
@@ -279,8 +282,11 @@ typedef
                     as a IEEE754 double value. */
       Ico_V128,  /* 128-bit restricted vector constant, with 1 bit
                     (repeated 8 times) for each of the 16 x 1-byte lanes */
-      Ico_V256   /* 256-bit restricted vector constant, with 1 bit
+      Ico_V256,   /* 256-bit restricted vector constant, with 1 bit
                     (repeated 8 times) for each of the 32 x 1-byte lanes */
+#ifdef AVX_512
+      Ico_V512,
+#endif
    }
    IRConstTag;
 
@@ -304,6 +310,9 @@ typedef
          ULong  F64i;
          UShort V128;   /* 16-bit value; see Ico_V128 comment above */
          UInt   V256;   /* 32-bit value; see Ico_V256 comment above */
+#ifdef AVX_512
+         ULong  V512;   /* 64-bit value; see Ico_V512 comment above */
+#endif
       } Ico;
    }
    IRConst;
@@ -321,6 +330,9 @@ extern IRConst* IRConst_F64  ( Double );
 extern IRConst* IRConst_F64i ( ULong );
 extern IRConst* IRConst_V128 ( UShort );
 extern IRConst* IRConst_V256 ( UInt );
+#ifdef AVX_512
+extern IRConst* IRConst_V512 ( ULong );
+#endif
 
 /* Deep-copy an IRConst */
 extern IRConst* deepCopyIRConst ( const IRConst* );
@@ -2070,9 +2082,18 @@ typedef
       Iop_Max32Fx8, Iop_Min32Fx8,
       Iop_Max64Fx4, Iop_Min64Fx4,
       Iop_Rotx32, Iop_Rotx64,
-      Iop_LAST      /* must be the last enumerator */
+
+#ifdef AVX_512
+      Iop_LAST_NOT_EVEX,      /* must be the last enumerator */
+#else
+      Iop_LAST,               /* must be the last enumerator */
+#endif
    }
    IROp;
+
+#ifdef AVX_512
+#include "libvex_ir_AVX512.h"
+#endif
 
 /* Pretty-print an op. */
 extern void ppIROp ( IROp );
@@ -2851,6 +2872,10 @@ typedef
       ILGop_IdentV128, /* 128 bit vector, no conversion */
       ILGop_Ident64,   /* 64 bit, no conversion */
       ILGop_Ident32,   /* 32 bit, no conversion */
+#ifdef AVX_512
+      ILGop_Ident16,   /* 16 bit, no conversion */
+      ILGop_Ident8,    /* 8 bit, no conversion */
+#endif
       ILGop_16Uto32,   /* 16 bit load, Z-widen to 32 */
       ILGop_16Sto32,   /* 16 bit load, S-widen to 32 */
       ILGop_8Uto32,    /* 8 bit load, Z-widen to 32 */
