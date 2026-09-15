@@ -1254,6 +1254,98 @@ static Bool is_Ret(const UChar * addr)
    return False;
 }
 
+/* Encodings that exist only on a 64-bit MIPS, and that this file decodes by
+   building 64-bit IR without first consulting mode64.
+
+   On a 32-bit guest such an instruction is a Reserved Instruction, so the
+   decoder has to report a decode failure for it.  Decoding it anyway assigns
+   an I64 value to an I32 guest register, which fails either the vassert in
+   putIReg or the IR sanity check at the end of the superblock.  Both unwind
+   out of the whole translation, so the instructions already decoded ahead of
+   the offending one are lost as well -- the caller sees an empty IRSB whose
+   Ijk_NoDecode points at the start of the block rather than at the
+   instruction that could not be decoded.
+
+   Only encodings that fail today are listed, so this predicate cannot take
+   away a translation that currently succeeds.  Three of the tests are
+   narrower than the mnemonic because the slot is shared with an encoding a
+   32-bit guest does decode, and the narrowing is on the field that selects
+   between them:
+
+     - SPECIAL DMULT/DMULTU/DDIV/DDIVU are at sa == 0; the MIPSR6
+       DMUL/DMUH/DDIV/DMOD group shares those function codes at sa 2 and 3.
+     - COP1 DMFC1 and DMTC1 are rs 1 and 5 with the low 11 bits clear; other
+       COP1 formats use those bits.
+     - SPECIAL3 DBSHFL selects DSBH and DSHD through sa 2 and 5; DBITSWAP and
+       DALIGN sit at other sa values in the same function code.
+
+   Three whole opcodes change meaning on a MIPSR6 guest rather than merely
+   sharing a field, so they are rejected only when the guest is not MIPSR6:
+   DADDI is BOVC/BEQC/BEQZALC there, and the Cavium OCTEON BBIT032 and BBIT132
+   are JIC/BEQZC and JIALC/BNEZC.  The narrowed cases above need no such test,
+   because at the field values this predicate covers the file builds 64-bit IR
+   whatever hwcaps says.
+
+   LWU, SD, BBIT0 and BBIT1 are decoded in 32-bit mode by the cases below,
+   correctly or not, and LLD and SCD test mode64 themselves and raise
+   ILLEGAL_INSTRUCTON; none of them is listed.  */
+static Bool is_MIPS64_only_insn(UInt cins, UInt hwcaps)
+{
+   UInt opcode = get_opcode(cins);
+   UInt rs = get_rs(cins);
+   UInt sa = get_sa(cins);
+   UInt function = get_function(cins);
+
+   switch (opcode) {
+      case 0x00:  /* SPECIAL */
+         switch (function) {
+            /* DMULT, DMULTU, DDIV, DDIVU -- sa selects the MIPSR6 group */
+            case 0x1C: case 0x1D: case 0x1E: case 0x1F:
+               return sa == 0;
+            /* DSLLV, DSRLV, DSRAV */
+            case 0x14: case 0x16: case 0x17:
+            /* DADD, DADDU, DSUB, DSUBU */
+            case 0x2C: case 0x2D: case 0x2E: case 0x2F:
+            /* DSLL, DSRL/DROTR, DSRA */
+            case 0x38: case 0x3A: case 0x3B:
+            /* DSLL32, DSRL32/DROTR32, DSRA32 */
+            case 0x3C: case 0x3E: case 0x3F:
+               return True;
+            default:
+               return False;
+         }
+      case 0x11:  /* COP1 */
+         /* DMFC1, DMTC1 */
+         return (rs == 0x01 || rs == 0x05) && (cins & 0x7FF) == 0;
+      case 0x1C:  /* SPECIAL2 */
+         /* DCLZ, DCLO */
+         return function == 0x24 || function == 0x25;
+      case 0x1F:  /* SPECIAL3 */
+         switch (function) {
+            /* DEXTM, DEXTU, DEXT */
+            case 0x01: case 0x02: case 0x03:
+            /* DINSM, DINSU, DINS */
+            case 0x05: case 0x06: case 0x07:
+               return True;
+            case 0x24:  /* DBSHFL: DSBH, DSHD */
+               return sa == 0x02 || sa == 0x05;
+            default:
+               return False;
+         }
+      case 0x18:  /* DADDI, or BOVC/BEQC/BEQZALC on MIPSR6 */
+      case 0x36:  /* BBIT032, or JIC/BEQZC on MIPSR6 */
+      case 0x3E:  /* BBIT132, or JIALC/BNEZC on MIPSR6 */
+         return !VEX_MIPS_CPU_HAS_MIPSR6(hwcaps);
+      case 0x19:             /* DADDIU */
+      case 0x1A: case 0x1B:  /* LDL, LDR */
+      case 0x2C: case 0x2D:  /* SDL, SDR */
+      case 0x37:             /* LD */
+         return True;
+      default:
+         return False;
+   }
+}
+
 static Bool branch_or_link_likely(const UChar * addr)
 {
    UInt cins = getUInt(addr);
@@ -24912,6 +25004,11 @@ static DisResult disInstr_MIPS_WRK ( Long         delta64,
          /*NOTREACHED*/
       }
    }
+
+   /* Reserved on this guest: report a decode failure rather than build 64-bit
+      IR for 32-bit registers and lose the whole superblock to an assertion. */
+   if (!mode64 && is_MIPS64_only_insn(cins, archinfo->hwcaps))
+      goto decode_failure;
 
    switch (opcode & 0x30) {
       case 0x00:
