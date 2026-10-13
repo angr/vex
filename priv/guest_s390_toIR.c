@@ -4918,7 +4918,7 @@ s390_irgen_BRCTH(UChar r1, UInt i2)
 {
    put_gpr_w0(r1, binop(Iop_Sub32, get_gpr_w0(r1), mkU32(1)));
    if_condition_goto(binop(Iop_CmpNE32, get_gpr_w0(r1), mkU32(0)),
-                     addr_relative(i2));
+                     addr_rel_long(i2));
 }
 
 static void
