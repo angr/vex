@@ -1526,16 +1526,10 @@ IRExpr* handleSegOverride ( UChar sorb, IRExpr* virtual )
 
 static IRTemp disAMode_copy2tmp ( IRExpr* addr )
 {
+   /* addr is always a 32-bit linear address here.  disAMode16 widens its
+      16-bit effective address itself, before the segment base is added. */
    IRTemp tmp = newTemp(Ity_I32);
-   IRTemp halfsize_tmp = IRTemp_INVALID;
-
-   if (current_sz_addr == 4) {
-      assign( tmp, addr );
-   } else {
-      halfsize_tmp = newTemp(Ity_I16);
-      assign(halfsize_tmp, addr);
-      assign(tmp, unop(Iop_16Uto32, mkexpr(halfsize_tmp)));
-   }
+   assign( tmp, addr );
    return tmp;
 }
 
@@ -1770,76 +1764,94 @@ IRTemp disAMode32 ( Int* len, UChar sorb, Int delta, HChar* buf )
    }
 }
 
+/* Compute the base(+index) part of a 16-bit address, and, when tracing,
+   write the text for it into txt.  The 16-bit r/m field selects
+
+      0 (%bx,%si)   1 (%bx,%di)   2 (%bp,%si)   3 (%bp,%di)
+      4 (%si)       5 (%di)       6 (%bp)       7 (%bx)
+
+   which is a different table from the one the 32-bit modes use, so the
+   r/m value cannot be handed to getIReg directly.  r/m 6 with mod 0 is a
+   bare 16-bit literal address rather than (%bp); the caller handles it. */
+static IRExpr* disAMode16_baseIndex ( UChar rm, HChar* txt )
+{
+   static const Int base16[8]
+      = { R_EBX, R_EBX, R_EBP, R_EBP, R_ESI, R_EDI, R_EBP, R_EBX };
+   static const Int index16[8]
+      = { R_ESI, R_EDI, R_ESI, R_EDI, -1, -1, -1, -1 };
+   Int base  = base16[rm & 7];
+   Int index = index16[rm & 7];
+
+   txt[0] = (HChar)0;
+   if (index < 0) {
+      DIS(txt, "(%s)", nameIReg(2, base));
+      return getIReg(2, base);
+   } else {
+      DIS(txt, "(%s,%s)", nameIReg(2, base), nameIReg(2, index));
+      return binop(Iop_Add16, getIReg(2, base), getIReg(2, index));
+   }
+}
+
 static
 IRTemp disAMode16 ( Int* len, UChar sorb, Int delta, HChar* buf )
 {
-   UChar mod_reg_rm = getIByte(delta);
+   UChar   mod_reg_rm = getIByte(delta);
+   UChar   mod        = toUChar((mod_reg_rm >> 6) & 3);
+   UChar   rm         = toUChar(mod_reg_rm & 7);
+   IRExpr* addr;
+   HChar   rm_txt[20];
+   UInt    d;
+
    delta++;
+   buf[0] = (HChar)0;
 
-   buf[0] = (UChar)0;
+   switch (mod) {
 
-   /* squeeze out the reg field from mod_reg_rm, since a 256-entry
-      jump table seems a bit excessive.
-   */
-   mod_reg_rm &= 0xC7;                      /* is now XX000YYY */
-   mod_reg_rm  = toUChar(mod_reg_rm | (mod_reg_rm >> 3));
-                                            /* is now XX0XXYYY */
-   mod_reg_rm &= 0x1F;                      /* is now 000XXYYY */
-   switch (mod_reg_rm) {
-
-      case 0x00: case 0x01: case 0x02: case 0x03:
-         vpanic("TODO disAMode16 1");
+      /* (%bx,%si) .. (%bx), no displacement.  r/m 6 is instead a bare
+         16-bit literal address. */
+      case 0:
+         if (rm == 6) {
+            d    = getUDisp16(delta);
+            *len = 3;
+            DIS(buf, "%s0x%x", sorbTxt(sorb), d);
+            addr = mkU16(d);
+            break;
+         }
+         addr = disAMode16_baseIndex(rm, rm_txt);
+         *len = 1;
+         DIS(buf, "%s%s", sorbTxt(sorb), rm_txt);
          break;
 
-      case 0x04: case 0x05: case 0x07:
-         { UChar rm = mod_reg_rm;
-           *len = 1;
-           return disAMode_copy2tmp(
-                  handleSegOverride(sorb, getIReg(2,rm)));
-         }
-
-      case 0x08: case 0x09: case 0x0a: case 0x0b:
-         vpanic("TODO disAMode16 2");
+      /* d8(%bx,%si) .. d8(%bx).  getSDisp8 sign-extends to 32 bits, so
+         mask back to 16: the sum wraps within the segment, and mkU16
+         asserts on anything wider. */
+      case 1:
+         addr = disAMode16_baseIndex(rm, rm_txt);
+         d    = getSDisp8(delta);
+         *len = 2;
+         DIS(buf, "%s%d%s", sorbTxt(sorb), (Int)d, rm_txt);
+         addr = binop(Iop_Add16, addr, mkU16(d & 0xFFFF));
          break;
 
-      case 0x0C: case 0x0D: case 0x0E: case 0x0F:
-         { UChar rm = toUChar(mod_reg_rm & 7);
-           UInt  d  = getSDisp8(delta);
-           DIS(buf, "%s%d(%s)", sorbTxt(sorb), (Int)d, nameIReg(2,rm));
-           *len = 2;
-           return disAMode_copy2tmp(
-                  handleSegOverride(sorb,
-                     binop(Iop_Add16,getIReg(2,rm),mkU16(d))));
-         }
+      /* d16(%bx,%si) .. d16(%bx) */
+      case 2:
+         addr = disAMode16_baseIndex(rm, rm_txt);
+         d    = getUDisp16(delta);
+         *len = 3;
+         DIS(buf, "%s0x%x%s", sorbTxt(sorb), d, rm_txt);
+         addr = binop(Iop_Add16, addr, mkU16(d));
+         break;
 
-      case 0x14: case 0x15: case 0x16: case 0x17:
-         { UChar rm = toUChar(mod_reg_rm & 7);
-           UInt  d  = getUDisp16(delta);
-           DIS(buf, "%s0x%x(%s)", sorbTxt(sorb), (Int)d, nameIReg(2,rm));
-           *len = 3;
-           return disAMode_copy2tmp(
-                  handleSegOverride(sorb,
-                     binop(Iop_Add16,getIReg(2,rm),mkU16(d))));
-         }
-
-      /* This shouldn't happen. */
-      case 0x18: case 0x19: case 0x1A: case 0x1B:
-      case 0x1C: case 0x1D: case 0x1E: case 0x1F:
-         vpanic("disAMode(x86): not an addr!");
-
-      case 0x06:
-         { UInt d = getUDisp16(delta);
-           *len = 3;
-           DIS(buf, "%s(0x%x)", sorbTxt(sorb), d);
-           return disAMode_copy2tmp(
-                     handleSegOverride(sorb, mkU16(d)));
-         }
-
-
+      /* mod 3 denotes a register, not an address. */
       default:
-         vpanic("disAMode(x86)");
-         return 0; /*notreached*/
+         vpanic("disAMode16(x86): not an addr!");
+         return IRTemp_INVALID; /*notreached*/
    }
+
+   /* The effective address wraps within 64K before the segment base is
+      added, so widen here rather than leaving it to the caller. */
+   return disAMode_copy2tmp(
+             handleSegOverride(sorb, unop(Iop_16Uto32, addr)) );
 }
 
 static
@@ -1911,38 +1923,28 @@ static UInt lengthAMode32 ( Int delta )
 
 static UInt lengthAMode16 ( Int delta )
 {
-   UChar mod_reg_rm = getIByte(delta); delta++;
+   UChar mod_reg_rm = getIByte(delta);
+   UChar mod        = toUChar((mod_reg_rm >> 6) & 3);
+   UChar rm         = toUChar(mod_reg_rm & 7);
 
-   /* squeeze out the reg field from mod_reg_rm, since a 256-entry
-      jump table seems a bit excessive. 
-   */
-   mod_reg_rm &= 0xC7;               /* is now XX000YYY */
-   mod_reg_rm  = toUChar(mod_reg_rm | (mod_reg_rm >> 3));  
-                                     /* is now XX0XXYYY */
-   mod_reg_rm &= 0x1F;               /* is now 000XXYYY */
-   switch (mod_reg_rm) {
-
-      case 0x04: case 0x05: case 0x07:
-      case 0x18: case 0x19: case 0x1A: case 0x1B:
-      case 0x1C: case 0x1D: case 0x1E: case 0x1F:
-         return 1;
-      case 0x00: case 0x01: case 0x02: case 0x03: case 0x06:
-         return 2;
-      case 0x08: case 0x09: case 0x0a: case 0x0b:
-      case 0x0c: case 0x0d: case 0x0e: case 0x0f:
-      case 0x14: case 0x15: case 0x16: case 0x17:
-         return 3;
-      case 0x10: case 0x11: case 0x12: case 0x13:
-         return 4;
-      default:
-         vpanic("lengthAMode16");
-         return 0; /*notreached*/
+   switch (mod) {
+      /* (%bx,%si) .. (%bx); r/m 6 is a bare 16-bit literal address. */
+      case 0: return rm == 6 ? 3 : 1;
+      /* d8(%bx,%si) .. d8(%bx) */
+      case 1: return 2;
+      /* d16(%bx,%si) .. d16(%bx) */
+      case 2: return 3;
+      /* a register, %ax .. %di.  (Not an addr, but still handled.) */
+      default: return 1;
    }
 }
 
 static UInt lengthAMode ( Int delta )
 {
-   if (protected_mode) {
+   /* Must agree with disAMode, which dispatches on the address size in
+      effect for this instruction and not on the processor mode: a 0x67
+      prefix flips one without changing the other. */
+   if (current_sz_addr == 4) {
       return lengthAMode32(delta);
    } else {
       return lengthAMode16(delta);
