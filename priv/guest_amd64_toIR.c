@@ -33354,6 +33354,9 @@ DisResult disInstr_AMD64 ( IRSB*        irsb_IN,
    /* We'll consult these after doing disInstr_AMD64_WRK. */
    guest_RIP_next_assumed   = 0;
    guest_RIP_next_mustcheck = False;
+#ifdef AVX_512
+   clearEVEX();
+#endif
 
    x1 = irsb_IN->stmts_used;
    expect_CAS = False;
