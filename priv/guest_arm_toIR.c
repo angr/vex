@@ -412,6 +412,26 @@ static IRTemp newTemp ( IRType ty )
    return newIRTemp( irsb->tyenv, ty );
 }
 
+/* This frontend does not model optional divide-by-zero trapping.  Avoid
+   presenting a zero divisor to the IR operation and produce the architected
+   zero result instead. */
+static IRExpr* mkDiv32 ( Bool isSigned, IRExpr* argL, IRExpr* argR )
+{
+   IRTemp res     = newTemp(Ity_I32);
+   IRTemp quot    = newTemp(Ity_I32);
+   IRTemp argRtmp = newTemp(Ity_I32);
+   IRTemp argRnz  = newTemp(Ity_I32);
+   IRTemp argRis0 = newTemp(Ity_I1);
+   assign(argRtmp, argR);
+   assign(argRis0, binop(Iop_CmpEQ32, mkexpr(argRtmp), mkU32(0)));
+   assign(argRnz, IRExpr_ITE(mkexpr(argRis0), mkU32(1),
+                             mkexpr(argRtmp)));
+   assign(quot, binop(isSigned ? Iop_DivS32 : Iop_DivU32,
+                      argL, mkexpr(argRnz)));
+   assign(res, IRExpr_ITE(mkexpr(argRis0), mkU32(0), mkexpr(quot)));
+   return mkexpr(res);
+}
+
 /* Produces a value in 0 .. 3, which is encoded as per the type
    IRRoundingMode. */
 static IRExpr* /* :: Ity_I32 */ get_FAKE_roundingmode ( void )
@@ -17238,13 +17258,8 @@ DisResult disInstr_ARM_WRK (
       if (rD == 15 || rM == 15 || rN == 15) {
          /* Unpredictable; don't decode; fall through */
       } else {
-         IRTemp res  = newTemp(Ity_I32);
-         IRTemp argL = newTemp(Ity_I32);
-         IRTemp argR = newTemp(Ity_I32);
-         assign(argL, getIRegA(rN));
-         assign(argR, getIRegA(rM));
-         assign(res, binop(Iop_DivS32, mkexpr(argL), mkexpr(argR)));
-         putIRegA(rD, mkexpr(res), condT, Ijk_Boring);
+         putIRegA(rD, mkDiv32(True, getIRegA(rN), getIRegA(rM)),
+                   condT, Ijk_Boring);
          DIP("sdiv r%u, r%u, r%u\n", rD, rN, rM);
          goto decode_success;
       }
@@ -17260,13 +17275,8 @@ DisResult disInstr_ARM_WRK (
       if (rD == 15 || rM == 15 || rN == 15) {
          /* Unpredictable; don't decode; fall through */
       } else {
-         IRTemp res  = newTemp(Ity_I32);
-         IRTemp argL = newTemp(Ity_I32);
-         IRTemp argR = newTemp(Ity_I32);
-         assign(argL, getIRegA(rN));
-         assign(argR, getIRegA(rM));
-         assign(res, binop(Iop_DivU32, mkexpr(argL), mkexpr(argR)));
-         putIRegA(rD, mkexpr(res), condT, Ijk_Boring);
+         putIRegA(rD, mkDiv32(False, getIRegA(rN), getIRegA(rM)),
+                   condT, Ijk_Boring);
          DIP("udiv r%u, r%u, r%u\n", rD, rN, rM);
          goto decode_success;
       }
@@ -22486,13 +22496,7 @@ DisResult disInstr_THUMB_WRK (
       UInt rD = INSN1(11,8);
       UInt rM = INSN1(3,0);
       if (!isBadRegT(rD) && !isBadRegT(rN) && !isBadRegT(rM)) {
-         IRTemp res  = newTemp(Ity_I32);
-         IRTemp argL = newTemp(Ity_I32);
-         IRTemp argR = newTemp(Ity_I32);
-         assign(argL, getIRegT(rN));
-         assign(argR, getIRegT(rM));
-         assign(res, binop(Iop_DivS32, mkexpr(argL), mkexpr(argR)));
-         putIRegT(rD, mkexpr(res), condT);
+         putIRegT(rD, mkDiv32(True, getIRegT(rN), getIRegT(rM)), condT);
          DIP("sdiv.w r%u, r%u, r%u\n", rD, rN, rM);
          goto decode_success;
       }
@@ -22505,13 +22509,7 @@ DisResult disInstr_THUMB_WRK (
       UInt rD = INSN1(11,8);
       UInt rM = INSN1(3,0);
       if (!isBadRegT(rD) && !isBadRegT(rN) && !isBadRegT(rM)) {
-         IRTemp res  = newTemp(Ity_I32);
-         IRTemp argL = newTemp(Ity_I32);
-         IRTemp argR = newTemp(Ity_I32);
-         assign(argL, getIRegT(rN));
-         assign(argR, getIRegT(rM));
-         assign(res, binop(Iop_DivU32, mkexpr(argL), mkexpr(argR)));
-         putIRegT(rD, mkexpr(res), condT);
+         putIRegT(rD, mkDiv32(False, getIRegT(rN), getIRegT(rM)), condT);
          DIP("udiv.w r%u, r%u, r%u\n", rD, rN, rM);
          goto decode_success;
       }
