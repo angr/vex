@@ -44,6 +44,7 @@ Int ymmGuestRegOffsetEVEX(Int ymmreg);
 UInt getEVexNvvvv ( UInt );
 UInt gregOfRexRM32 ( UInt, UChar );
 UInt eregOfRexRM32 ( UInt, UChar );
+void clearEVEX ( void );
 IRExpr* mask_expr( UInt, IRExpr*, IRExpr*, Int);
 
 enum TupleType {

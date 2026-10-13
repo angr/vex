@@ -58,6 +58,15 @@ typedef UInt Prefix_EVEX;
 // to EVEX prefix, and changing their signatures requires too many changes
 Prefix_EVEX evex = 0;
 
+/* Called at the start of every instruction.  A vassert/vpanic (longjmp)
+   inside EVEX decoding leaves evex set, and gregOfRexRM32/get_reg_16_32
+   would keep applying its R'/V' extension bits to later non-EVEX
+   instructions -- in later lifts too, since evex is a global. */
+void clearEVEX ( void )
+{
+   evex = 0;
+}
+
 #define EVEX_R1     (1<<0)    /* R1 bit */
 #define EVEX_VEXnV4 (1<<1)    /* EVEX vvvv[4] bit */
 #define EVEX_EVEXb  (1<<2)    /* EVEX b bit */
@@ -3414,7 +3423,7 @@ static Long ParseEVEX (Prefix* pfx, Escape* esc, const Long deltaIn)
       case 1: *esc = ESC_0F;   break;
       case 2: *esc = ESC_0F38; break;
       case 3: *esc = ESC_0F3A; break;
-      default: vassert(0);
+      default: return -1; /* reserved mm: not an instruction */
    }
 
    /* Snarf contents of byte 2. vvvv is stored in reverse despite the documentation claiming otherwise */
@@ -3483,6 +3492,10 @@ Long dis__EVEX( const VexAbiInfo* vbi, Prefix pfx, Long delta ) {
    Escape esc = ESC_NONE;
    delta++;
    delta = ParseEVEX(&pfx, &esc, delta);
+   if (delta < 0) {
+      evex = 0;
+      return deltaIN;
+   }
 
    /* Find array entry with a matching opcode, prefix and vector length */
    UChar opcode = getUChar(delta);
