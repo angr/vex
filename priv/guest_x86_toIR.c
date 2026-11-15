@@ -8775,7 +8775,25 @@ DisResult disInstr_X86_WRK (
             }
             break;
          }
-         default: 
+         case 0xF2: {
+            /* F2 prefix on a near call, jump or return is the MPX BND
+               prefix, which can safely be ignored.  Otherwise it is
+               REPNE (or part of an SSE opcode), handled below. */
+            UChar op1 = getIByte(delta+1);
+            UChar op2 = getIByte(delta+2);
+            if ((op1 >= 0x70 && op1 <= 0x7F)
+                || op1 == 0xC2 || op1 == 0xC3
+                || op1 == 0xE8 || op1 == 0xE9 || op1 == 0xEB
+                || (op1 == 0x0F && op2 >= 0x80 && op2 <= 0x8F)
+                || (op1 == 0xFF
+                    && (gregOfRM(op2) == 2 || gregOfRM(op2) == 4))) {
+               DIP("bnd ");
+            } else {
+               goto not_a_prefix;
+            }
+            break;
+         }
+         default:
             goto not_a_prefix;
       }
       n_prefixes++;
