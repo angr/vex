@@ -8769,6 +8769,18 @@ void codegen_LAHF ( void  )
 }
 
 
+/* A successful CMPXCHG leaves the accumulator unchanged.  In particular,
+   writing EAX on success would incorrectly clear the high half of RAX. */
+static void putCmpxchgRAX ( Int size, IRTemp cond, IRTemp acc, IRTemp dest )
+{
+   if (size == 4) {
+      putIRegRAX(8, IRExpr_ITE(mkexpr(cond), getIRegRAX(8),
+                               unop(Iop_32Uto64, mkexpr(dest))));
+   } else {
+      putIRegRAX(size, IRExpr_ITE(mkexpr(cond), mkexpr(acc), mkexpr(dest)));
+   }
+}
+
 static
 ULong dis_cmpxchg_G_E ( /*OUT*/Bool* ok,
                         const VexAbiInfo*  vbi,
@@ -8858,8 +8870,7 @@ ULong dis_cmpxchg_G_E ( /*OUT*/Bool* ok,
       setFlags_DEP1_DEP2(Iop_Sub8, acc, dest, ty);
       assign( cond, mk_amd64g_calculate_condition(AMD64CondZ) );
       assign( dest2, IRExpr_ITE(mkexpr(cond), mkexpr(src), mkexpr(dest)) );
-      assign( acc2,  IRExpr_ITE(mkexpr(cond), mkexpr(acc), mkexpr(dest)) );
-      putIRegRAX(size, mkexpr(acc2));
+      putCmpxchgRAX(size, cond, acc, dest);
       storeLE( mkexpr(addr), mkexpr(dest2) );
       DIP("cmpxchg%c %s,%s\n", nameISize(size), 
                                nameIRegG(size,pfx,rm), dis_buf);
@@ -8880,8 +8891,7 @@ ULong dis_cmpxchg_G_E ( /*OUT*/Bool* ok,
       ));
       setFlags_DEP1_DEP2(Iop_Sub8, acc, dest, ty);
       assign( cond, mk_amd64g_calculate_condition(AMD64CondZ) );
-      assign( acc2,  IRExpr_ITE(mkexpr(cond), mkexpr(acc), mkexpr(dest)) );
-      putIRegRAX(size, mkexpr(acc2));
+      putCmpxchgRAX(size, cond, acc, dest);
       DIP("cmpxchg%c %s,%s\n", nameISize(size), 
                                nameIRegG(size,pfx,rm), dis_buf);
    }
