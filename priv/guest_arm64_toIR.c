@@ -372,6 +372,32 @@ static IRTemp newTemp ( IRType ty )
    return newIRTemp( irsb->tyenv, ty );
 }
 
+/* Integer division by zero produces zero.  Use a nonzero divisor for the IR
+   operation itself so that hosts and IR consumers do not treat it as a
+   division exception. */
+static IRExpr* mkDiv ( Bool is64, Bool isSigned,
+                       IRExpr* argL, IRExpr* argR )
+{
+   IRType ty       = is64 ? Ity_I64 : Ity_I32;
+   IRTemp res      = newTemp(ty);
+   IRTemp quot     = newTemp(ty);
+   IRTemp argRtmp  = newTemp(ty);
+   IRTemp argRnz   = newTemp(ty);
+   IRTemp argRis0  = newTemp(Ity_I1);
+   IRExpr* zero    = is64 ? mkU64(0) : mkU32(0);
+   IRExpr* one     = is64 ? mkU64(1) : mkU32(1);
+   IROp cmpEQ      = is64 ? Iop_CmpEQ64 : Iop_CmpEQ32;
+   IROp div        = isSigned ? (is64 ? Iop_DivS64 : Iop_DivS32)
+                              : (is64 ? Iop_DivU64 : Iop_DivU32);
+   assign(argRtmp, argR);
+   assign(argRis0, binop(cmpEQ, mkexpr(argRtmp), zero));
+   assign(argRnz, IRExpr_ITE(mkexpr(argRis0), one, mkexpr(argRtmp)));
+   assign(quot, binop(div, argL, mkexpr(argRnz)));
+   assign(res, IRExpr_ITE(mkexpr(argRis0),
+                          is64 ? mkU64(0) : mkU32(0), mkexpr(quot)));
+   return mkexpr(res);
+}
+
 /* This is used in many places, so the brevity is an advantage. */
 static IRTemp newTempV128(void)
 {
@@ -3600,15 +3626,9 @@ Bool dis_ARM64_data_processing_register(/*MB_OUT*/DisResult* dres,
       Bool isS  = INSN(10,10) == 1;
       UInt nn   = INSN(9,5);
       UInt dd   = INSN(4,0);
-      if (isS) {
-         putIRegOrZR(is64, dd, binop(is64 ? Iop_DivS64 : Iop_DivS32,
-                                     getIRegOrZR(is64, nn),
-                                     getIRegOrZR(is64, mm)));
-      } else {
-         putIRegOrZR(is64, dd, binop(is64 ? Iop_DivU64 : Iop_DivU32,
-                                     getIRegOrZR(is64, nn),
-                                     getIRegOrZR(is64, mm)));
-      }
+      putIRegOrZR(is64, dd, mkDiv(is64, isS,
+                                      getIRegOrZR(is64, nn),
+                                      getIRegOrZR(is64, mm)));
       DIP("%cdiv %s, %s, %s\n", isS ? 's' : 'u',
           nameIRegOrZR(is64, dd),
           nameIRegOrZR(is64, nn), nameIRegOrZR(is64, mm));
